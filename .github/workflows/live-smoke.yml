@@ -20,7 +20,7 @@ jobs:
           for attempt in {1..12}; do
             echo "Attempt $attempt: checking $base"
             if curl --fail --show-error --silent --location --max-time 15 "$base/" -o /tmp/gnarly-home.html && \
-               grep -q 'gnarly-web-revision.*alpha5-native-backend-playback-2026-10-25' /tmp/gnarly-home.html; then
+               grep -q 'gnarly-web-revision.*alpha6-stage72-visuals-stems-2026-10-25' /tmp/gnarly-home.html; then
               echo "Verified deployed HTML revision"
               break
             fi
@@ -30,7 +30,7 @@ jobs:
             fi
             sleep 15
           done
-          for path in styles.css app.js lib/audio-engine.js lib/visual-engine.js lib/catalog.js lib/omnibox.js lib/music-presets.js lib/playback-source.js netlify/functions/omnibox.mjs assets/gnarly-icon.png manifest.webmanifest; do
+          for path in styles.css app.js lib/audio-engine.js lib/visual-engine.js lib/catalog.js lib/omnibox.js lib/music-presets.js lib/playback-source.js lib/stem-mixer.js lib/visual-selection.js netlify/functions/omnibox.mjs assets/gnarly-icon.png manifest.webmanifest; do
             echo "Checking $base/$path"
             curl --fail --show-error --silent --location --max-time 15 "$base/$path" -o /tmp/gnarly-asset
             test -s /tmp/gnarly-asset

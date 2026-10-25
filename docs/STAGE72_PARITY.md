@@ -31,3 +31,12 @@ Hardware stems, mic karaoke scoring, MP4 export, Cifra Club chord mode, native h
 ## Acceptance criteria before claiming '1:1'
 
 For each feature: matching visual behavior at supported viewport; matching UI affordances; matching audio behavior within browser constraints; explicit degradation path on unsupported browsers; automated tests; manual Safari iPhone verification. Track incomplete features transparently in issues.
+
+## α6 completed (2026-10-25)
+
+- `CreativeVisualTaxonomy.swift` → `lib/visual-selection.js`: classic/material theme families, GNARLY override semantics, separate experience + reaction persisted in browser. Seven classic native live experiences + six Creative Universe experiences and Original recipe. The visual UI no longer silently conflates all three selectors.
+- `VisualMaterialCatalog.swift`, `TurbulentMarbleView.swift` → `lib/visual-engine.js`: expanded WebGL2 material geometry and GNARLY 20%-to-28% cover-color transition. This is a shader *port approximation*, not exact Swift/Metal output; mobile screenshots and physical iPhone FPS comparison remain open.
+- `StemMixerControls.swift` → `lib/stem-mixer.js`: four actual audio channels, gain 0–200% and sem voz/só voz/ritmo shortcuts. Neural separation and cloud jobs **not available** on web yet. The original remains one HTMLAudio playback clock; the stems are kept in sync with seek, play, pause and playbackRate.
+- No changes to the iOS app, original Render extraction, Apple or YouTube authorization logic.
+
+Acceptance gaps remain: Metal shader numerical fidelity, true Demucs cloud/native separation, advanced pitch-shift DSP, Safari/WebKit device smoke, karaoke microphone, pads and MP4 export.

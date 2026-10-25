@@ -21,6 +21,8 @@ jobs:
           node --check lib/omnibox.js
           node --check lib/music-presets.js
           node --check lib/playback-source.js
+          node --check lib/stem-mixer.js
+          node --check lib/visual-selection.js
           node --check netlify/functions/omnibox.mjs
           node --check netlify/functions/catalog.mjs
       - name: Run unit tests
