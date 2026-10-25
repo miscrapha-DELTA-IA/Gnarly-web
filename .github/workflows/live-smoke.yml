@@ -20,7 +20,7 @@ jobs:
           for attempt in {1..12}; do
             echo "Attempt $attempt: checking $base"
             if curl --fail --show-error --silent --location --max-time 15 "$base/" -o /tmp/gnarly-home.html && \
-               grep -q 'gnarly-web-revision.*alpha6-stage72-visuals-stems-2026-10-25' /tmp/gnarly-home.html; then
+               grep -q 'gnarly-web-revision.*alpha7-browser-audio-2026-10-25' /tmp/gnarly-home.html; then
               echo "Verified deployed HTML revision"
               break
             fi

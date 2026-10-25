@@ -5,7 +5,7 @@ import {searchCatalog,searchNativeBackend} from './lib/catalog.js';
 import {OmniboxSession,classifyIntent,rank} from './lib/omnibox.js';
 import {MUSIC_PRESETS,musicalPreset} from './lib/music-presets.js';
 import {autoLyrics,normalizeIdentity} from './lib/lyrics-auto.js';
-import {trackAudioURL,selectMusicResults} from './lib/playback-source.js';
+import {trackAudioURL,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
 import {CLASSIC_THEMES,MATERIAL_THEMES,GNARLY_MODES,EXPERIENCES,REACTIONS,ROLE_EXPLANATION,resolveVisual,restoredThemeAfterGnarly} from './lib/visual-selection.js';
 import {StemMixer,STEM_KINDS,STEM_LABELS,STEM_PRESETS} from './lib/stem-mixer.js';
 
@@ -40,7 +40,7 @@ function fmt(secs){if(!Number.isFinite(secs))return '0:00';return `${Math.floor(
 function titleForFile(file){const name=file.name.replace(/\.[^.]+$/,'');const parts=name.split(/\s+[—–-]\s+/);return {title:parts.length>=2?parts.slice(1).join(' - '):name,artist:parts.length>=2?parts[0]:'Arquivo local'}}
 function updateBadges(){
  document.documentElement.style.setProperty('--acid', ({'ACID':'#46ff12','CYBER NIGHT':'#35d5ff','CRIMSON':'#ff425d','CHROME':'#e6f2ef','SMOKE':'#d5c2ec','XEROX SERPENTINE':'#d5ec46','PRISM CARMINE':'#ff56ab','GNARLY':'#45ff8a'})[state.theme]||'#46ff12');
- $('.build-badge').textContent=`WEB α6 · ${state.theme}`;
+ $('.build-badge').textContent=`WEB α7 · ${state.theme}`;
  $('#reaction-label').textContent=state.reaction;
  visual.setTheme(state.theme);visual.setExperience(state.experience);visual.setReaction(state.reaction);
  const fave=state.current&&state.favorites.some(x=>x.id===state.current.id);
@@ -123,7 +123,7 @@ async function play(){
  }catch(e){
   state.playing=false;updatePlayer();
   reportAudioError(state.current?.source==='youtube'
-   ?'Não foi possível reproduzir pelo backend. Confira a conexão e tente novamente; pode ser bloqueio ou limite do servidor.'
+   ?playbackFailureMessage(e,audio.error)
    :'Falha ao reproduzir este arquivo de áudio.');
   console.warn('GNARLY WEB audio play:',e);
  }
@@ -204,7 +204,7 @@ async function runSearch(raw){const query=String(raw||'').trim();state.searchTer
  const hits=rank(query,selectMusicResults(songs,previews),omnibox.history);state.searchResults=hits;omnibox.cacheResults(query,hits);displaySearch(hits,`${songs.length} músicas no catálogo GNARLY · ${previews.length} prévias autorizadas`+(songs.length===0?' · servidor musical indisponível ou sem resultados':''));
  }catch(error){if(count!==searchCounter)return;displaySearch(state.searchResults,'Falha de rede. Resultados locais mantidos.');console.warn('Omnibox',error)}
 }
-audio.addEventListener('play',()=>{if(stems.ready)void stems.play();state.playing=true;updatePlayer()});audio.addEventListener('pause',()=>{stems.pause();state.playing=false;updatePlayer()});audio.addEventListener('timeupdate',()=>{if(stems.ready)stems.sync();updateProgress();syncLyrics()});audio.addEventListener('loadedmetadata',updateProgress);audio.addEventListener('seeked',()=>stems.seek());audio.addEventListener('ended',()=>{state.queue.length?next():pause()});audio.addEventListener('waiting',()=>{if(state.current?.source==='youtube')reportAudioStatus('Carregando áudio…')});audio.addEventListener('playing',()=>{state.audioState='playing';reportAudioStatus('')});audio.addEventListener('error',()=>{if(state.current){state.playing=false;updatePlayer();reportAudioError(state.current.source==='youtube'?'O servidor não entregou o áudio. Pode ser erro 403/422, limite ou faixa indisponível.':'Não foi possível carregar o áudio.');}});
+audio.addEventListener('play',()=>{if(stems.ready)void stems.play();state.playing=true;updatePlayer()});audio.addEventListener('pause',()=>{stems.pause();state.playing=false;updatePlayer()});audio.addEventListener('timeupdate',()=>{if(stems.ready)stems.sync();updateProgress();syncLyrics()});audio.addEventListener('loadedmetadata',updateProgress);audio.addEventListener('seeked',()=>stems.seek());audio.addEventListener('ended',()=>{state.queue.length?next():pause()});audio.addEventListener('waiting',()=>{if(state.current?.source==='youtube')reportAudioStatus('Carregando áudio…')});audio.addEventListener('playing',()=>{state.audioState='playing';reportAudioStatus('')});audio.addEventListener('error',()=>{if(state.current){state.playing=false;updatePlayer();reportAudioError(state.current.source==='youtube'?playbackFailureMessage(null,audio.error):'Não foi possível carregar o áudio.');}});
 for(const [action,fn] of [['play',()=>void play()],['pause',pause],['previoustrack',previous],['nexttrack',next],['seekto',details=>{audio.currentTime=details.seekTime||0}]]){try{navigator.mediaSession?.setActionHandler(action,fn)}catch{/* not supported */}}
 window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select')||e.ctrlKey||e.altKey||e.metaKey)return;if(e.code==='Space'){e.preventDefault();state.playing?pause():void play()}if(e.code==='Escape'){closeSheet();closeYouTubePlayer()};if(e.key==='ArrowRight'&&state.current)audio.currentTime=Math.min(audio.duration||0,audio.currentTime+5);if(e.key==='ArrowLeft'&&state.current)audio.currentTime=Math.max(0,audio.currentTime-5)});
 window.addEventListener('dragover',e=>{if(e.dataTransfer?.types.includes('Files')){e.preventDefault();app.classList.add('dragover')}});window.addEventListener('dragleave',e=>{if(!e.relatedTarget)app.classList.remove('dragover')});window.addEventListener('drop',e=>{e.preventDefault();app.classList.remove('dragover');importAudio(e.dataTransfer?.files||[])});
