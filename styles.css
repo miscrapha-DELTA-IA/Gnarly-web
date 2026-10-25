@@ -14,15 +14,15 @@
   .app-bottom-hint{margin-top:18px}
 }
 
-/* Stage72 compact player; no oversized card blocking the visual */
-.app-shell .player{min-height:0;height:auto;padding:16px 17px 20px;border-radius:27px;gap:0;margin-top:auto;margin-bottom:18px;backdrop-filter:blur(13px) saturate(140%);-webkit-backdrop-filter:blur(13px) saturate(140%)}
-.app-shell .cover-wrap{width:clamp(115px,40%,193px);max-height:193px;margin-bottom:12px;border-radius:17px}
-.app-shell .player h2{font-size:clamp(19px,4.6vw,26px);margin:2px 0 6px}
+/* Stage 72 parity corrections · compact player, screen-native density */
+.app-shell .player{min-height:0;height:auto;max-width:100%;padding:18px 18px 20px;border-radius:27px;gap:0;margin-top:auto;margin-bottom:22px;backdrop-filter:blur(12px) saturate(140%);-webkit-backdrop-filter:blur(12px) saturate(140%)}
+.app-shell .cover-wrap{width:clamp(116px,42%,196px);max-height:196px;margin-bottom:13px;border-radius:17px}
+.app-shell .player h2{font-size:clamp(19px,4.6vw,26px);margin:2px 0 6px;letter-spacing:-.65px}
 .app-shell .artist{font-size:clamp(15px,3.4vw,18px)}
-.app-shell .transport{gap:12px;margin:13px 0 15px}
+.app-shell .transport{gap:13px;margin:13px 0 15px}
 .app-shell .play-button{width:70px;height:70px}
 .app-shell .play-button svg{width:32px;height:32px}
-.app-shell .transport-btn{width:47px;height:51px}
+.app-shell .transport-btn{width:47px;height:52px}
 .app-shell .transport-btn svg{width:35px;height:35px}
 .app-shell .progress-block{margin-top:0}
 .app-shell .progress-label{font-size:12px;padding-bottom:4px}
@@ -31,10 +31,27 @@
 .app-shell .progress-foot{height:24px}
 .app-shell .reaction-pill{margin-top:-21px;font-size:10px}
 .app-shell .reaction-pill .icon{width:47px;height:47px;padding:12px}
-.app-shell .app-bottom-hint{margin-top:0;margin-bottom:7px;font-size:11px}
+.app-shell .main{padding-bottom:calc(88px + var(--safe-bottom))}
+.app-shell .app-bottom-hint{margin-top:0;margin-bottom:8px;opacity:.78;font-size:11px}
 .app-shell.cover-bg #fluid-canvas{opacity:0}
 .app-shell.cover-bg{background-size:cover;background-position:center}
 .app-shell .cover-wrap.has-audio .cover-overlay{opacity:0;pointer-events:none}
-@media(min-width:900px){.app-shell .player{max-width:580px;margin-left:auto;margin-right:auto;margin-top:75px;min-height:0}}
-@media(max-width:650px){.app-shell .player{padding:13px 14px 18px;margin-bottom:12px}.app-shell .cover-wrap{width:min(40vw,164px)}.app-shell .brand-line{margin-top:19px}}
-@media(max-height:720px){.app-shell .player{padding:10px 14px 12px;margin-bottom:7px}.app-shell .cover-wrap{width:min(31vw,120px);margin-bottom:6px}.app-shell .transport{margin:8px 0}.app-shell .play-button{width:58px;height:58px}}
+.app-shell .cover-wrap.has-audio:focus-visible .cover-overlay{opacity:1}
+@media(min-width:900px){.app-shell .player{max-width:590px;margin-left:auto;margin-right:auto;margin-top:82px;min-height:0}.app-shell .main{min-height:calc(100dvh - 140px)}}
+@media(max-width:650px){.app-shell .player{padding:14px 14px 18px;margin-bottom:16px}.app-shell .cover-wrap{width:min(41vw,166px)}.app-shell .brand-line{margin-top:20px}.app-shell .progress-label span:last-child{font-size:12px}.app-shell .app-bottom-hint{font-size:10px}}
+@media(max-height:720px){.app-shell .player{padding-top:10px;padding-bottom:11px;margin-bottom:8px}.app-shell .cover-wrap{width:min(30vw,120px);margin-bottom:7px}.app-shell .transport{margin:8px 0}.app-shell .play-button{width:58px;height:58px}}
+
+/* Stage72 α3: fast presets visible on the card, safe-area density, and official embed. */
+.preset-rail{width:100%;display:flex;justify-content:center;gap:6px;flex-wrap:wrap;margin:9px 0 1px}
+.preset-chip{border:1px solid #ffffff38;background:rgba(0,17,5,.48);color:#f1fff0;padding:7px 10px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.015em;white-space:nowrap;transition:background .15s}
+.preset-chip.active{background:var(--acid);color:#082008;border-color:var(--acid)}
+.preset-chip:active{transform:scale(.97)}
+.youtube-modal{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.85);display:grid;place-items:center;padding:18px}
+.youtube-modal[hidden]{display:none!important}
+.youtube-modal-card{width:min(100%,560px);padding:16px;border-radius:20px;background:#07140af5;box-shadow:0 30px 90px #000e}
+.youtube-modal-head{display:flex;align-items:center;justify-content:space-between;gap:20px;font-size:18px;padding:0 6px 12px}
+.youtube-frame-wrap{position:relative;aspect-ratio:16/9;background:#000;overflow:hidden;border-radius:14px}
+.youtube-frame-wrap iframe{border:0;position:absolute;inset:0;width:100%;height:100%}
+.youtube-modal-card p{font-size:12px;line-height:1.6;color:#ddd}
+.youtube-modal-card a{color:var(--acid);font-weight:800}
+@media(max-width:410px){.preset-rail{gap:4px}.preset-chip{font-size:10px;padding:6px 8px}.app-shell .player{padding:12px 12px 13px}.app-shell .transport{margin:9px 0}}

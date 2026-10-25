@@ -1,6 +1,10 @@
-# GNARLY WEB · α1
+# GNARLY WEB · α3 — Omnibox Stage72 + musical presets
 
-Primeira base navegável para portar a experiência **GNARLY iOS Stage 72** à web, preservando o aplicativo SwiftUI original.
+**Alpha 3 implements a bounded port of the actual native Omnibox and adds prominent Nightcore / Slowed / Slowed + Reverb controls.** It is **not** full iOS 1:1 yet. See [exact contract and limits](docs/OMNIBOX_STAGE72_CONTRACT.md).
+
+# GNARLY WEB · α2
+
+Port WebGL2 e letras automáticas sobre a primeira base navegável para portar a experiência **GNARLY iOS Stage 72** à web, preservando o aplicativo SwiftUI original.
 
 **Fonte de comparação iOS:** `miscrapha-DELTA-IA/NightcoreLab`, branch `stage-72-client-onboarding-final`, commit `744b998a0d85c316407d17c9e4d3690b3b1e8dfe`. A versão iOS de referência foi aprovada no GitHub Actions #40139747152. Este repositório web é uma implementação independente, **não uma transpilação** de Swift/Metal.
 
@@ -66,13 +70,13 @@ Se você já criou o site no Netlify mas ainda não o repositório, a documenta�
 
 ## Verificação após publicação
 
-O workflow `.github/workflows/live-smoke.yml` testa `https://gnarlyweb.netlify.app` pelo GitHub Actions após alterações em `main`, incluindo HTML, JavaScript, CSS, ícone e catálogo. O teste automatizado não substitui validação no Safari do iPhone.
+O workflow `.github/workflows/live-smoke.yml` testa o site público `https://gnarlyweb.netlify.app` pelo GitHub Actions após uma alteração em `main`. Checa o HTML revisado, JavaScript, CSS, ícone e endpoint de catálogo. A validação web não substitui teste real no Safari do iPhone.
 
+## α2 · alterações de paridade (2026-10-25)
 
-## α2 — Stage72 parity fixes
-
-- WebGL2 full-resolution animated material rendering with exact Swift MarbleTheme palettes (not pixel-identical Metal port).
-- Compact player; Play without a song opens Search, not the photo/file picker. Cover opens background choices.
-- Automatic LRCLIB synced lyrics with cancellation on track change, manual LRC override and metadata enrichment for files named Artist - Song.
-- Full-length playback for user-owned local music; Apple catalog legally provides short previews, not entire tracks.
-- No Safari physical device verification yet; further native subsystems need individual ports.
+- GPU WebGL2 com resolução nativa (`devicePixelRatio` limitado por orçamento de pixels), contornos definidos e paletas RGB retiradas de `TurbulentMarbleView.swift` Stage 72. Fallback Canvas 2D onde GPU não estiver disponível. **Não é compilação do shader Metal original**.
+- Cartão principal mais compacto; tocando na capa abre os modos de fundo em vez de abrir a fototeca. O botão Play sem faixa abre **Busca**. Apenas o botão `+`/ação explícita de importação abre Arquivos.
+- Letras sincronizadas: consulta automática LRCLIB ao selecionar uma música, cancelamento ao mudar de faixa e importação `.lrc` manual com prioridade sobre a consulta. A sincronia de prévias pode divergir.
+- Capa como fundo em tela cheia ou foto importada; ambos substituem o visual GPU sem mantê-lo renderizando.
+- Música completa: arquivos pessoais locais são reproduzidos integralmente; o catálogo Apple é limitado por licença a prévias. Música completa de terceiros requer licenciamento/API de streaming.
+- Futuro: equalização profissional com correlação BPM, lyric model styles/word sync, stems, pads, exportação e catálogo autorizado.

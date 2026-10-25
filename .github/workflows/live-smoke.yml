@@ -3,37 +3,46 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
   live:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - name: Wait for Netlify to publish the expected revision
+      - name: Wait for Netlify deployment and verify public assets
         shell: bash
         run: |
           set -euo pipefail
           base="https://gnarlyweb.netlify.app"
           for attempt in {1..12}; do
-            echo "Attempt $attempt to check $base"
-            if curl -fsSL --max-time 15 "$base/" -o /tmp/gnarly-home.html && grep -q 'gnarly-web-revision.*alpha1-full-source-2026-10-25' /tmp/gnarly-home.html; then
-              echo "Expected live revision present"
+            echo "Attempt $attempt: checking $base"
+            if curl --fail --show-error --silent --location --max-time 15 "$base/" -o /tmp/gnarly-home.html && \
+               grep -q 'gnarly-web-revision.*alpha3-omnibox-presets-2026-10-25' /tmp/gnarly-home.html; then
+              echo "Verified deployed HTML revision"
               break
             fi
             if [[ "$attempt" == "12" ]]; then
-              echo "Netlify not showing expected revision: verify Git continuous deployment is connected to main"
+              echo "Netlify has not served the expected Git revision. Check Netlify Git integration, production branch main and deploy logs."
               exit 1
             fi
             sleep 15
           done
-          for path in styles.css app.js lib/audio-engine.js lib/visual-engine.js lib/catalog.js assets/gnarly-icon.png manifest.webmanifest; do
+          for path in styles.css app.js lib/audio-engine.js lib/visual-engine.js lib/catalog.js lib/omnibox.js lib/music-presets.js netlify/functions/omnibox.mjs assets/gnarly-icon.png manifest.webmanifest; do
             echo "Checking $base/$path"
-            curl -fsSL --max-time 15 "$base/$path" -o /tmp/gnarly-asset
+            curl --fail --show-error --silent --location --max-time 15 "$base/$path" -o /tmp/gnarly-asset
             test -s /tmp/gnarly-asset
           done
-      - name: Validate music catalog proxy
+      - name: Verify music catalog proxy
+        shell: bash
         run: |
           set -euo pipefail
-          response=$(curl -fsSL --max-time 25 'https://gnarlyweb.netlify.app/api/catalog?term=daft%20punk')
-          echo "$response" | node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.results))process.exit(1);console.log("Catalog result count:",x.results.length)})'
+          response=$(curl --fail --silent --show-error --location --max-time 25 'https://gnarlyweb.netlify.app/api/catalog?term=daft%20punk')
+          echo "$response" | node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.results))process.exit(1);console.log("Catalog proxy returned",x.results.length,"entries")})'
+
+      - name: Verify Stage72 backend Omnibox proxy contract
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --location --max-time 30 'https://gnarlyweb.netlify.app/api/omnibox?term=daft%20punk' | node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.results))process.exit(1);console.log("Omnibox backend search status:",x.status,"hits:",x.results.length)})'

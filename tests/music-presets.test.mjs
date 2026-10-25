@@ -1,0 +1,2 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {MUSIC_PRESETS,musicalPreset} from '../lib/music-presets.js';
+test('all four card controls are wired to valid preset contracts',()=>{assert.equal(Object.keys(MUSIC_PRESETS).length,4);assert.deepEqual(musicalPreset('NIGHTCORE'),{speed:1.25,reverb:0,pitch:false});assert.deepEqual(musicalPreset('SLOWED + REVERB'),{speed:.8,reverb:.4,pitch:false});assert.equal(musicalPreset('CUSTOM'),null)});

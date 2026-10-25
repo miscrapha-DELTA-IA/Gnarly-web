@@ -1,0 +1,11 @@
+# Omnibox Stage 72 — Web contract α3
+
+Source reference: `NightcoreLab/Sources/OmniboxEngine.swift`, `SearchSession.swift`, `YouTubeSearchService.swift`, `backend/main.py`, commit `744b998a`.
+
+**Already ported:** recognized YouTube watch/youtu.be/music.youtube URLs and IDs; local persistent history / saved query; instant local results while typing; remote search on submit; deduplication by title/artist; 5-minute fresh cache + 24-hour stale fallback; queue and album metadata; downloadable *user files* in session; same-track auto LRCLIB from α2; user-visible Original/Nightcore/Slowed/Slowed+Reverb presets.
+
+**Native search backend:** `GET /search?query=...` returns NDJSON `id,title,thumbnail,duration` from YT Music. Netlify `GET /api/omnibox?term=...` validates/normalizes this metadata and handles a slow/sleeping backend without breaking search. Set runtime Functions env `GNARLY_BACKEND_URL=https://nightcorelab.onrender.com` to override the standard backend. The app separately searches iTunes official 30s previews as a fallback. Backend search hits use the *official YouTube embed player* for full-length tracks only when embedding is permitted by YouTube/content owner. This embedded audio CANNOT be piped into a Web Audio effects graph; it does not supply MP3 URLs. URLs not playable by YouTube remain unavailable.
+
+**Copyright/streaming:** Native `GET /download?url=` is a separate server endpoint that performs yt-dlp extraction, not a public browser streaming protocol. It cannot be republished indiscriminately as an anonymous downloader. Before bringing complete playback with DSP to the web, implement a source of authorized full-track audio, throttled authenticated server-side access, rate-limiting, per-track rights validation, byte-range streaming and cache safeguards. Until then, user-provided music files give full playback with Web Audio. Never label iTunes previews as full tracks. YouTube embed is an official player, not an extraction API.
+
+**Limitations compared with Stage 72:** editable search suggestions, exact metadata cleaning and native acoustic reranker, hybrid prefetch, instant gapless playback, live YouTube pitch/reverb, Stage72 GPU Metal, Creator/Stems & karaoke microphone require further development and real iPhone Safari QA. A green CI is not device QA.

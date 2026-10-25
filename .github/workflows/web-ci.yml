@@ -18,6 +18,9 @@ jobs:
           node --check lib/visual-engine.js
           node --check lib/lrc.js
           node --check lib/catalog.js
+          node --check lib/omnibox.js
+          node --check lib/music-presets.js
+          node --check netlify/functions/omnibox.mjs
           node --check netlify/functions/catalog.mjs
       - name: Run unit tests
         run: npm test
