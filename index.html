@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#061905" />
+  <meta name="description" content="GNARLY WEB — música, Nightcore, Slowed + Reverb e visuais fluidos. Inspirado no app GNARLY Stage 72." />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="GNARLY" />
+  <meta property="og:title" content="GNARLY WEB — Music. Visually alive." />
+  <meta property="og:description" content="Transforme sua música com controles de áudio, letras e visuais reativos." />
+  <link rel="icon" href="/logo.svg" />
+  <link rel="apple-touch-icon" href="/logo.svg" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="stylesheet" href="./styles.css" />
+  <title>GNARLY WEB — Stage 72</title>
+</head>
+<body>
+  <div class="app-shell" id="app-shell">
+    <canvas id="fluid-canvas" aria-hidden="true"></canvas>
+    <div class="visual-dim" aria-hidden="true"></div>
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="icon-button edge" id="search-toggle" title="Mostrar ou ocultar Busca" aria-label="Abrir busca" aria-expanded="false"><svg class="icon"><use href="#i-eye" /></svg></button>
+        <button class="icon-button bolt" id="theme-button" title="Escolher tema visual" aria-label="Escolher tema"><svg class="icon"><use href="#i-bolt" /></svg></button>
+      </div>
+      <button class="create-pill glass" id="create-button"><svg class="icon small"><use href="#i-wand" /></svg> <span>Criar</span></button>
+      <div class="topbar-right">
+        <button class="icon-button glass" id="share-button" title="Compartilhar GNARLY" aria-label="Compartilhar"><svg class="icon"><use href="#i-share" /></svg></button>
+        <button class="icon-button glass" id="background-button" title="Enviar uma imagem de fundo" aria-label="Personalizar fundo"><svg class="icon"><use href="#i-pencil" /></svg></button>
+      </div>
+    </header>
+
+    <main class="main" id="main">
+      <section class="brand-line">
+        <div class="brand-identity"><img src="/logo.svg" alt="Logo GNARLY" width="57" height="57" /><div><h1>Gnarly</h1><div class="build-badge">WEB α1 · ACID</div></div></div>
+        <div class="quick-actions">
+          <button class="round-quick glass" id="library-button" aria-label="Abrir biblioteca" title="Biblioteca"><svg class="icon"><use href="#i-grid" /></svg></button>
+          <button class="round-quick glass" id="favorite-button" aria-label="Adicionar aos favoritos" title="Favoritar"><svg class="icon"><use href="#i-heart" /></svg></button>
+          <button class="round-quick glass" id="controls-button" aria-label="Controles musicais" title="Controles"><svg class="icon"><use href="#i-sliders" /></svg></button>
+          <button class="round-quick primary" id="add-button" aria-label="Adicionar uma música do computador" title="Adicionar música"><svg class="icon"><use href="#i-plus" /></svg></button>
+        </div>
+      </section>
+
+      <section class="floating-lyrics" id="floating-lyrics" aria-live="off" hidden><span id="floating-line">Carregue uma letra .lrc para cantar</span></section>
+
+      <section class="player glass" aria-label="Reprodutor GNARLY">
+        <button class="cover-wrap" id="cover-button" title="Adicionar música local" aria-label="Adicionar música local">
+          <img id="cover-image" src="/logo.svg" alt="Capa do áudio atual" />
+          <span id="cover-play-overlay" class="cover-overlay"><svg class="icon"><use href="#i-plus" /></svg> Importar música</span>
+        </button>
+        <h2 id="track-title">Sua música. Seu universo.</h2>
+        <p class="artist" id="track-artist">Selecione uma música para começar</p>
+        <div class="transport">
+          <button id="previous-button" class="transport-btn" aria-label="Anterior"><svg class="icon"><use href="#i-prev" /></svg></button>
+          <button id="play-button" class="play-button" aria-label="Reproduzir ou pausar"><svg class="icon"><use href="#i-play" /></svg></button>
+          <button id="next-button" class="transport-btn" aria-label="Próxima" disabled><svg class="icon"><use href="#i-next" /></svg></button>
+        </div>
+        <div class="progress-block">
+          <div class="progress-label"><span>POSIÇÃO</span><span id="duration-label">0:00</span></div>
+          <input id="seek-slider" aria-label="Posição da música" type="range" min="0" max="1000" value="0" step="1" />
+          <div class="progress-foot"><span id="elapsed-label">0:00</span><button class="reaction-pill" id="reaction-button" aria-label="Alternar ritmo visual"><svg class="icon"><use href="#i-wave" /></svg><span id="reaction-label">FLUIDO</span></button></div>
+        </div>
+      </section>
+      <div class="app-bottom-hint" id="hint">Arraste um arquivo de áudio ou use + para ouvir no navegador</div>
+    </main>
+
+    <nav class="bottom-dock glass" aria-label="Navegação principal">
+      <button data-drawer="search" class="dock-button"><svg class="icon"><use href="#i-search" /></svg><span>Busca</span></button>
+      <button data-drawer="queue" class="dock-button"><svg class="icon"><use href="#i-list" /></svg><span>Fila</span></button>
+      <button data-drawer="library" class="dock-button"><svg class="icon"><use href="#i-grid" /></svg><span>Mix</span></button>
+      <button data-drawer="karaoke" class="dock-button"><svg class="icon"><use href="#i-mic" /></svg><span>Karaokê</span></button>
+    </nav>
+
+    <div class="panel-backdrop" id="panel-backdrop" hidden></div>
+    <section id="bottom-sheet" class="bottom-sheet" aria-modal="true" role="dialog" aria-labelledby="sheet-title" hidden>
+      <div class="sheet-grabber"></div>
+      <header class="sheet-header"><div><div class="eyebrow">GNARLY WEB</div><h2 id="sheet-title">Busca</h2></div><button id="close-sheet" class="icon-button glass" aria-label="Fechar"><svg class="icon"><use href="#i-x" /></svg></button></header>
+      <div class="sheet-content" id="sheet-content"></div>
+    </section>
+    <input type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.flac,.aac" id="audio-import" multiple hidden />
+    <input type="file" accept=".lrc,text/plain" id="lrc-import" hidden />
+    <input type="file" accept="image/*" id="background-import" hidden />
+    <audio id="player-audio" preload="metadata" crossorigin="anonymous"></audio>
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  </div>
+  <svg aria-hidden="true" class="svg-symbols" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3.2"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 13h7l-1 9 10-12h-7l1-8Z"/></symbol>
+    <symbol id="i-wand" viewBox="0 0 24 24"><path d="m4 20 11-11m-5-5 1 2m7-4v4M4 6l2 2m13 6 1 2m-6 5 2-1M4 14 2 15"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 16V2m-5 5 5-5 5 5M5 13H3v9h18v-9h-2"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24"><path d="m3 21 5-.8L20 8a3 3 0 0 0-4-4L4 16 3 21Zm12-15 3 3M10 4h4M2 9v4"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9.5" y="2" width="5" height="5" rx="1"/><rect x="17" y="2" width="5" height="5" rx="1"/><rect x="2" y="9.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><rect x="17" y="9.5" width="5" height="5" rx="1"/><rect x="2" y="17" width="5" height="5" rx="1"/><rect x="9.5" y="17" width="5" height="5" rx="1"/><rect x="17" y="17" width="5" height="5" rx="1"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M20.8 4.8a5.8 5.8 0 0 0-8.2 0l-.6.6-.6-.6a5.8 5.8 0 1 0-8.2 8.2L12 22l8.8-9a5.8 5.8 0 0 0 0-8.2Z"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 3v18m8-18v18m8-18v18M1 8h6M9 16h6m2-8h6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M5 5v14M19 5 7 12l12 7V5Z"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M19 5v14M5 5l12 7-12 7V5Z"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m7 4 14 8-14 8V4Z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></symbol>
+    <symbol id="i-wave" viewBox="0 0 24 24"><path d="M2 12h2l2-7 3 14 3-14 3 14 3-7h4"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="7"/><path d="m16 16 6 6"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 5h14M8 12h14M8 19h14M2 5h2M2 12h2M2 19h2"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4m-5 0h10"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M4 4 20 20M20 4 4 20"/></symbol>
+  </svg>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
