@@ -20,7 +20,7 @@ jobs:
           for attempt in {1..12}; do
             echo "Attempt $attempt: checking $base"
             if curl --fail --show-error --silent --location --max-time 15 "$base/" -o /tmp/gnarly-home.html && \
-               grep -q 'gnarly-web-revision.*alpha4-private-audio-2026-10-25' /tmp/gnarly-home.html; then
+               grep -q 'gnarly-web-revision.*alpha5-native-backend-playback-2026-10-25' /tmp/gnarly-home.html; then
               echo "Verified deployed HTML revision"
               break
             fi
@@ -30,7 +30,7 @@ jobs:
             fi
             sleep 15
           done
-          for path in styles.css app.js lib/audio-engine.js lib/visual-engine.js lib/catalog.js lib/omnibox.js lib/music-presets.js netlify/functions/omnibox.mjs assets/gnarly-icon.png manifest.webmanifest; do
+          for path in styles.css app.js lib/audio-engine.js lib/visual-engine.js lib/catalog.js lib/omnibox.js lib/music-presets.js lib/playback-source.js netlify/functions/omnibox.mjs assets/gnarly-icon.png manifest.webmanifest; do
             echo "Checking $base/$path"
             curl --fail --show-error --silent --location --max-time 15 "$base/$path" -o /tmp/gnarly-asset
             test -s /tmp/gnarly-asset
@@ -46,3 +46,11 @@ jobs:
         shell: bash
         run: |
           curl --fail --silent --show-error --location --max-time 30 'https://gnarlyweb.netlify.app/api/omnibox?term=daft%20punk' | node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.results))process.exit(1);console.log("Omnibox backend search status:",x.status,"hits:",x.results.length)})'
+
+      - name: Verify origin-scoped browser playback bridge (without starting an extraction)
+        shell: bash
+        run: |
+          set -euo pipefail
+          response=$(curl --fail --silent --show-error --location --retry 2 --retry-delay 5 --max-time 50 -D - -o /dev/null -H 'Origin: https://gnarlyweb.netlify.app' 'https://nightcorelab.onrender.com/')
+          echo "$response" | grep -iq '^access-control-allow-origin: https://gnarlyweb.netlify.app'
+          echo 'Render browser origin allowed; no audio was downloaded in CI.'

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#061905" />
-  <meta name="gnarly-web-revision" content="alpha4-private-audio-2026-10-25" />
+  <meta name="gnarly-web-revision" content="alpha5-native-backend-playback-2026-10-25" />
   <meta name="description" content="GNARLY WEB — música, Nightcore, Slowed + Reverb e visuais fluidos. Inspirado no app GNARLY Stage 72." />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -59,6 +59,7 @@
           <button data-preset="SLOWED" class="preset-chip" type="button">Slowed</button>
           <button data-preset="SLOWED + REVERB" class="preset-chip" type="button">Slowed + Reverb</button>
         </div>
+        <p id="player-status" class="player-status" role="status" aria-live="polite" hidden></p>
         <div class="transport">
           <button id="previous-button" class="transport-btn" aria-label="Anterior"><svg class="icon"><use href="#i-prev" /></svg></button>
           <button id="play-button" class="play-button" aria-label="Reproduzir ou pausar"><svg class="icon"><use href="#i-play" /></svg></button>
@@ -80,15 +81,6 @@
       <button data-drawer="karaoke" class="dock-button"><svg class="icon"><use href="#i-mic" /></svg><span>Karaokê</span></button>
     </nav>
 
-    <div id="beta-gate-dialog" class="youtube-modal" role="dialog" aria-modal="true" aria-labelledby="beta-gate-title" hidden>
-      <div class="youtube-modal-card glass beta-gate-card">
-        <div class="youtube-modal-head"><strong id="beta-gate-title">GNARLY · Beta de áudio</strong><button type="button" id="beta-gate-close" class="icon-button" aria-label="Fechar">×</button></div>
-        <p>Para os testes privados de áudio, digite o código de convite uma única vez. Use apenas músicas que você tem autorização para processar.</p>
-        <form id="beta-gate-form" class="beta-gate-form"><label for="beta-code">Código de acesso</label><input id="beta-code" name="code" type="password" autocomplete="off" placeholder="Código do convite" minlength="12" maxlength="128" required /><button type="submit">Ativar áudio de teste</button></form>
-        <p id="beta-gate-error" class="status-text" role="status"></p>
-        <button id="beta-play-official" class="action-button alt" type="button">Ouvir pelo player oficial do YouTube</button>
-      </div>
-    </div>
     <div id="youtube-player-dialog" class="youtube-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-label="Ouvir música completa no YouTube" hidden>
       <div class="youtube-modal-card glass"><div class="youtube-modal-head"><strong id="youtube-player-title">YouTube Music</strong><button id="youtube-close" aria-label="Fechar reprodução" class="icon-button">×</button></div><div class="youtube-frame-wrap"><iframe id="youtube-player-frame" title="Player oficial do YouTube" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>
       <p>Reprodução integral pelo player oficial do YouTube, quando permitida pelo detentor do conteúdo. Controles Nightcore, Slowed, Reverb e letras sincronizadas não processam o som deste player. Use seu áudio local para esses recursos.</p><a id="youtube-player-link" href="https://www.youtube.com" target="_blank" rel="noopener noreferrer">Abrir no YouTube</a></div></div>

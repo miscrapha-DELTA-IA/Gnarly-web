@@ -64,3 +64,5 @@
 .beta-gate-form button{background:var(--acid);color:#041609;border:0;padding:13px;border-radius:12px;font-weight:800}
 .beta-gate-form button:disabled{opacity:.5}
 #beta-play-official{width:100%;margin-top:7px}
+
+.player-status{max-width:100%;font-size:12px;line-height:1.3;text-align:center;color:#e8ffe6;background:#031903ba;border:1px solid #ffffff22;border-radius:10px;padding:6px 10px;margin:8px 0 0}.player-status[hidden]{display:none!important}

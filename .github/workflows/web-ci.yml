@@ -20,10 +20,8 @@ jobs:
           node --check lib/catalog.js
           node --check lib/omnibox.js
           node --check lib/music-presets.js
+          node --check lib/playback-source.js
           node --check netlify/functions/omnibox.mjs
           node --check netlify/functions/catalog.mjs
-          node --check netlify/functions/beta-access.mjs
-          node --check netlify/functions/beta-audio.mjs
-          node --check netlify/lib/beta-auth.mjs
       - name: Run unit tests
         run: npm test
