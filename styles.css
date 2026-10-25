@@ -13,3 +13,28 @@
   .reaction-pill .icon{width:49px;height:49px;padding:14px}
   .app-bottom-hint{margin-top:18px}
 }
+
+/* Stage72 compact player; no oversized card blocking the visual */
+.app-shell .player{min-height:0;height:auto;padding:16px 17px 20px;border-radius:27px;gap:0;margin-top:auto;margin-bottom:18px;backdrop-filter:blur(13px) saturate(140%);-webkit-backdrop-filter:blur(13px) saturate(140%)}
+.app-shell .cover-wrap{width:clamp(115px,40%,193px);max-height:193px;margin-bottom:12px;border-radius:17px}
+.app-shell .player h2{font-size:clamp(19px,4.6vw,26px);margin:2px 0 6px}
+.app-shell .artist{font-size:clamp(15px,3.4vw,18px)}
+.app-shell .transport{gap:12px;margin:13px 0 15px}
+.app-shell .play-button{width:70px;height:70px}
+.app-shell .play-button svg{width:32px;height:32px}
+.app-shell .transport-btn{width:47px;height:51px}
+.app-shell .transport-btn svg{width:35px;height:35px}
+.app-shell .progress-block{margin-top:0}
+.app-shell .progress-label{font-size:12px;padding-bottom:4px}
+.app-shell .progress-label span:last-child{font-size:13px}
+.app-shell #seek-slider{margin:14px 0 11px}
+.app-shell .progress-foot{height:24px}
+.app-shell .reaction-pill{margin-top:-21px;font-size:10px}
+.app-shell .reaction-pill .icon{width:47px;height:47px;padding:12px}
+.app-shell .app-bottom-hint{margin-top:0;margin-bottom:7px;font-size:11px}
+.app-shell.cover-bg #fluid-canvas{opacity:0}
+.app-shell.cover-bg{background-size:cover;background-position:center}
+.app-shell .cover-wrap.has-audio .cover-overlay{opacity:0;pointer-events:none}
+@media(min-width:900px){.app-shell .player{max-width:580px;margin-left:auto;margin-right:auto;margin-top:75px;min-height:0}}
+@media(max-width:650px){.app-shell .player{padding:13px 14px 18px;margin-bottom:12px}.app-shell .cover-wrap{width:min(40vw,164px)}.app-shell .brand-line{margin-top:19px}}
+@media(max-height:720px){.app-shell .player{padding:10px 14px 12px;margin-bottom:7px}.app-shell .cover-wrap{width:min(31vw,120px);margin-bottom:6px}.app-shell .transport{margin:8px 0}.app-shell .play-button{width:58px;height:58px}}

@@ -67,3 +67,12 @@ Se você já criou o site no Netlify mas ainda não o repositório, a documenta�
 ## Verificação após publicação
 
 O workflow `.github/workflows/live-smoke.yml` testa `https://gnarlyweb.netlify.app` pelo GitHub Actions após alterações em `main`, incluindo HTML, JavaScript, CSS, ícone e catálogo. O teste automatizado não substitui validação no Safari do iPhone.
+
+
+## α2 — Stage72 parity fixes
+
+- WebGL2 full-resolution animated material rendering with exact Swift MarbleTheme palettes (not pixel-identical Metal port).
+- Compact player; Play without a song opens Search, not the photo/file picker. Cover opens background choices.
+- Automatic LRCLIB synced lyrics with cancellation on track change, manual LRC override and metadata enrichment for files named Artist - Song.
+- Full-length playback for user-owned local music; Apple catalog legally provides short previews, not entire tracks.
+- No Safari physical device verification yet; further native subsystems need individual ports.
