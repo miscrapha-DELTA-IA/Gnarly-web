@@ -230,3 +230,17 @@
 }
 @media(max-height:750px){.app-shell .player{margin-top:clamp(60px,11dvh,115px)}}
 @media(min-width:900px){.app-shell .player{margin-top:clamp(80px,14dvh,155px)}.app-shell .main{min-height:calc(100dvh - 130px)}}
+
+/* Photo and album source remain separate from theme and experience. */
+.photo-background{position:absolute;inset:0;z-index:-2;background-position:center;background-size:cover;background-repeat:no-repeat;pointer-events:none;transform-origin:center;will-change:transform}
+.app-shell.custom-bg{background-image:none!important;background-color:#0a0a0e}
+.app-shell.custom-bg .visual-dim{z-index:-1}
+.background-menu{display:flex;flex-direction:column;border-radius:15px;overflow:hidden;background:rgba(255,255,255,.07)}
+.background-menu-row{display:flex;align-items:center;gap:12px;width:100%;padding:16px 14px;text-align:left;background:transparent;border-bottom:1px solid rgba(255,255,255,.14);font-size:15px;color:var(--acid)}
+.background-menu-row span{color:#fff;flex:1}
+.background-menu-row b{color:var(--acid);font-size:15px}
+.background-menu-row.danger span,.background-menu-row.danger{color:#ff6c65}
+.background-menu-row:disabled{opacity:.35}
+.photo-editor{background:rgba(255,255,255,.07);border-radius:13px;padding:15px;margin-top:14px;display:flex;flex-direction:column;gap:10px}
+.photo-editor label{display:flex;justify-content:space-between;font-size:12px}
+.photo-editor input{accent-color:var(--acid)}
