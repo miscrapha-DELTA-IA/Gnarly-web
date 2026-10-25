@@ -335,6 +335,6 @@ updatePlayer();applyPanelVisibility();
 // Direct backend playback has no separate invite login or YouTube modal on Play.
 
 // Refresh the visual fill as mixing controls change without replacing native inputs.
-function refreshMixerRails(){document.querySelectorAll('.setting input[type="range"]').forEach(el=>{const min=Number(el.min)||0,max=Number(el.max)||1,val=Number(el.value)||0;el.style.setProperty('--mix-fill',Math.max(0,Math.min(100,100*(val-min)/(max-min)))+'%')})}
-document.addEventListener('input',e=>{if(e.target.matches?.('.setting input[type="range"]'))refreshMixerRails()});
+function refreshMixerRails(){document.querySelectorAll('.setting input[type="range"],.music-range').forEach(el=>{const min=Number(el.min)||0,max=Number(el.max)||1,val=Number(el.value)||0;el.style.setProperty('--mix-fill',Math.max(0,Math.min(100,100*(val-min)/(max-min)))+'%')})}
+document.addEventListener('input',e=>{if(e.target.matches?.('.setting input[type="range"],.music-range'))refreshMixerRails()});
 const mixerObserve=new MutationObserver(()=>refreshMixerRails());mixerObserve.observe(document.querySelector('#sheet-content'),{childList:true,subtree:false});refreshMixerRails();
