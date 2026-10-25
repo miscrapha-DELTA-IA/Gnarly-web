@@ -1,1 +1,1 @@
-{"name":"GNARLY WEB","short_name":"GNARLY","start_url":"/","scope":"/","display":"standalone","background_color":"#041805","theme_color":"#041805","icons":[{"src":"/logo.svg","sizes":"any","type":"image/svg+xml","purpose":"any"}]}
+{"id":"/","name":"GNARLY WEB — Music & Visuals","short_name":"GNARLY","description":"Música, efeitos e visuais do GNARLY no navegador","start_url":"/","scope":"/","display":"standalone","background_color":"#020e04","theme_color":"#072306","icons":[{"src":"/assets/gnarly-icon.png","sizes":"256x256","type":"image/png","purpose":"any maskable"}]}

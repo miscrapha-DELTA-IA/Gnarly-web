@@ -1,8 +1,8 @@
-name: GNARLY WEB checks
+name: GNARLY WEB — integrity and smoke
 on:
   push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -11,7 +11,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Check JavaScript syntax
+      - name: Verify JavaScript syntax
         run: |
           node --check app.js
           node --check lib/audio-engine.js
@@ -19,10 +19,5 @@ jobs:
           node --check lib/lrc.js
           node --check lib/catalog.js
           node --check netlify/functions/catalog.mjs
-      - name: Required paths
-        run: |
-          test -f index.html
-          test -f styles.css
-          test -f netlify.toml
-          test -f manifest.webmanifest
-          test -f logo.svg
+      - name: Run unit tests
+        run: npm test

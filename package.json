@@ -1,0 +1,1 @@
+{"name":"gnarly-web","version":"0.1.0","private":true,"type":"module","description":"GNARLY WEB — Stage 72 inspired web companion","scripts":{"dev":"npx serve .","test":"node --test tests/*.test.mjs"}}

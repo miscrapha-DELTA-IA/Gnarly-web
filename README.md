@@ -33,7 +33,7 @@ Testes (Node 20+): `npm test`.
 ## Netlify
 
 ### Git deploy recomendado
-1. Crie no GitHub um repositório vazio com nome exato `Gnarly-web` (GitHub não permite espaço no slug).
+1. Crie no GitHub um repositório `miscrapha-DELTA-IA/Gnarly-web` (GitHub não permite espaço no slug).
 2. Faça commit dos arquivos desta pasta na raiz do repositório. Não faça commit do ZIP em si nem da pasta `Gnarly-web` como uma subpasta, a menos que você ajuste o publish directory.
 3. Netlify → **Add new project → Import an existing project** → GitHub → `Gnarly-web`.
 4. **Build command: deixe em branco**, **Publish directory: `.`**, **Base directory: raiz**. O arquivo `netlify.toml` já define essas preferências.
@@ -63,3 +63,7 @@ Não publica tokens, cookies, credenciais nem código do backend de downloads na
 ## Publicação
 
 Se você já criou o site no Netlify mas ainda não o repositório, a documentação do Netlify também descreve **Project configuration → Developer settings → Continuous deployment → Repository → Push to new repository** para alguns projetos. Com Git conectado, o Netlify implanta automaticamente novas mudanças.
+
+## Verificação após publicação
+
+O workflow `.github/workflows/live-smoke.yml` testa `https://gnarlyweb.netlify.app` pelo GitHub Actions após alterações em `main`, incluindo HTML, JavaScript, CSS, ícone e catálogo. O teste automatizado não substitui validação no Safari do iPhone.

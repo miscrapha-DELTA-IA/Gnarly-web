@@ -1,0 +1,29 @@
+GNARLY WEB — primeiro deploy
+===========================
+
+SITE TESTÁVEL SEM IPA:
+1. Abra o Netlify Drop: https://app.netlify.com/drop
+2. Extraia o arquivo GNARLY-WEB_netlify_drop.zip.
+3. Envie/arraste a pasta extraída (deve conter index.html na raiz).
+4. Receba a URL https://...netlify.app e abra no Safari do iPhone.
+5. Teste + (importar arquivo próprio), Player, Criar, Temas, Busca, Fila.
+
+PARA TER O GITHUB SOLICITADO:
+1. Abra https://github.com/new
+2. Repository name: GNARLY-WEB
+3. Owner: miscrapha-DELTA-IA; Visibility: Public ou Private à sua escolha.
+4. Crie sem marcar README / gitignore (todos os arquivos já estão no pacote).
+5. Envie os arquivos descompactados do ZIP de CÓDIGO para a raiz do repo (via git ou GitHub Desktop).
+6. No Netlify: Add new project → Import an existing project → GitHub → GNARLY-WEB.
+7. Build command: VAZIO. Publish directory: . (um ponto). Base directory: raiz.
+
+GITHUB VIA GIT NO COMPUTADOR (opcional):
+  cd GNARLY-WEB
+  git init
+  git add .
+  git commit -m "feat: GNARLY WEB alpha 1 - Stage 72 companion"
+  git branch -M main
+  git remote add origin https://github.com/miscrapha-DELTA-IA/GNARLY-WEB.git
+  git push -u origin main
+
+ATENÇÃO: o repo de iPhone é separado e não deve ser sobrescrito.
