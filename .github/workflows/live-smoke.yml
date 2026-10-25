@@ -1,7 +1,5 @@
-name: GNARLY WEB live smoke
+name: GNARLY WEB old Netlify smoke (manual only)
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

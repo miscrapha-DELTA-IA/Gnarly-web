@@ -1,0 +1,44 @@
+name: GNARLY Cloudflare Worker dry-run
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'functions/**'
+      - 'scripts/**'
+      - 'wrangler.jsonc'
+      - 'package.json'
+      - 'index.html'
+      - 'app.js'
+      - 'lib/**'
+      - 'ui/**'
+      - 'styles.css'
+      - '.github/workflows/cloudflare-worker-dryrun.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build GNARLY public assets
+        run: |
+          npm run build
+          test -f dist/index.html
+          test -f dist/app.js
+          test ! -d dist/node_modules
+          test ! -e dist/netlify
+          test ! -e dist/functions
+          test ! -e dist/tests
+          if find dist -type f -size +25M | grep .; then
+            echo "Asset >25 MiB found"
+            exit 1
+          fi
+      - name: Verify Cloudflare binding and dry-run bundle without deploying
+        run: |
+          npx --yes wrangler@latest deploy --dry-run
