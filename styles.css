@@ -84,3 +84,14 @@
 .visual-choice.active strong{color:var(--acid)}
 #stem-status{background:rgba(255,255,255,.045);padding:10px;border-radius:10px}
 @media(max-width:410px){.visual-choice{padding:9px}.visual-choice strong{font-size:11px}.visual-tabs button{font-size:11px}}
+
+
+/* GNARLY Stage 72 mixer rails — design-system source: Figma GNARLY WEB Stage72. */
+.sheet-content .setting,.setting{background:linear-gradient(125deg,rgba(20,34,31,.77),rgba(12,20,23,.65));border:1px solid rgba(207,255,222,.11);border-radius:16px;padding:15px 17px;margin:11px 0;gap:12px}
+.setting-title{font-weight:730;letter-spacing:.01em;align-items:center}
+.setting-title span:last-child{font-variant-numeric:tabular-nums;color:var(--acid)}
+.setting input[type="range"]{--mix-fill:50%;appearance:none;-webkit-appearance:none;width:100%;height:8px;border-radius:999px;background:linear-gradient(to right,var(--accent,var(--acid)) 0%,var(--accent,var(--acid)) var(--mix-fill),rgba(206,236,229,.16) var(--mix-fill));outline-offset:6px;touch-action:pan-y}
+.setting input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:24px;height:24px;border:3px solid var(--accent,var(--acid));border-radius:50%;background:#f7fff9;box-shadow:0 0 0 5px rgba(69,255,80,.09),0 2px 14px rgba(0,0,0,.58)}
+.setting input[type="range"]::-moz-range-thumb{width:18px;height:18px;border:3px solid var(--accent,var(--acid));border-radius:50%;background:#f7fff9;box-shadow:0 2px 12px #0009}
+.setting input[type="range"]:disabled{filter:grayscale(1);opacity:.45}
+.setting:has([data-stem-level="vocal"]){--accent:#be88ff}.setting:has([data-stem-level="drums"]){--accent:#60ceff}.setting:has([data-stem-level="bass"]){--accent:#ffb865}.setting:has([data-stem-level="other"]){--accent:#82ffac}
