@@ -1,0 +1,31 @@
+name: GNARLY Stems provider identity probe
+on:
+  push:
+    paths: ['.github/workflows/stems-provider-probe.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check provider identity and availability without uploading audio
+        run: |
+          python3 - <<'PY'
+          import json,urllib.request
+          def get(url):
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(url,headers={'user-agent':'GNARLY-availability-probe/1.0'}), timeout=16) as r:
+                      return json.load(r)
+              except Exception as e:
+                  print("CHECK UNAVAILABLE",url.split('/')[2],type(e).__name__)
+                  return {}
+          x=get('https://huggingface.co/api/spaces/D-r-e/audio-separator')
+          rt=x.get('runtime') or {}
+          print('community_space:',json.dumps({'sha':x.get('sha'),'sdk':x.get('sdk'),'stage':rt.get('stage'),'hardware':(rt.get('hardware') or {}).get('current')},ensure_ascii=False))
+          y=get('https://nightcorelab.onrender.com/v1/stems/cloud')
+          print('GNARLY backend:',json.dumps(y,ensure_ascii=False))
+          c=get('https://d-r-e-audio-separator.hf.space/config')
+          print('community_endpoint_names:',[item.get('api_name') for item in c.get('dependencies',[]) if item.get('api_name')])
+          PY
