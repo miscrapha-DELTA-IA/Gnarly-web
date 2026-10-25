@@ -29,3 +29,11 @@ jobs:
           node --check netlify/functions/catalog.mjs
       - name: Run unit tests
         run: npm test
+      - name: Validate Cloudflare Pages build output
+        run: |
+          npm run build:pages
+          test -s dist/index.html
+          test -s dist/_headers
+          test ! -e dist/netlify
+          test ! -e dist/functions
+          test ! -e dist/tests
