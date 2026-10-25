@@ -9,6 +9,8 @@ import {trackAudioURL,selectMusicResults,playbackFailureMessage} from './lib/pla
 import {CLASSIC_THEMES,MATERIAL_THEMES,GNARLY_MODES,EXPERIENCES,REACTIONS,ROLE_EXPLANATION,resolveVisual,restoredThemeAfterGnarly} from './lib/visual-selection.js';
 import {StemMixer,STEM_KINDS,STEM_LABELS,STEM_PRESETS} from './lib/stem-mixer.js';
 import {demucsStatus,prepareDemucsAudio,separateWithBestModel} from './lib/demucs-cloud.js';
+import {renderMusicPanel,mixerValue} from './ui/music-panel.js';
+import {createDisplayStore,renderDisplayPanel} from './ui/display-panel.js';
 
 const $=(selector)=>document.querySelector(selector);
 const app=$('#app-shell'), audio=$('#player-audio'), visual=new FluidVisual($('#fluid-canvas'));
@@ -17,6 +19,7 @@ const stems=new StemMixer(engine,audio);
 const icon='/assets/gnarly-icon.png';
 let omniboxStorage=null;try{omniboxStorage=window.localStorage}catch{}
 const omnibox=new OmniboxSession(omniboxStorage);
+const displayStore=createDisplayStore(omniboxStorage);
 const safe=(v)=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
 const svg=(name)=>`<svg class="icon" aria-hidden="true"><use href="#i-${name}" /></svg>`;
 const getSetting=(name,fallback)=>{try{return localStorage.getItem('gnarly.web.'+name)||fallback}catch{return fallback}};
@@ -28,7 +31,7 @@ const state={
   stemStatus:'Separação neural de quatro fontes por GPU gratuita quando disponível. Você também pode carregar quatro Stems.',
   demucsBusy:false,demucsAbort:null,demucsAvailable:false,demucsChecked:false,stemModel:'',
   speed:Number(getSetting('speed','1')),reverb:Number(getSetting('reverb','0')),bass:Number(getSetting('bass','0')),
-  pitch:getSetting('pitch','yes')!=='no',
+  pitch:getSetting('pitch','yes')!=='no',musicTab:'speedPitch',omniboxTab:getSetting('omniboxTab','search'),micRecorder:null,micStream:null,micChunks:[],exportStyle:'Clássica',
   favorites:parseJSON(getSetting('favorites','[]'),[]),preset:getSetting('preset','ORIGINAL'),
   audioState:'idle', playbackError:'',
   lyrics:[],lyricsStatus:'As letras aparecem automaticamente quando disponíveis.',lyricsAbort:null,sheet:null,backgroundURL:null,backgroundMode:getSetting('backgroundMode','visual'),artworkHue:.58,searchTimer:null,lastLyric:-2,searchLoading:false,searchError:'',searchTerm:omnibox.query,history:omnibox.history,searchGeneration:0
@@ -42,7 +45,7 @@ function fmt(secs){if(!Number.isFinite(secs))return '0:00';return `${Math.floor(
 function titleForFile(file){const name=file.name.replace(/\.[^.]+$/,'');const parts=name.split(/\s+[—–-]\s+/);return {title:parts.length>=2?parts.slice(1).join(' - '):name,artist:parts.length>=2?parts[0]:'Arquivo local'}}
 function updateBadges(){
  document.documentElement.style.setProperty('--acid', ({'ACID':'#46ff12','CYBER NIGHT':'#35d5ff','CRIMSON':'#ff425d','CHROME':'#e6f2ef','SMOKE':'#d5c2ec','XEROX SERPENTINE':'#d5ec46','PRISM CARMINE':'#ff56ab','GNARLY':'#45ff8a'})[state.theme]||'#46ff12');
- $('.build-badge').textContent=`WEB α9 · ${state.theme}`;
+ $('.build-badge').textContent=`WEB · ${state.theme}`;
  $('#reaction-label').textContent=state.reaction;
  visual.setTheme(state.theme);visual.setExperience(state.experience);visual.setReaction(state.reaction);
  const fave=state.current&&state.favorites.some(x=>x.id===state.current.id);
@@ -140,8 +143,38 @@ function updatePresetButtons(){document.querySelectorAll('[data-preset]').forEac
 function openYouTubePlayer(track){if(!/^[A-Za-z0-9_-]{11}$/.test(track?.videoId||''))return toast('Link do YouTube inválido');audio.pause();const dialog=$('#youtube-player-dialog'),frame=$('#youtube-player-frame');frame.src='https://www.youtube-nocookie.com/embed/'+track.videoId+'?autoplay=1&playsinline=1';$('#youtube-player-title').textContent=track.title;$('#youtube-player-link').href='https://www.youtube.com/watch?v='+track.videoId;dialog.hidden=false;dialog.setAttribute('aria-hidden','false');toast('Player oficial: Nightcore e reverb não podem alterar o áudio dentro do YouTube.');}
 function closeYouTubePlayer(){const dialog=$('#youtube-player-dialog');if(!dialog)return;dialog.hidden=true;dialog.setAttribute('aria-hidden','true');$('#youtube-player-frame').src='about:blank'}
 function toggleFavorite(){if(!state.current){openSheet('library');return}const at=state.favorites.findIndex(x=>x.id===state.current.id);if(at>=0){state.favorites.splice(at,1);toast('Removido dos favoritos')}else{state.favorites.push(state.current);toast('Adicionado aos favoritos')}setSetting('favorites',JSON.stringify(state.favorites.filter(x=>x.source!=='local').slice(-100)));updatePlayer();if(state.sheet==='favorites')renderSheet()}
-function openSheet(which){state.sheet=which;$('#bottom-sheet').hidden=false;$('#panel-backdrop').hidden=false;$('#sheet-title').textContent=({search:'Busca',queue:'Próximas músicas',library:'Mix / Biblioteca',favorites:'Favoritos',controls:'Música',stems:'Stems',theme:'Universo visual',create:'Criar',karaoke:'Karaokê',background:'Fundo'})[which]||'GNARLY';$('#search-toggle').setAttribute('aria-expanded',String(which==='search'));renderSheet();if(which==='search')setTimeout(()=>$('#search-term')?.focus(),80);if(which==='stems')void refreshCloudStemAvailability()}
-function closeSheet(){state.sheet=null;$('#bottom-sheet').hidden=true;$('#panel-backdrop').hidden=true;$('#search-toggle').setAttribute('aria-expanded','false')}
+const OMNIBOX_TABS=['search','library','queue','karaoke'];
+function openSheet(which){
+ if(which==='stems'){state.musicTab='stems';which='controls'}
+ if(OMNIBOX_TABS.includes(which)){state.omniboxTab=which;setSetting('omniboxTab',which)}
+ state.sheet=which;
+ $('#bottom-sheet').hidden=false;$('#panel-backdrop').hidden=false;
+ $('#bottom-sheet').classList.toggle('display-sheet',which==='display');
+ $('#bottom-sheet').classList.toggle('music-sheet',which==='controls');
+ $('#sheet-title').textContent=({search:'Busca',queue:'Próximas músicas',library:'Mix / Biblioteca',favorites:'Favoritos',controls:'Música',display:'Exibição',more:'GNARLY',export:'Exportar',theme:'Universo visual',create:'Criar',karaoke:'Karaokê',background:'Fundo'})[which]||'GNARLY';
+ $('#search-toggle').setAttribute('aria-expanded',String(which==='display'));
+ $('#omnibox-toggle').setAttribute('aria-expanded',String(OMNIBOX_TABS.includes(which)));
+ renderSheet();
+ if(which==='search')setTimeout(()=>$('#search-term')?.focus(),80);
+ if(which==='controls'&&state.musicTab==='stems')void refreshCloudStemAvailability();
+}
+function closeSheet(){
+ state.sheet=null;$('#bottom-sheet').hidden=true;$('#panel-backdrop').hidden=true;
+ $('#bottom-sheet').classList.remove('display-sheet','music-sheet');
+ $('#search-toggle').setAttribute('aria-expanded','false');
+ $('#omnibox-toggle').setAttribute('aria-expanded','false');
+}
+function applyPanelVisibility(){
+ const visible=key=>displayStore.isVisible(key);
+ app.classList.toggle('zen-mode',displayStore.zen);
+ $('#brand-line').hidden=!visible('header');
+ $('#player-section').hidden=!visible('player');
+ $('#omnibox-shell').hidden=!visible('search');
+ $('#share-button').hidden=!visible('export');
+ for(const id of ['theme-button','background-button','create-button','edit-button','record-button'])$('#'+id).hidden=!visible('header');
+ if(state.sheet==='controls')renderSheet();
+}
+function omniboxTabs(){return `<div class="omnibox-tabs" role="tablist" aria-label="Omnibox">${[['search','Busca'],['library','Mix · Offline'],['queue','Fila'],['karaoke','Karaokê']].map(([id,label])=>`<button role="tab" data-omnibox-tab="${id}" aria-selected="${state.sheet===id}" class="${state.sheet===id?'active':''}">${label}</button>`).join('')}</div>`}
 function mediaList(tracks,context){if(!tracks.length)return `<p class="section-note">Nenhuma música por aqui ainda.</p>`;return `<div class="media-list">${tracks.map((tr,i)=>`<div class="media-item"><img src="${safe(tr.artwork||icon)}" alt="" loading="lazy" /><div class="media-text"><strong>${safe(tr.title)}</strong><small>${safe(tr.artist)} · ${tr.source==='preview'?'Prévia · 30 s':tr.source==='youtube'?'GNARLY · áudio via backend':'Áudio completo · local'}</small></div><button data-action="play" data-context="${context}" data-index="${i}" aria-label="Reproduzir ${safe(tr.title)}">${svg('play')}</button><button data-action="enqueue" data-context="${context}" data-index="${i}" aria-label="Adicionar ${safe(tr.title)} à fila">${svg('plus')}</button></div>`).join('')}</div>`}
 const visualTile=(name)=>`<button class="visual-choice ${state.theme===name?'active':''}" data-theme="${safe(name)}"><i class="swatch" style="--swatch-a:${PALETTES[name]?.[0]||'#000'};--swatch-b:${PALETTES[name]?.[1]||'#444'};--swatch-c:${PALETTES[name]?.[2]||'#aaa'}"></i><strong>${safe(name)}</strong></button>`;
 const experienceTile=(v)=>`<button class="visual-choice ${state.experience===v.id?'active':''}" data-experience="${v.id}"><strong>${safe(v.name)}</strong><small>${safe(v.detail)}</small></button>`;
@@ -151,12 +184,12 @@ async function refreshCloudStemAvailability(){
  try{
   const status=await demucsStatus();
   state.demucsChecked=true;state.demucsAvailable=status.ready;
-  if(state.sheet==='stems'&&!state.demucsBusy&&!stems.ready){
+  if(state.sheet==='controls'&&state.musicTab==='stems'&&!state.demucsBusy&&!stems.ready){
    state.stemStatus=status.ready?'GPU gratuita disponível · '+status.providerName+' · quatro fontes. Sujeito a cota, fila e consentimento.':'GPU temporariamente indisponível. Ainda é possível carregar quatro arquivos separados.';
    renderSheet();
   }
  }catch{state.demucsChecked=true;state.demucsAvailable=false;
-  if(state.sheet==='stems'&&!stems.ready&&!state.demucsBusy){state.stemStatus='Não foi possível verificar a GPU. Confira a conexão ou importe os quatro arquivos.';renderSheet()}
+  if(state.sheet==='controls'&&state.musicTab==='stems'&&!stems.ready&&!state.demucsBusy){state.stemStatus='Não foi possível verificar a GPU. Confira a conexão ou importe os quatro arquivos.';renderSheet()}
  }
 }
 
@@ -165,7 +198,7 @@ async function startDemucs(){
  if(stems.ready){toast('Stems já carregados. Desative-os para separar novamente.');return;}
  if(!state.current){toast('Escolha uma música para separar.');return;}
  const ac=new AbortController();state.demucsAbort=ac;state.demucsBusy=true;
- const current=state.current, update=s=>{state.stemStatus=s;if(state.sheet==='stems')renderSheet()};
+ const current=state.current, update=s=>{state.stemStatus=s;if(state.sheet==='controls'&&state.musicTab==='stems')renderSheet()};
  try{
   update('Verificando modelo e cota GPU…');
   const status=await demucsStatus();
@@ -184,19 +217,29 @@ async function startDemucs(){
  finally{state.demucsBusy=false;state.demucsAbort=null;if(state.sheet==='stems')renderSheet()}
 }
 
-function renderSheet(){const content=$('#sheet-content');switch(state.sheet){
+function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet){
  case 'search':content.innerHTML=`<form id="search-form" class="search-bar"><input id="search-term" type="search" autocomplete="off" placeholder="Buscar música ou colar link" aria-label="Omnibox GNARLY" value="${safe(state.searchTerm)}"/><button type="submit">Buscar</button></form><p class="section-note">Omnibox Stage 72: histórico imediato e busca no catálogo musical ao confirmar. Resultados musicais priorizados, fila, histórico e reprodução pelo backend GNARLY. A reprodução pode falhar em faixas indisponíveis ou sem autorização.</p><div id="search-state" class="status-text">${safe(state.searchError||'Digite uma busca e pressione Buscar')}</div><div id="search-results">${mediaList(state.searchResults,'search')}</div>${state.history.length?`<div class="section-head">Ouvidas recentemente</div>${mediaList(state.history.slice(0,4),'history')}`:''}`;break;
  case 'library':content.innerHTML=`<div class="card-help">Sua <strong>biblioteca local</strong> toca arquivos do dispositivo, sem servidor e sem conta. Os arquivos importados permanecem apenas nesta sessão.</div>${btn('＋ Adicionar músicas','import')}<div class="section-head">Mix · ${state.tracks.length} músicas</div>${mediaList(state.tracks,'library')}<div class="section-head">Favoritas · ${state.favorites.length}</div>${mediaList(state.favorites,'favorites')}`;break;
  case 'favorites':content.innerHTML=`<div class="section-head">Favoritos</div>${mediaList(state.favorites,'favorites')}`;break;
  case 'queue':content.innerHTML=`<div class="row-end"><p class="section-note">A seguir, nesta sessão</p>${btn('Limpar fila','clear-queue','alt')}</div>${mediaList(state.queue,'queue')}`;break;
- case 'controls':content.innerHTML=`<div class="visual-status"><strong>MÚSICA · Stage 72</strong><small>Velocidade, tom, graves, reverb e fontes Stems</small></div><div class="section-head">PRESETS</div><div class="chip-row">${Object.keys(MUSIC_PRESETS).map(id=>`<button data-preset="${id}" class="chip ${state.preset===id?'selected':''}">${id}</button>`).join('')}</div>${setting('speed','Velocidade',state.speed,.5,2,.01,'×')}${setting('reverb','Reverb',state.reverb,0,.7,.025,'')}${setting('bass','Graves',state.bass,0,12,1,' dB')}<div class="setting"><div class="setting-title"><label for="pitch-check">Preservar tom original</label><input id="pitch-check" type="checkbox" ${state.pitch?'checked':''}/></div></div><div class="button-row">${btn('STEMS · voz, bateria, baixo e outros','go-stems')}${btn('Restaurar ajustes','reset-audio','alt')}</div><p class="section-note">Áudio processado pelo Web Audio. O time-stretch ainda não é idêntico ao AVAudioEngine do iPhone.</p>`;break;
- case 'stems':content.innerHTML=`<div class="visual-status"><strong>STEMS · 4 fontes reais</strong><small>${stems.ready?'4 fontes carregadas · '+safe(state.stemModel||'mixer ativo'):'IA em nuvem · Voz/Bateria/Baixo/Outros'}</small></div><p class="section-note" id="stem-status">${safe(state.stemStatus)}</p><div class="button-row">${state.demucsBusy?btn('Cancelar separação','cancel-stems','alt'):btn('✦ Separação IA · 4 Stems','auto-demucs',state.demucsAvailable?'':'alt')}${btn('Carregar 4 stems','load-stems')}${btn('Restaurar 100%','reset-stems','alt')}${stems.ready?btn('Desativar Stems','clear-stems','alt'):''}</div><p class="section-note">Selecione arquivos nomeados <code>vocals</code>, <code>drums</code>, <code>bass</code> e <code>other</code>. Modelos de GPU: BS-RoFormer comunitário (quando disponível) ou HTDemucs próprio. A solicitação é explícita, gratuita e sujeita à cota do provedor; não envie áudio confidencial.</p>${stems.ready?`<div class="section-head">ATALHOS DO MIXER</div><div class="chip-row">${Object.entries({karaoke:'Sem voz',acapella:'Só voz',rhythm:'Ritmo',original:'Original'}).map(([id,label])=>`<button class="chip" data-stem-preset="${id}">${label}</button>`).join('')}</div>`:''}${STEM_KINDS.map(kind=>`<div class="setting"><div class="setting-title"><span>${STEM_LABELS[kind]}</span><span id="stem-${kind}-value">${Math.round(stems.levels[kind]*100)}%</span></div><input data-stem-level="${kind}" type="range" min="0" max="2" step="0.01" value="${stems.levels[kind]}" aria-label="Nível de ${STEM_LABELS[kind]}" ${stems.ready?'':'disabled'}/></div>`).join('')}<div class="button-row">${btn('Voltar para Música','go-controls','alt')}</div>`;break;
+ case 'controls':
+ case 'stems':
+  content.innerHTML=renderMusicPanel({
+   tab:state.musicTab,preset:state.preset,speed:state.speed,reverb:state.reverb,bass:state.bass,pitch:state.pitch,reaction:state.reaction,
+   showPresets:displayStore.visible.presets,showControls:displayStore.visible.controls,stemsReady:stems.ready,
+   stemLevels:stems.levels,stemStatus:state.stemStatus,stemModel:state.stemModel,
+   demucsBusy:state.demucsBusy,demucsAvailable:state.demucsAvailable,stemLabels:STEM_LABELS
+  });break;
+ case 'display':content.innerHTML=renderDisplayPanel(displayStore);break;
+ case 'more':content.innerHTML=`<div class="section-head">ACESSO RÁPIDO</div><div class="button-row">${btn('Música · ajustes','go-controls')}${btn('Adicionar músicas','import','alt')}${btn('Mix e biblioteca','go-library','alt')}${btn('Favoritos','go-favorites','alt')}${btn('Fila','go-queue','alt')}${btn('Karaokê','go-karaoke','alt')}${btn('Exibição','go-display','alt')}</div>`;break;
+ case 'export':content.innerHTML=`<p class="section-note">Formatos da Stage 72. Opções ainda não disponíveis não serão exportadas silenciosamente.</p><div class="export-formats">${[['image','Imagem estática'],['video','Vídeo · Story de até 15 s'],['player-audio','Player com áudio'],['lyrics-audio','Letras com áudio'],['player-noaudio','Player sem áudio'],['lyrics-noaudio','Letras sem áudio']].map(([id,name])=>`<button data-export-format="${id}" class="export-option">${name}<small>${id==='image'?'PNG · visual atual':'Requer renderização web'}</small></button>`).join('')}</div><div class="section-head">ESTILO</div><div class="chip-row">${['Clássica','Neon','Mono','Cinema','Máquina'].map(x=>`<button class="chip ${state.exportStyle===x?'selected':''}" data-export-style="${x}">${x}</button>`).join('')}</div>`;break;
  case 'theme':{const v=resolveVisual(state.theme,state.experience,state.reaction);content.innerHTML=`<div class="visual-status"><strong>${safe(state.theme)}</strong><small>Experiência: ${safe(v.experienceName)} · ${safe(v.reaction)}</small>${v.override?`<span>Modo GNARLY ativo; sua experiência permanece salva.</span>`:`<span>${safe(v.description)}</span>`}</div><p class="section-note">${ROLE_EXPLANATION}</p><div class="visual-tabs" role="tablist" aria-label="Personalizar visual">${[['theme','1 · Tema'],['experience','2 · Experiência'],['reaction','3 · Ritmo']].map(([id,label])=>`<button role="tab" data-visual-tab="${id}" aria-selected="${state.visualTab===id}" class="${state.visualTab===id?'active':''}">${label}</button>`).join('')}</div>${state.visualTab==='theme'?`<div class="section-head">CLÁSSICOS · cor e material</div><div class="visual-choices">${CLASSIC_THEMES.map(x=>visualTile(x)).join('')}</div><div class="section-head">MATERIAIS GNARLY</div><div class="visual-choices">${MATERIAL_THEMES.map(x=>visualTile(x)).join('')}</div><div class="section-head">MODOS GNARLY · substituem temporariamente a experiência</div><div class="visual-choices">${GNARLY_MODES.map(x=>visualTile(x)).join('')}</div>${v.override?btn('Voltar ao tema anterior','restore-theme'):''}`:state.visualTab==='experience'?`<div class="section-head">EXPERIÊNCIAS CLÁSSICAS</div><div class="visual-choices">${EXPERIENCES.filter(x=>x.category==='classic').map(experienceTile).join('')}</div><div class="section-head">EXPERIÊNCIAS GNARLY</div><div class="visual-choices">${EXPERIENCES.filter(x=>x.category==='gnarly').map(experienceTile).join('')}</div><p class="section-note">A experiência escolhida permanece salva ao mudar temas, inclusive no modo GNARLY.</p>`:`<div class="section-head">FORÇA DA RESPOSTA AO ÁUDIO</div><div class="visual-choices">${REACTIONS.map(m=>`<button class="visual-choice ${state.reaction===m?'active':''}" data-reaction="${m}"><strong>${m}</strong><small>${m==='DESLIGADO'?'Movimento natural, sem pulso de áudio':m==='FLUIDO'?'Reação suave e contínua':'Intensidade elevada, resposta às batidas'}</small></button>`).join('')}</div>`}<div class="button-row">${btn('Aplicar visual','apply-theme')}${btn('Padrão original','reset-visual','alt')}</div><p class="section-note">Texturas portadas para WebGL2 a partir da taxonomia Swift/Metal. Equivalência visual pixel a pixel ainda requer portar os shaders completos.</p>`;break;}
  case 'create':content.innerHTML=`<div class="card-help"><strong>CRIAR · universo visual</strong><p>${ROLE_EXPLANATION}</p>O tema define a matéria e a experiência define como se move; o ritmo regula a reatividade.</div><div class="visual-status"><strong>${safe(state.theme)}</strong><small>${safe(resolveVisual(state.theme,state.experience,state.reaction).experienceName)} · ${state.reaction}</small></div><div class="button-row">${btn('Escolher tema','go-theme')}${btn('Escolher experiência','go-experience','alt')}${btn('Ajustar ritmo visual','go-reaction','alt')}${btn('Música e Stems','go-controls','alt')}${btn('Foto de fundo','load-background','alt')}</div><div class="section-head">EXPERIÊNCIAS DA STAGE 72</div><div class="visual-choices">${EXPERIENCES.filter(x=>x.category==='classic').slice(0,4).map(experienceTile).join('')}</div>`;break;
  case 'karaoke':content.innerHTML=`<div class="card-help">O GNARLY procura automaticamente letras sincronizadas no LRCLIB ao selecionar uma música. Você também pode importar seu .lrc. As prévias de 30 segundos podem começar em trechos diferentes da faixa, então a sincronia não é garantida nelas.</div><p class="status-text" id="lyrics-status">${safe(state.lyricsStatus)}</p>${btn('Importar letra .lrc','load-lrc')}<div class="section-head">Letra sincronizada</div>${state.lyrics.length?`<div class="lyrics-box">${state.lyrics.map((line,i)=>{const active=i===lyricIndex(state.lyrics,audio.currentTime);return `<div class="lyric-line ${active?'active':''}" data-lyric-time="${line.time}">${safe(line.text)}</div>`}).join('')}</div>`:'<p class="section-note">Nenhuma letra disponível para esta faixa. Você pode adicionar seu próprio .lrc.</p>'}`;break;
  case 'background':content.innerHTML=`<div class="card-help">Escolha como o fundo ocupa a tela. A capa usa sua resolução disponível; fotos próprias ficam somente no aparelho, sem upload.</div><div class="button-row">${btn('Tema animado · original','show-visual')}${btn('Capa preenchendo a tela','show-cover','alt')}${btn('Minha foto','load-background','alt')}${btn('Remover foto','remove-background','alt')}</div>`;break;
  default:content.textContent='';
  }}
+function renderSheet(){renderSheetCore();if(OMNIBOX_TABS.includes(state.sheet))$('#sheet-content').insertAdjacentHTML('afterbegin',omniboxTabs());refreshMixerRails();}
 function resolveTracks(context){return ({search:state.searchResults,library:state.tracks,queue:state.queue,favorites:state.favorites,history:state.history})[context]||[]}
 function handleCommand(command){switch(command){case 'import':$('#audio-import').click();break;case 'load-lrc':$('#lrc-import').click();break;case 'load-background':$('#background-import').click();break;case 'show-visual':state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();closeSheet();break;case 'show-cover':if(!state.current?.artwork){toast('Selecione uma música com capa primeiro.');break}state.backgroundMode='cover';setSetting('backgroundMode','cover');applyBackground();closeSheet();break;case 'remove-background':if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL);state.backgroundURL=null;state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();toast('Tema animado restaurado');break;case 'clear-queue':state.queue.length=0;updatePlayer();renderSheet();break;case 'play-youtube':if(state.current?.source==='youtube')openYouTubePlayer(state.current);break;case 'reset-audio':state.speed=1;state.reverb=0;state.bass=0;state.pitch=true;state.preset='ORIGINAL';engine.setSpeed(1,true);engine.setBass(0);engine.setReverb(0);for(const p of ['speed','bass','reverb','pitch','preset'])setSetting(p,p==='pitch'?'yes':p==='preset'?'ORIGINAL':p==='speed'?1:0);renderSheet();break;case 'go-theme':state.visualTab='theme';openSheet('theme');break;case 'go-experience':state.visualTab='experience';openSheet('theme');break;case 'go-reaction':state.visualTab='reaction';openSheet('theme');break;case 'restore-theme':state.theme=restoredThemeAfterGnarly(state.previousTheme);setSetting('theme',state.theme);updateBadges();renderSheet();break;case 'reset-visual':state.theme='ACID';state.experience='original';state.reaction='FLUIDO';for(const k of ['theme','experience','reaction'])setSetting(k,state[k]);updateBadges();renderSheet();break;case 'go-stems':openSheet('stems');break;case 'auto-demucs':void startDemucs();break;case 'cancel-stems':state.demucsAbort?.abort();state.stemStatus='Cancelamento solicitado; o provedor pode continuar consumindo a cota.';renderSheet();break;case 'load-stems':if(!state.current){toast('Selecione uma música antes de importar Stems.');break}$('#stems-import').click();break;case 'reset-stems':stems.applyPreset('original');renderSheet();break;case 'clear-stems':stems.clear();state.stemModel='';state.stemStatus='Mixer desativado. Voltamos ao áudio original.';renderSheet();break;case 'go-controls':openSheet('controls');break;case 'apply-theme':closeSheet();break}}
 function syncVisual(){visual.setSong(audio.currentTime||0,Number.isFinite(audio.duration)&&state.current?.source!=='preview'?audio.duration:state.current?.duration||0,state.artworkHue);if(!document.hidden&&state.playing)visual.setEnergy(engine.sampleEnergy());else visual.setEnergy(0);requestAnimationFrame(syncVisual)}requestAnimationFrame(syncVisual);
