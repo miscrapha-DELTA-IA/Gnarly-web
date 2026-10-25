@@ -1,3 +1,7 @@
+# GNARLY WEB α4 — Private beta audio bridge (opt-in)
+
+A new controlled streaming gateway can reuse the existing Stage72 `yt-dlp` FastAPI backend for **permitted test audio**: same-origin Netlify audio response, signed invite session cookie, byte-range support, ~19 MB cap, and Web Audio presets. **Disabled until Netlify Functions environment variables are configured.** The official YouTube player remains the fallback. See [private beta setup and limitations](docs/PRIVATE_BETA_AUDIO_STAGE72.md).
+
 # GNARLY WEB · α3 — Omnibox Stage72 + musical presets
 
 **Alpha 3 implements a bounded port of the actual native Omnibox and adds prominent Nightcore / Slowed / Slowed + Reverb controls.** It is **not** full iOS 1:1 yet. See [exact contract and limits](docs/OMNIBOX_STAGE72_CONTRACT.md).

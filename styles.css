@@ -55,3 +55,12 @@
 .youtube-modal-card p{font-size:12px;line-height:1.6;color:#ddd}
 .youtube-modal-card a{color:var(--acid);font-weight:800}
 @media(max-width:410px){.preset-rail{gap:4px}.preset-chip{font-size:10px;padding:6px 8px}.app-shell .player{padding:12px 12px 13px}.app-shell .transport{margin:9px 0}}
+
+/* Invite-only Stage72 audio gate. Main player dimensions stay untouched. */
+.beta-gate-card{max-width:430px}
+.beta-gate-form{display:flex;flex-direction:column;gap:10px;margin:16px 0}
+.beta-gate-form label{font-size:13px;color:#fff9}
+.beta-gate-form input{font-size:17px;padding:13px;border-radius:12px;border:1px solid #ffffff50;background:#071a10;color:white;min-width:0}
+.beta-gate-form button{background:var(--acid);color:#041609;border:0;padding:13px;border-radius:12px;font-weight:800}
+.beta-gate-form button:disabled{opacity:.5}
+#beta-play-official{width:100%;margin-top:7px}
