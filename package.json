@@ -1,1 +1,12 @@
-{"name":"gnarly-web","version":"0.1.0","private":true,"type":"module","description":"GNARLY WEB — Stage 72 inspired web companion","scripts":{"dev":"npx serve .","test":"node --test tests/*.test.mjs"}}
+{
+  "name": "gnarly-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "GNARLY WEB — Stage 72 inspired web companion",
+  "scripts": {
+    "dev": "npx serve .",
+    "test": "node --test tests/*.test.mjs",
+    "build:pages": "node scripts/build-pages.mjs"
+  }
+}
