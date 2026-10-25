@@ -28,4 +28,11 @@ jobs:
           print('GNARLY backend:',json.dumps(y,ensure_ascii=False))
           c=get('https://d-r-e-audio-separator.hf.space/config')
           print('community_endpoint_names:',[item.get('api_name') for item in c.get('dependencies',[]) if item.get('api_name')])
+          for dep in c.get('dependencies',[]):
+              if dep.get('api_name')=='separate':
+                  byid={item['id']:item for item in c.get('components',[])}
+                  def summary(ids):
+                      return [{'type':byid.get(i,{}).get('type'),'label':byid.get(i,{}).get('props',{}).get('label'),'value':str(byid.get(i,{}).get('props',{}).get('value',''))[:120]} for i in ids]
+                  print('community_input_contract:',json.dumps(summary(dep.get('inputs',[])),ensure_ascii=False))
+                  print('community_output_contract:',json.dumps(summary(dep.get('outputs',[])),ensure_ascii=False))
           PY
