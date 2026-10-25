@@ -1,0 +1,60 @@
+name: GNARLY Stems live synthetic 4-track acceptance
+on:
+  push:
+    paths: ['.github/workflows/stems-real-acceptance.yml']
+permissions:
+  contents: read
+jobs:
+  synthetic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Separate an original 3-second WAV via the audited free provider
+        run: |
+          python3 - <<'PY'
+          import wave,io,math,struct,hashlib,json,urllib.request,urllib.parse,time
+          BASE='https://nightcorelab.onrender.com'
+          SPACE='https://d-r-e-audio-separator.hf.space'
+          def jsonpost(url,data,timeout=28,headers=None):
+              req=urllib.request.Request(url,data=json.dumps(data).encode(),headers={'Content-Type':'application/json',**(headers or {})},method='POST')
+              with urllib.request.urlopen(req,timeout=timeout) as r:return json.load(r)
+          stream=io.BytesIO()
+          with wave.open(stream,'wb') as f:
+              f.setparams((2,2,22050,3*22050,'NONE','not compressed'))
+              frames=bytearray()
+              for i in range(3*22050):
+                  sample=int(0.22*32767*math.sin(2*math.pi*440*i/22050))
+                  frames.extend(struct.pack('<hh',sample,sample))
+              f.writeframes(frames)
+          source=stream.getvalue()
+          claims={'sha256':hashlib.sha256(source).hexdigest(),'bytes':len(source),'seconds':3.0}
+          ticket=jsonpost(BASE+'/v1/stems/cloud/ticket',claims,timeout=25)
+          assert ticket['provider']=='community_bs_roformer' and ticket['model']=='bs-roformer-musdb18hq'
+          print('Admitted:',ticket['provider'], 'no secret printed',flush=True)
+          boundary='GNARLYsynthetic4'
+          data=(b'--'+boundary.encode()+b'\r\nContent-Disposition: form-data; name="files"; filename="own-sine.wav"\r\nContent-Type: audio/wav\r\n\r\n'+source+b'\r\n--'+boundary.encode()+b'--\r\n')
+          request=urllib.request.Request(SPACE+'/gradio_api/upload',data=data,headers={'Content-Type':'multipart/form-data; boundary='+boundary},method='POST')
+          with urllib.request.urlopen(request,timeout=45) as r:uploaded=json.load(r)
+          assert isinstance(uploaded,list) and uploaded[0].startswith('/tmp/')
+          print('Uploaded synthetic audio',len(source),'bytes',flush=True)
+          job=jsonpost(SPACE+'/gradio_api/call/separate',{'data':[{'path':uploaded[0],'meta':{'_type':'gradio.FileData'}},'Core instruments — 4 tracks']},timeout=60)
+          event=job['event_id']
+          assert event and len(event)<160
+          print('Queued BS-RoFormer 4-track job',flush=True)
+          eventurl=SPACE+'/gradio_api/call/separate/'+urllib.parse.quote(event,safe='')
+          with urllib.request.urlopen(eventurl,timeout=160) as r:
+              kind='';result=None
+              for raw in r:
+                  line=raw.decode(errors='replace').strip()
+                  if line.startswith('event: '):kind=line[7:].strip()
+                  if line.startswith('data: ') and kind=='error':raise RuntimeError('Provider returned SSE error')
+                  if line.startswith('data: ') and kind=='complete':
+                      result=json.loads(line[6:]);break
+          assert isinstance(result,list) and len(result)>=2 and isinstance(result[1],list)
+          files=result[1]
+          print('Number of stems:',len(files),flush=True)
+          names=[str(x.get('orig_name') or x.get('name') or x.get('url','')).split('/')[-1] for x in files]
+          print('Stem names:',names,flush=True)
+          assert len(files)==4 and all(isinstance(x,dict) and str(x.get('url','')).startswith(SPACE+'/gradio_api/file=') for x in files)
+          print('PASS genuine four-stem separation with audited community BS-RoFormer',flush=True)
+          PY
