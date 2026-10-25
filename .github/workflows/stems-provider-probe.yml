@@ -35,4 +35,15 @@ jobs:
                       return [{'type':byid.get(i,{}).get('type'),'label':byid.get(i,{}).get('props',{}).get('label'),'value':str(byid.get(i,{}).get('props',{}).get('value',''))[:120]} for i in ids]
                   print('community_input_contract:',json.dumps(summary(dep.get('inputs',[])),ensure_ascii=False))
                   print('community_output_contract:',json.dumps(summary(dep.get('outputs',[])),ensure_ascii=False))
+          for endpoint in ['/gradio_api/upload','/gradio_api/call/separate']:
+              try:
+                  req=urllib.request.Request('https://d-r-e-audio-separator.hf.space'+endpoint,method='OPTIONS',headers={
+                      'Origin':'https://gnarlyweb.netlify.app',
+                      'Access-Control-Request-Method':'POST',
+                      'Access-Control-Request-Headers':'content-type'
+                  })
+                  with urllib.request.urlopen(req,timeout=15) as response:
+                      print('community_CORS',endpoint,response.status,'origin',response.headers.get('Access-Control-Allow-Origin'),'methods',response.headers.get('Access-Control-Allow-Methods'))
+              except Exception as e:
+                  print('community_CORS_ERROR',endpoint,type(e).__name__)
           PY
