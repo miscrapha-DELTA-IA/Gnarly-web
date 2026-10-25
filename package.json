@@ -7,6 +7,9 @@
   "scripts": {
     "dev": "npx serve .",
     "test": "node --test tests/*.test.mjs",
-    "build:pages": "node scripts/build-pages.mjs"
+    "build:pages": "node scripts/build-pages.mjs",
+    "build": "npm run build:pages",
+    "deploy": "npm run build && wrangler deploy",
+    "deploy:dry": "npm run build && wrangler deploy --dry-run"
   }
 }

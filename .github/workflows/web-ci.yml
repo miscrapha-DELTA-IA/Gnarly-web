@@ -27,6 +27,10 @@ jobs:
           node --check ui/display-panel.js
           node --check netlify/functions/omnibox.mjs
           node --check netlify/functions/catalog.mjs
+          node --check src/worker.js
+          node --check functions/api/catalog.js
+          node --check functions/api/omnibox.js
+          node --check functions/api/stems-ticket.js
       - name: Run unit tests
         run: npm test
       - name: Validate Cloudflare Pages build output

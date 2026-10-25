@@ -1,41 +1,66 @@
-# GNARLY WEB: Cloudflare Pages migration
+# GNARLY WEB — Cloudflare Workers / Pages deploy
 
-GitHub source: https://github.com/miscrapha-DELTA-IA/Gnarly-web
+## Workers: atual configuração da sua conta
 
-## Recommended Git connection
-- Cloudflare Workers & Pages → Pages → Connect Git repository.
-- GitHub repository: `miscrapha-DELTA-IA/Gnarly-web`
-- Production branch: `main`
-- Project name: `gnarly-web`
-- Framework: None
+No Cloudflare já existe um **Worker** chamado `gnarly-web`. Para manter esta
+implantação, use a configuração `wrangler.jsonc` versionada no repositório.
+
+### Workers Builds → Settings → Build
 - Root directory: `/`
-- Build command: `npm run build:pages`
-- Build output directory: `dist`
-- No environment variables are required for basic Pages Functions. Optional:
-  `GNARLY_BACKEND_URL=https://nightcorelab.onrender.com`
+- Build command: `npm run build`
+- Deploy command: `npx wrangler deploy`
+- Production branch: `main`
 
-## Architecture
-- `dist/`: static HTML, styles, scripts, assets, visual and Web Audio engines.
-- `functions/api/catalog.js`: iTunes catalogue search proxy.
-- `functions/api/omnibox.js`: Render backend music metadata search proxy.
-- `functions/api/stems-ticket.js`: protected admission bridge, without transferring music.
-- `https://nightcorelab.onrender.com`: audio delivery and stem provider status.
-- Existing Hugging Face GPU Space: actual source separation.
-- `netlify/`: previous implementation kept in source for reference, not deployed.
+O arquivo `wrangler.jsonc` define:
+- `main: ./src/worker.js` — rotas de API
+- `assets.directory: ./dist` — **NUNCA a raiz do repositório**
+- `assets.run_worker_first: ['/api/*']` — APIs executadas pelo Worker
 
-Backend Render CORS must permit the **exact Pages production origin** in addition
-to Netlify if still necessary. This is a server configuration, not a frontend flag.
-Audio extraction may fail independently of Pages; Pages does not solve source limits.
+A pasta dist é gerada por `scripts/build-pages.mjs`, que copia apenas
+`index.html`, `app.js`, `styles.css`, `assets/`, `lib/`, `ui/`,
+`logo.svg`, `manifest.webmanifest` e `_headers`.
 
-## Verify
-```bash
+`node_modules/` fica fora do deploy. O executável `workerd`, de ~134 MiB,
+era encontrado porque a configuração antiga apontava os ativos para
+`/opt/buildhome/repo`; a Cloudflare limita cada ativo a 25 MiB.
+
+### URLs e dependências
+Workers usa um endereço `*.workers.dev` (não `*.pages.dev`).
+- Catálogo: `/api/catalog` (iTunes)
+- Omnibox: `/api/omnibox` (proxy para Render)
+- Stems: `/api/stems-ticket` (admissão da GPU)
+- Áudio longo e separação real: permanecem fora da Cloudflare no Render e no
+  Space do Hugging Face; nada de downloads de áudio passando pelo Worker.
+
+**ATENÇÃO — CORS:** o backend Render deve aceitar a origem efetiva
+`https://gnarly-web.<subdominio>.workers.dev` para reproduzir áudio,
+além dos antigos domínios Pages/Netlify. Descubra o endereço no painel
+Workers & Pages e não chute um endereço.
+
+### Verificação
+```sh
 npm test
-npm run build:pages
+npm run build
+npx wrangler deploy --dry-run
+npx wrangler deploy
 ```
-After deployment check the index, JavaScript assets and
-`/api/catalog?term=daft%20punk`, `/api/omnibox?term=daft%20punk`.
-The beta GPU ticket function requires a valid request and available GPU quota.
 
-If the Cloudflare GitHub App has not been authorized, connect the repository
-through the Pages dashboard / GitHub app installation. Do not create a
-Direct Upload-only Pages project if you intend to use Git integration.
+Caso o deploy continue mostrando `assets.directory=/opt/buildhome/repo`,
+remova do campo Deploy command qualquer `--assets .` ou
+`--assets /opt/buildhome/repo`. O correto é **somente**
+`npx wrangler deploy`, que lê o `wrangler.jsonc`.
+
+## Caso prefira criar um Cloudflare Pages genuíno
+
+Crie um projeto Pages distinto com GitHub integrado:
+- Branch: `main`
+- Build command: `npm run build:pages`
+- Output: `dist`
+- Functions: `functions/api/` na raiz
+
+Não use `wrangler deploy` como comando para Pages. Esse comando pertence
+ao projeto Workers e não interpreta as Pages Functions por convenção.
+
+Workers atualmente já existe na conta e é capaz de servir
+as mesmas três APIs via `src/worker.js`, por isso é a recuperação
+mais rápida para o erro atual.
