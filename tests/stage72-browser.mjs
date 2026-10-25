@@ -27,7 +27,7 @@ await page.locator('[data-layout="listening"]').click();
 assert.equal(await page.locator('#brand-line').isVisible(),false);
 await page.locator('[data-layout="all"]').click();
 assert.equal(await page.locator('#brand-line').isVisible(),true);
-await page.locator('#close-sheet').click();
+await page.locator('[data-command="close-display"]').click();
 await page.locator('#background-button').click();
 assert.ok(await page.locator('[data-command="adjust-photo"]').count()>0);
 await page.locator('#close-sheet').click();
