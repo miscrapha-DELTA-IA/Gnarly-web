@@ -1,0 +1,28 @@
+name: GNARLY WEB checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check JavaScript syntax
+        run: |
+          node --check app.js
+          node --check lib/audio-engine.js
+          node --check lib/visual-engine.js
+          node --check lib/lrc.js
+          node --check lib/catalog.js
+          node --check netlify/functions/catalog.mjs
+      - name: Required paths
+        run: |
+          test -f index.html
+          test -f styles.css
+          test -f netlify.toml
+          test -f manifest.webmanifest
+          test -f logo.svg
