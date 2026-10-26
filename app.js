@@ -41,6 +41,53 @@ const state={
   audioState:'idle', playbackError:'',
   lyrics:[],lyricsStatus:'As letras aparecem automaticamente quando disponíveis.',lyricsAbort:null,sheet:null,backgroundURL:null,backgroundMode:getSetting('backgroundMode','visual'),photoZoom:Number(getSetting('photoZoom','1')),photoX:Number(getSetting('photoX','0')),photoY:Number(getSetting('photoY','0')),photoAdjust:false,artworkHue:.58,searchTimer:null,lastLyric:-2,searchLoading:false,searchError:'',searchTerm:omnibox.query,history:omnibox.history,searchGeneration:0
 };
+const MODULE_NAMES=['controls','export','performance'];
+const expandedModules=Object.fromEntries(MODULE_NAMES.map(name=>[name,getSetting('module.'+name,'closed')==='open']));
+function isModuleVisible(name){
+ if(name==='controls')return !displayStore.zen&&(displayStore.isVisible('presets')||displayStore.isVisible('controls'));
+ return displayStore.isVisible(name);
+}
+function isModuleOpen(name){return !!expandedModules[name]&&isModuleVisible(name)}
+function renderMusicModule(){return renderMusicPanel({
+ tab:state.musicTab,preset:state.preset,speed:state.speed,reverb:state.reverb,bass:state.bass,pitch:state.pitch,reaction:state.reaction,
+ showPresets:displayStore.isVisible('presets'),showControls:displayStore.isVisible('controls'),stemsReady:stems.ready,
+ stemLevels:stems.levels,stemStatus:state.stemStatus,stemModel:state.stemModel,
+ demucsBusy:state.demucsBusy,demucsAvailable:state.demucsAvailable,stemLabels:STEM_LABELS
+})}
+function renderExportModule(){return `<p class="section-note">Formatos da Stage 72. Opções ainda não disponíveis não serão exportadas silenciosamente.</p><div class="export-formats">${[['image','Imagem estática'],['video','Vídeo · Story de até 15 s'],['player-audio','Player com áudio'],['lyrics-audio','Letras com áudio'],['player-noaudio','Player sem áudio'],['lyrics-noaudio','Letras sem áudio']].map(([id,name])=>`<button data-export-format="${id}" class="export-option">${name}<small>${id==='image'?'PNG · visual atual':'Requer renderização web'}</small></button>`).join('')}</div><div class="section-head">ESTILO</div><div class="chip-row">${['Clássica','Neon','Mono','Cinema','Máquina'].map(x=>`<button class="chip ${state.exportStyle===x?'selected':''}" data-export-style="${x}">${x}</button>`).join('')}</div>`}
+function renderModule(name){
+ if(!isModuleOpen(name))return;
+ const body=$('#module-'+name+'-body');if(!body)return;
+ body.hidden=false;body.innerHTML=name==='controls'?renderMusicModule():name==='export'?renderExportModule():renderPerformancePanel(pads.snapshot());
+ refreshMixerRails();
+}
+function syncModuleState(){
+ let any=false;
+ for(const name of MODULE_NAMES){
+  const root=$('#module-'+name),body=$('#module-'+name+'-body'),visible=isModuleVisible(name);
+  if(!root||!body)continue;
+  root.hidden=!visible;if(visible)any=true;
+  const open=visible&&expandedModules[name];root.classList.toggle('is-open',open);body.hidden=!open;
+  const shortcut=name==='controls'?'#music-toggle-button':name==='export'?'#share-button':'#performance-button';
+  for(const button of document.querySelectorAll('[data-module-toggle="'+name+'"],'+shortcut))button.setAttribute('aria-expanded',String(open));
+  if(open&&!body.hasChildNodes())renderModule(name);
+  if(!open&&body.hasChildNodes())body.replaceChildren();
+ }
+ $('#module-dock').hidden=!any;
+}
+function toggleModule(name,force){
+ if(!MODULE_NAMES.includes(name))return;
+ if(!isModuleVisible(name)){if(name==='controls')displayStore.set('controls',true);else displayStore.set(name,true);applyPanelVisibility()}
+ expandedModules[name]=typeof force==='boolean'?force:!expandedModules[name];
+ setSetting('module.'+name,expandedModules[name]?'open':'closed');
+ syncModuleState();
+ if(isModuleOpen(name)){
+  renderModule(name);
+  $('#module-'+name)?.scrollIntoView?.({block:'nearest',behavior:window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+  if(name==='controls'&&state.musicTab==='stems')void refreshCloudStemAvailability();
+ }
+}
+function renderActiveSurfaces(){if(state.sheet)renderSheet();for(const name of MODULE_NAMES)if(isModuleOpen(name))renderModule(name)}
 if(!PALETTES[state.theme])state.theme='ACID';
 if(!['DESLIGADO','FLUIDO','REATIVO'].includes(state.reaction))state.reaction='FLUIDO';
 visual.setTheme(state.theme);visual.setExperience(state.experience);visual.setReaction(state.reaction);visual.startLoop();
@@ -53,8 +100,8 @@ function flashDJPad(index){
  clearTimeout(pad._djFlashTimeout);pad._djFlashTimeout=setTimeout(()=>pad.classList.remove('is-hit'),145);
 }
 function syncDJControls(){
- if(state.sheet!=='performance')return;
- const root=$('#sheet-content'),m=pads.snapshot();
+ if(!isModuleOpen('performance'))return;
+ const root=$('#module-performance-body'),m=pads.snapshot();
  for(const pad of root.querySelectorAll('[data-dj-pad]'))pad.classList.toggle('is-programmed',m.programmed[Number(pad.dataset.djPad)]>0);
  const loop=root.querySelector('[data-dj-command="loop"]'),record=root.querySelector('[data-dj-command="record"]');
  if(loop){loop.textContent=m.running?'■ Parar':'▶ Loop';loop.classList.toggle('active',m.running);loop.setAttribute('aria-pressed',String(m.running))}
@@ -232,7 +279,7 @@ function next(){const nextTrack=state.queue.shift();if(nextTrack)selectTrack(nex
 function previous(){if(audio.currentTime>3){audio.currentTime=0;return}const idx=state.tracks.findIndex(x=>x.id===state.current?.id);if(idx>0)selectTrack(state.tracks[idx-1]);else audio.currentTime=0}
 function addToQueue(track){if(!track)return;state.queue.push(track);updatePlayer();toast(`Adicionado à fila: ${track.title}`)}
 function importAudio(files){const valid=[...files].filter(x=>x.type.startsWith('audio/')||/\.(mp3|m4a|aac|wav|ogg|flac)$/i.test(x.name));if(!valid.length){toast('Escolha arquivos de áudio compatíveis.');return}for(const file of valid){const names=titleForFile(file);state.tracks.push({id:`local:${crypto.randomUUID?.()||Date.now()+Math.random()}`,title:names.title,artist:names.artist,album:'Biblioteca local',artwork:icon,url:URL.createObjectURL(file),source:'local',duration:0})}if(!state.current){selectTrack(state.tracks[0],true);state.queue.push(...state.tracks.slice(1));updatePlayer()}else if(valid.length>1)toast(`${valid.length} músicas importadas`);if(state.sheet==='library')renderSheet()}
-function applyPreset(id){const v=musicalPreset(id);if(!v)return;state.preset=id;state.speed=v.speed;state.reverb=v.reverb;state.pitch=v.pitch;engine.setSpeed(v.speed,v.pitch);engine.setReverb(v.reverb);for(const key of ['speed','reverb','pitch','preset'])setSetting(key,key==='pitch'?(state.pitch?'yes':'no'):state[key]);updatePresetButtons();if(state.sheet==='controls')renderSheet();if(stems.ready)stems.sync();toast(id==='ORIGINAL'?'Som original restaurado':id+' ativado')}
+function applyPreset(id){const v=musicalPreset(id);if(!v)return;state.preset=id;state.speed=v.speed;state.reverb=v.reverb;state.pitch=v.pitch;engine.setSpeed(v.speed,v.pitch);engine.setReverb(v.reverb);for(const key of ['speed','reverb','pitch','preset'])setSetting(key,key==='pitch'?(state.pitch?'yes':'no'):state[key]);updatePresetButtons();renderModule('controls');if(stems.ready)stems.sync();toast(id==='ORIGINAL'?'Som original restaurado':id+' ativado')}
 function updatePresetButtons(){document.querySelectorAll('[data-preset]').forEach(b=>{const selected=b.dataset.preset===state.preset;b.classList.toggle('active',selected);b.setAttribute('aria-pressed',String(selected))})}
 function openYouTubePlayer(track){if(!/^[A-Za-z0-9_-]{11}$/.test(track?.videoId||''))return toast('Link do YouTube inválido');audio.pause();const dialog=$('#youtube-player-dialog'),frame=$('#youtube-player-frame');frame.src='https://www.youtube-nocookie.com/embed/'+track.videoId+'?autoplay=1&playsinline=1';$('#youtube-player-title').textContent=track.title;$('#youtube-player-link').href='https://www.youtube.com/watch?v='+track.videoId;dialog.hidden=false;dialog.setAttribute('aria-hidden','false');toast('Player oficial: Nightcore e reverb não podem alterar o áudio dentro do YouTube.');}
 function closeYouTubePlayer(){const dialog=$('#youtube-player-dialog');if(!dialog)return;dialog.hidden=true;dialog.setAttribute('aria-hidden','true');$('#youtube-player-frame').src='about:blank'}
@@ -241,13 +288,14 @@ const OMNIBOX_TABS=['search','library','queue','karaoke'];
 function openSheet(which){
  closePlayerSurfaceMenu();
  if(which==='stems'){state.musicTab='stems';which='controls'}
+ if(MODULE_NAMES.includes(which)){if(state.sheet)closeSheet();toggleModule(which,true);return}
  if(OMNIBOX_TABS.includes(which)){state.omniboxTab=which;setSetting('omniboxTab',which)}
  state.sheet=which;
  $('#bottom-sheet').hidden=false;$('#panel-backdrop').hidden=false;
  $('#bottom-sheet').classList.toggle('display-sheet',which==='display');
   $('#bottom-sheet').classList.toggle('music-sheet',which==='controls');
  $('#bottom-sheet').classList.toggle('performance-sheet',which==='performance');
- $('#sheet-title').textContent=({search:'Busca',queue:'Próximas músicas',library:'Mix / Biblioteca',favorites:'Favoritos',controls:'Música',display:'Exibição',performance:'Performance / DJ',more:'GNARLY',export:'Exportar',theme:'Universo visual',create:'Criar',karaoke:'Karaokê',background:'Fundo'})[which]||'GNARLY';
+ $('#sheet-title').textContent=({search:'Busca',queue:'Próximas músicas',library:'Mix / Biblioteca',favorites:'Favoritos',controls:'Música',display:'Exibição',performance:'Performance / DJ',more:'GNARLY',export:'Exportar',theme:'Universo visual',karaoke:'Karaokê',background:'Fundo'})[which]||'GNARLY';
  $('#search-toggle').setAttribute('aria-expanded',String(which==='display'));
  $('#omnibox-toggle').setAttribute('aria-expanded',String(OMNIBOX_TABS.includes(which)));
  renderSheet();
@@ -270,8 +318,8 @@ function applyPanelVisibility(){
  $('#player-section').hidden=!visible('player');
  $('#omnibox-shell').hidden=!visible('search');
  $('#share-button').hidden=!visible('export');
- for(const id of ['theme-button','background-button','create-button','edit-button','record-button'])$('#'+id).hidden=!visible('header');
- if(state.sheet==='controls')renderSheet();
+ for(const id of ['theme-button','background-button','music-toggle-button','record-button'])$('#'+id).hidden=!visible('header');
+ syncModuleState();
 }
 function omniboxTabs(){return `<div class="omnibox-tabs" role="tablist" aria-label="Omnibox">${[['search','Busca'],['library','Mix · Offline'],['queue','Fila'],['karaoke','Karaokê']].map(([id,label])=>`<button role="tab" data-omnibox-tab="${id}" aria-selected="${state.sheet===id}" class="${state.sheet===id?'active':''}">${label}</button>`).join('')}</div>`}
 function mediaList(tracks,context){if(!tracks.length)return `<p class="section-note">Nenhuma música por aqui ainda.</p>`;return `<div class="media-list">${tracks.map((tr,i)=>`<div class="media-item"><img src="${safe(tr.artwork||icon)}" alt="" loading="lazy" /><div class="media-text"><strong>${safe(tr.title)}</strong><small>${safe(tr.artist)} · ${tr.source==='preview'?'Prévia · 30 s':tr.source==='youtube'?'GNARLY · áudio via backend':'Áudio completo · local'}</small></div><button data-action="play" data-context="${context}" data-index="${i}" aria-label="Reproduzir ${safe(tr.title)}">${svg('play')}</button><button data-action="enqueue" data-context="${context}" data-index="${i}" aria-label="Adicionar ${safe(tr.title)} à fila">${svg('plus')}</button></div>`).join('')}</div>`}
@@ -334,7 +382,6 @@ function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet)
  case 'more':content.innerHTML=`<div class="section-head">ACESSO RÁPIDO</div><div class="button-row">${btn('Performance · DJ','go-performance')}${btn('Música · ajustes','go-controls')}${btn('Adicionar músicas','import','alt')}${btn('Mix e biblioteca','go-library','alt')}${btn('Favoritos','go-favorites','alt')}${btn('Fila','go-queue','alt')}${btn('Karaokê','go-karaoke','alt')}${btn('Exibição','go-display','alt')}</div>`;break;
  case 'export':content.innerHTML=`<p class="section-note">Formatos da Stage 72. Opções ainda não disponíveis não serão exportadas silenciosamente.</p><div class="export-formats">${[['image','Imagem estática'],['video','Vídeo · Story de até 15 s'],['player-audio','Player com áudio'],['lyrics-audio','Letras com áudio'],['player-noaudio','Player sem áudio'],['lyrics-noaudio','Letras sem áudio']].map(([id,name])=>`<button data-export-format="${id}" class="export-option">${name}<small>${id==='image'?'PNG · visual atual':'Requer renderização web'}</small></button>`).join('')}</div><div class="section-head">ESTILO</div><div class="chip-row">${['Clássica','Neon','Mono','Cinema','Máquina'].map(x=>`<button class="chip ${state.exportStyle===x?'selected':''}" data-export-style="${x}">${x}</button>`).join('')}</div>`;break;
  case 'theme':{const v=resolveVisual(state.theme,state.experience,state.reaction);content.innerHTML=`<div class="visual-status"><strong>${safe(state.theme)}</strong><small>Experiência: ${safe(v.experienceName)} · ${safe(v.reaction)}</small>${v.override?`<span>Modo GNARLY ativo; sua experiência permanece salva.</span>`:`<span>${safe(v.description)}</span>`}</div><p class="section-note">${ROLE_EXPLANATION}</p><div class="visual-tabs" role="tablist" aria-label="Personalizar visual">${[['theme','1 · Tema'],['experience','2 · Experiência'],['reaction','3 · Ritmo']].map(([id,label])=>`<button role="tab" data-visual-tab="${id}" aria-selected="${state.visualTab===id}" class="${state.visualTab===id?'active':''}">${label}</button>`).join('')}</div>${state.visualTab==='theme'?`<div class="section-head">CLÁSSICOS · cor e material</div><div class="visual-choices">${CLASSIC_THEMES.map(x=>visualTile(x)).join('')}</div><div class="section-head">MATERIAIS GNARLY</div><div class="visual-choices">${MATERIAL_THEMES.map(x=>visualTile(x)).join('')}</div><div class="section-head">MODOS GNARLY · substituem temporariamente a experiência</div><div class="visual-choices">${GNARLY_MODES.map(x=>visualTile(x)).join('')}</div>${v.override?btn('Voltar ao tema anterior','restore-theme'):''}`:state.visualTab==='experience'?`<div class="section-head">EXPERIÊNCIAS · TEXTURAS INDEPENDENTES</div><p class="section-note">Mesmo tema, outra matéria: teia, células fraturadas, plasma e moiré têm anatomia própria e respondem à música.</p><div class="visual-choices">${EXPERIENCES.filter(x=>x.category==='classic').map(experienceTile).join('')}</div><div class="section-head">EXPERIÊNCIAS GNARLY</div><div class="visual-choices">${EXPERIENCES.filter(x=>x.category==='gnarly').map(experienceTile).join('')}</div><p class="section-note">A experiência escolhida permanece salva ao mudar temas, inclusive no modo GNARLY.</p>`:`<div class="section-head">FORÇA DA RESPOSTA AO ÁUDIO</div><div class="visual-choices">${REACTIONS.map(m=>`<button class="visual-choice ${state.reaction===m?'active':''}" data-reaction="${m}"><strong>${m}</strong><small>${m==='DESLIGADO'?'Movimento natural, sem pulso de áudio':m==='FLUIDO'?'Reação suave e contínua':'Intensidade elevada, resposta às batidas'}</small></button>`).join('')}</div>`}<div class="button-row">${btn('Aplicar visual','apply-theme')}${btn('Padrão original','reset-visual','alt')}</div><p class="section-note">Famílias com geometria independente WebGL2. O tema controla as cores; a experiência muda a textura. Comparação exata com Metal requer validação no iPhone.</p>`;break;}
- case 'create':content.innerHTML=`<div class="card-help"><strong>CRIAR · universo visual</strong><p>${ROLE_EXPLANATION}</p>O tema define a matéria e a experiência define como se move; o ritmo regula a reatividade.</div><div class="visual-status"><strong>${safe(state.theme)}</strong><small>${safe(resolveVisual(state.theme,state.experience,state.reaction).experienceName)} · ${state.reaction}</small></div><div class="button-row">${btn('Escolher tema','go-theme')}${btn('Escolher experiência','go-experience','alt')}${btn('Ajustar ritmo visual','go-reaction','alt')}${btn('Música e Stems','go-controls','alt')}${btn('Performance · DJ','go-performance','alt')}${btn('Foto de fundo','load-background','alt')}</div><div class="section-head">EXPERIÊNCIAS DA STAGE 72</div><div class="visual-choices">${EXPERIENCES.filter(x=>x.category==='classic').slice(0,4).map(experienceTile).join('')}</div>`;break;
  case 'karaoke':content.innerHTML=`<div class="card-help">O GNARLY procura automaticamente letras sincronizadas no LRCLIB ao selecionar uma música. Você também pode importar seu .lrc. As prévias de 30 segundos podem começar em trechos diferentes da faixa, então a sincronia não é garantida nelas.</div><p class="status-text" id="lyrics-status">${safe(state.lyricsStatus)}</p>${btn('Importar letra .lrc','load-lrc')}<div class="section-head">Letra sincronizada</div>${state.lyrics.length?`<div class="lyrics-box">${state.lyrics.map((line,i)=>{const active=i===lyricIndex(state.lyrics,audio.currentTime);return `<div class="lyric-line ${active?'active':''}" data-lyric-time="${line.time}">${safe(line.text)}</div>`}).join('')}</div>`:'<p class="section-note">Nenhuma letra disponível para esta faixa. Você pode adicionar seu próprio .lrc.</p>'}`;break;
  case 'background':content.innerHTML=`<div class="background-menu"><button class="background-menu-row" data-command="show-visual">✦ <span>Tema visual</span><b>${state.backgroundMode==='visual'?'✓':''}</b></button><button class="background-menu-row" data-command="show-cover">▧ <span>Capa do álbum</span><b>${state.backgroundMode==='cover'?'✓':''}</b></button><button class="background-menu-row" data-command="load-background">▣ <span>Minha foto · escolher / trocar</span></button><button class="background-menu-row" data-command="use-photo" ${state.backgroundURL?'':'disabled'}>✓ <span>Usar minha foto</span><b>${state.backgroundMode==='custom'?'✓':''}</b></button><button class="background-menu-row" data-command="adjust-photo" ${state.backgroundURL?'':'disabled'}>☷ <span>Ajustar foto</span></button><button class="background-menu-row danger" data-command="remove-background">× <span>Remover foto</span></button></div>${state.photoAdjust&&state.backgroundURL?`<div class="photo-editor"><p class="section-note">Ajustes locais · a imagem não é enviada ao servidor</p><label for="photo-zoom">Zoom <output id="photo-zoom-value">${Math.round(state.photoZoom*100)}%</output></label><input type="range" id="photo-zoom" data-photo-parameter="photoZoom" min="1" max="2.5" step=".025" value="${state.photoZoom}" /><label for="photo-x">Posição horizontal</label><input type="range" id="photo-x" data-photo-parameter="photoX" min="-40" max="40" step="1" value="${state.photoX}"/><label for="photo-y">Posição vertical</label><input type="range" id="photo-y" data-photo-parameter="photoY" min="-40" max="40" step="1" value="${state.photoY}"/><button class="action-button" data-command="done-photo">Concluído</button></div>`:''}`;break;
  default:content.textContent='';
