@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {CLASSIC_THEMES,MATERIAL_THEMES,GNARLY_MODES,EXPERIENCES,CREATIVE_LOOKS,CREATIVE_PALETTES,EXPERIENCE_MATERIALS,resolveVisual,restoredThemeAfterGnarly} from '../lib/visual-selection.js';
 test('Stage72 keeps themes, seven classic experiences, six GNARLY experiences, separate reaction',()=>{
- assert.equal(CLASSIC_THEMES.length,17);assert.equal(MATERIAL_THEMES.length,6);assert.equal(GNARLY_MODES.length,4);
+ assert.equal(CLASSIC_THEMES.length,17);assert.equal(MATERIAL_THEMES.length,6);assert.equal(GNARLY_MODES.length,5);
  assert.equal(EXPERIENCES.filter(x=>x.category==='classic'&&x.id!=='original').length,17);
  assert.equal(EXPERIENCES.filter(x=>x.category==='gnarly').length,6);
 });
