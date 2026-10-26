@@ -1,32 +1,51 @@
-import {PAD_NAMES,PAD_KEYS} from '../lib/performance-pads.js';
+import {PAD_NAMES,PAD_KEYS,MIDI_BASE_NOTE} from '../lib/performance-pads.js';
 const escapeText=s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
-
+/** The performance page is a tactile part of the currently active Gnarly theme,
+ * not a separate industrial console or a mandatory MIDI routing utility.
+ */
 export function renderPerformancePanel(model){
- const steps=Array.from({length:16},(_,i)=>'<span class="dj-step'+(model.running&&i===model.step?' is-current':'')+'" data-dj-step="'+i+'" aria-hidden="true"></span>').join('');
+ const ready=!!model.songReady;
+ const status=ready?'16 trechos reais desta faixa · toque qualquer pad':
+  model.songStatus==='loading'?'Preparando 16 pads a partir da música…':
+  model.songStatus==='unavailable'?'Áudio indisponível para recortes · banco de demonstração':
+  'Escolha uma música para criar os pads automaticamente';
+ const subtitle=ready?'DA MÚSICA':model.songStatus==='loading'?'PREPARANDO':'DEMONSTRAÇÃO';
  const pads=PAD_NAMES.map((name,i)=>{
-  const marked=model.programmed?.[i]>0;
-  return '<button type="button" class="dj-pad dj-pad-'+Math.floor(i/4)+(marked?' is-programmed':'')+
-   '" data-dj-pad="'+i+'" aria-label="'+escapeText(name)+' · pad '+(i+1)+' · tecla '+PAD_KEYS[i]+
-   '" title="Tecla '+PAD_KEYS[i]+'"><span class="dj-pad-led" aria-hidden="true"></span><span class="dj-pad-name">'+
-   escapeText(name)+'</span><span class="dj-pad-foot"><span>'+PAD_KEYS[i].toUpperCase()+
+  const marked=(model.programmed?.[i]||0)>0,display=ready?model.songClips[i]:name;
+  const label=ready?'Trecho '+String(i+1).padStart(2,'0')+' da música em '+display:name;
+  return '<button type="button" class="dj-pad'+(marked?' is-programmed':'')+
+   '" data-dj-pad="'+i+'" aria-label="'+escapeText(label)+' · tecla '+PAD_KEYS[i].toUpperCase()+
+   ' · nota MIDI '+(MIDI_BASE_NOTE+i)+'" title="'+escapeText(label)+'"><span class="dj-pad-top"><span class="dj-pad-number">'+
+   String(i+1).padStart(2,'0')+'</span><span class="dj-pad-spark" aria-hidden="true">✳</span></span><span class="dj-pad-center">'+
+   escapeText(display)+'</span><span class="dj-pad-bottom"><span>'+PAD_KEYS[i].toUpperCase()+
    '</span><span class="dj-pattern-dot" aria-hidden="true"></span></span></button>';
  }).join('');
- const midiStatus=!model.midiSupported?'MIDI não disponível neste navegador. Pads funcionam normalmente.':
-  !model.midiReady?'Web MIDI opcional · conecte um controlador para feedback de LEDs.':
-  model.outputs.length?'MIDI ativo · pads 36–51 (C2–D#3); LEDs dependem do hardware.':
-  'MIDI ativo, mas nenhuma saída detectada · conecte um controlador.';
- const outputs=model.midiReady?'<label class="dj-output-label">Saída LED <select data-dj-output aria-label="Saída MIDI para LEDs"><option value="off">Desligada</option>'+
+ const steps=Array.from({length:16},(_,i)=>'<span class="dj-step'+(model.running&&i===model.step?' is-current':'')+'" data-dj-step="'+i+'" aria-hidden="true"></span>').join('');
+ const midiStatus=!model.midiSupported?'Seu navegador não oferece controladores MIDI externos. Os pads funcionam sem eles.':
+  model.midiReady?'Controlador conectado · as notas 36 a 51 disparam os pads desta música.':'Conectar teclado/controlador MIDI é opcional.';
+ const outputs=model.midiReady&&model.outputs?.length?'<label class="dj-output-label">Saída do controlador (opcional)<select data-dj-output aria-label="Saída MIDI"><option value="off">Nenhuma</option>'+
   model.outputs.map(p=>'<option value="'+escapeText(p.id)+'"'+(p.id===model.outputId?' selected':'')+'>'+escapeText(p.name)+'</option>').join('')+'</select></label>':'';
- return '<div class="dj-panel"><header class="dj-heading"><div><span class="dj-overline">GNARLY / PERFORMANCE</span><strong>MPC <em>16</em></strong><p>Toque, crie e deixe o ambiente reagir.</p></div><span class="dj-live-dot" aria-hidden="true"></span></header>'+
-  '<div class="dj-stage"><div class="dj-topline"><span>DRUM GRID / BANK A</span><span>INSTANT PLAY</span></div>'+
+ return '<section class="dj-panel" aria-label="Performance musical"><div class="dj-heading"><div><span class="dj-overline">GNARLY / LIVE</span>'+
+  '<strong>Performance<span class="dj-title-star" aria-hidden="true"> ✦</span></strong><p>Um instrumento que acompanha sua música.</p></div>'+
+  '<span class="dj-bank-mark" aria-hidden="true">16</span></div>'+
+  '<div class="dj-current-track" data-dj-state="'+escapeText(model.songStatus||'idle')+'"><span class="dj-track-icon" aria-hidden="true">♫</span>'+
+  '<div class="dj-track-copy"><span class="dj-track-eyebrow">'+subtitle+'</span><strong id="dj-song-name">'+escapeText(model.songTitle||'Nenhuma faixa selecionada')+
+  '</strong><span id="dj-song-status" role="status">'+escapeText(status)+'</span></div>'+
+  '<button type="button" class="dj-refresh" data-dj-command="refresh" aria-label="Recriar pads desta música" title="Recriar pads">↻</button></div>'+
+  '<div class="dj-stage"><div class="dj-grid-head"><span>TOQUE / RECOMBINE</span><span>01 — 16</span></div>'+
   '<div class="dj-pads" role="group" aria-label="16 pads de bateria e efeitos">'+pads+'</div>'+
-  '<div class="dj-steps" role="group" aria-label="Passos do loop">'+steps+'</div>'+
-  '<div class="dj-actions"><button type="button" data-dj-command="loop" aria-pressed="'+model.running+'" class="'+(model.running?'active':'')+'">'+(model.running?'■ Parar':'▶ Loop')+'</button>'+
-  '<button type="button" data-dj-command="record" aria-pressed="'+model.recording+'" class="'+(model.recording?'recording':'')+'">● REC</button>'+
+  '<div class="dj-under-grid"><span class="dj-under-accent" aria-hidden="true"></span>'+
+  '<span>Toque para ouvir · teclas 1–4, QWER, ASDF, ZXCV</span></div></div>'+
+  '<details class="dj-advanced"><summary><span>Sequência e controlador</span><span class="dj-summary-note">Opcional</span></summary>'+
+  '<div class="dj-advanced-inner"><p>Grave um padrão de 16 passos usando os sons desta música. Não é necessário configurar MIDI.</p>'+
+  '<div class="dj-steps" role="group" aria-label="Passos da sequência">'+steps+'</div>'+
+  '<div class="dj-actions"><button type="button" data-dj-command="loop" aria-pressed="'+model.running+'">'+(model.running?'■ Parar':'▶ Loop')+'</button>'+
+  '<button type="button" data-dj-command="record" aria-pressed="'+model.recording+'" class="'+(model.recording?'recording':'')+'">● Gravar</button>'+
   '<button type="button" data-dj-command="clear">Limpar</button></div>'+
-  '<label class="dj-tempo" for="dj-bpm"><span>BPM</span><input id="dj-bpm" data-dj-bpm type="range" min="70" max="160" step="1" value="'+model.bpm+'" aria-label="Tempo do loop em BPM"/><output id="dj-bpm-label" for="dj-bpm">'+model.bpm+'</output></label></div>'+
-  '<section class="dj-midi"><div class="dj-midi-head"><strong><span class="dj-midi-icon">◈</span> MIDI / LED FEEDBACK</strong>'+
-  (model.midiReady?'<span class="dj-midi-enabled">CONECTADO</span>':'<button type="button" data-dj-command="midi"'+(model.midiSupported?'':' disabled')+'>Ativar MIDI</button>')+
-  '</div><p id="dj-midi-status" role="status">'+escapeText(midiStatus)+'</p>'+outputs+'</section>'+
-  '<p class="dj-hint">Pads: 1–4 · QWER · ASDF · ZXCV. REC + Loop grava uma sequência de 16 passos. Os sons são criados no navegador, sem downloads.</p></div>';
+  '<label class="dj-tempo" for="dj-bpm"><span>BPM</span><input id="dj-bpm" data-dj-bpm type="range" min="70" max="160" step="1" value="'+model.bpm+'"/>'+
+  '<output id="dj-bpm-label" for="dj-bpm">'+model.bpm+'</output></label>'+
+  '<div class="dj-midi"><div class="dj-midi-head"><strong>Controlador externo</strong>'+
+  (model.midiReady?'<span class="dj-midi-enabled">Conectado</span>':'<button type="button" data-dj-command="midi"'+(model.midiSupported?'':' disabled')+'>Conectar</button>')+
+  '</div><p id="dj-midi-status">'+escapeText(midiStatus)+'</p>'+outputs+
+  '<p class="dj-midi-note">MIDI serve como comando das notas 36–51. MP3 não contém MIDI original. Os pads usam trechos do áudio quando a faixa pode ser decodificada no navegador.</p></div></div></details></section>';
 }
