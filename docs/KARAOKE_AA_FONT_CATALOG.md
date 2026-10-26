@@ -17,7 +17,7 @@ Digital, Kinetic and Minimal.
 - **Experimental (6)**: Bricolage Grotesque, Unbounded, Syne, Chakra Petch, Orbitron, Righteous.
 - **Poster (7)**: Archivo Black, Bebas Neue, Oswald, Anton, Teko, Barlow Condensed, Rajdhani.
 - **Digital/Mono (3)**: Space Mono, IBM Plex Mono, JetBrains Mono.
-- **Editorial (5)**: Playfair Display, Instrument Serif, Fraunces, Cormorant Garamond, EB Garamond, Lora.
+- **Editorial (6)**: Playfair Display, Instrument Serif, Fraunces, Cormorant Garamond, EB Garamond, Lora.
 - **Manuscrito (3)**: Caveat, Permanent Marker, Dancing Script.
 
 Note: Category counts are not an API contract; the manifest in `lib/lyric-font-catalog.js` is authoritative.
