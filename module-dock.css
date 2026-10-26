@@ -142,3 +142,6 @@
 /* Explicit long lyrics remain in the same scroll container; no animations triggered per word. */
 @media(max-width:380px){.lyric-font-option{gap:5px;padding:9px 7px;min-height:77px}.lyric-font-specimen{flex-basis:33px;font-size:22px}.lyric-font-detail strong{font-size:11px}.lyric-font-scope button{flex:1 1 auto}}
 @media(prefers-reduced-motion:reduce){.lyric-type-preview>div{transition:none}}
+
+/* One-tap GNARLY layer cycling, hold for the full manual selector. */
+#theme-button,#experience-button,#lyric-style-button{touch-action:manipulation;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
