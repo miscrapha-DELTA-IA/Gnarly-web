@@ -168,7 +168,7 @@ export class KaraokeStage {
    }
   }
   this.updateTransport();
-  this.query('karaoke-stage-status').textContent=data.synced?'Letra sincronizada · acompanhamento ao vivo':(plain.length?'Letra simples · pontuação desativada sem tempos confirmados':data.status||'Buscando letra...');
+  this.query('karaoke-stage-status').textContent=data.synced?'Letra sincronizada · acompanhamento ao vivo':(plain.length?'Letra simples · pontos por presença vocal, sem sincronização':data.status||'Buscando letra...');
   this.setFollowing(this.follow);
   this.tick(true);
  }
