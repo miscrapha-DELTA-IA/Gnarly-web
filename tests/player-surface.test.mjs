@@ -57,7 +57,7 @@ test('sharp and moving surfaces prefer true published 800px Apple artwork',async
  assert.equal(preferHighResolutionArtwork('https://i.ytimg.com/vi/abc/hqdefault.jpg'),'https://i.ytimg.com/vi/abc/hqdefault.jpg');
  assert.equal(preferHighResolutionArtwork('blob:https://gnarly.example/123'),'blob:https://gnarly.example/123');
  assert.match(app,/function updatePlayerSurfaceArtwork/);
- assert.match(app,/resolveArtwork\(raw/);
+ assert.match(app,/resolveArtworkAsset\(raw/);
  assert.match(app,/surfaceArtVersion/);
  assert.match(app,/apply\(raw\)/);
 });

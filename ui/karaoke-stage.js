@@ -2,7 +2,7 @@ import {KaraokeMicrophone} from '../lib/karaoke-microphone.js';
 import {KaraokeLiveScore} from '../lib/karaoke-live-score.js';
 import {applyLyricStyle,allLyricStyles} from '../lib/lyric-style.js';
 import {renderLyricArtwork} from '../lib/karaoke-art-direction.js';
-import {artworkBudget,resolveArtwork} from '../lib/artwork-quality.js';
+import {artworkBudget,resolveArtworkAsset} from '../lib/artwork-quality.js';
 const esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 export function karaokeStageMarkup(){
  return `<section class="karaoke-stage" id="karaoke-stage" role="dialog" aria-modal="true" aria-labelledby="karaoke-stage-heading" hidden>
@@ -108,9 +108,17 @@ export class KaraokeStage {
    this.query('karaoke-stage-art').src=art;this.query('karaoke-stage-wallpaper').src=art;
    const opts={viewportWidth:window.innerWidth,viewportHeight:window.innerHeight,dpr:window.devicePixelRatio||1,
     saveData:!!navigator.connection?.saveData,deviceMemory:Number(navigator.deviceMemory)||8};
-   void resolveArtwork(art,{pixels:artworkBudget({role:'stage',...opts}),minDimension:340}).then(url=>{
+   void resolveArtworkAsset(art,{
+    pixels:artworkBudget({role:'stage',...opts}),minDimension:340,
+    displayWidth:opts.viewportWidth,displayHeight:opts.viewportHeight,dpr:opts.dpr
+   }).then(asset=>{
     if(this.artworkRequest!==revision||this.artworkSource!==art||!this.opened)return;
-    this.query('karaoke-stage-art').src=url;this.query('karaoke-stage-wallpaper').src=url;
+    this.query('karaoke-stage-art').src=asset.url||art;
+    const wallpaper=this.query('karaoke-stage-wallpaper');
+    wallpaper.src=asset.url||art;
+    wallpaper.dataset.artQuality=asset.quality;
+    wallpaper.style.setProperty('--gnarly-art-safe-width',
+     Math.max(160,Math.round(Math.min(asset.width||320,asset.height||320)/Math.max(1,opts.dpr)))+'px');
    });
   }
   if(force||this.lineRef!==lines){

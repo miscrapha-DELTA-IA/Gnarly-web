@@ -5,10 +5,12 @@
 import {onRequestGet as catalog} from '../functions/api/catalog.js';
 import {onRequestGet as omnibox} from '../functions/api/omnibox.js';
 import {onRequestPost as stemsTicket} from '../functions/api/stems-ticket.js';
+import {onRequestGet as metadata} from '../functions/api/metadata.js';
 
 const ALLOW=Object.freeze({
   '/api/catalog': {method:'GET', handler:catalog},
   '/api/omnibox': {method:'GET', handler:omnibox},
+  '/api/metadata': {method:'GET', handler:metadata},
   '/api/stems-ticket': {method:'POST', handler:stemsTicket}
 });
 function methodNotAllowed(method) {

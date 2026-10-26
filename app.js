@@ -28,7 +28,7 @@ import {demucsStatus,prepareDemucsAudio,separateWithBestModel} from './lib/demuc
 import {renderMusicPanel,mixerValue} from './ui/music-panel.js';
 import {createDisplayStore,renderDisplayPanel} from './ui/display-panel.js';
 import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel} from './ui/player-surface.js';
-import {artworkBudget,artworkCandidates,resolveArtwork} from './lib/artwork-quality.js';
+import {artworkBudget,artworkCandidates,resolveArtworkAsset} from './lib/artwork-quality.js';
 import {createFullscreenController} from './lib/fullscreen-controller.js';
 import {karaokeStageMarkup,KaraokeStage} from './ui/karaoke-stage.js';
 
@@ -49,6 +49,20 @@ const artEnvironment=()=>({
  deviceMemory:Number(navigator.deviceMemory)||8
 });
 const artPixels=role=>artworkBudget({role,...artEnvironment()});
+function artworkViewport(role){
+ const env=artEnvironment(),viewport=document.getElementById(role==='background'?'gnarly-background':role==='surface'?'player-surface':role==='stage'?'karaoke-stage':'cover-image');
+ const rect=viewport?.getBoundingClientRect();
+ return {pixels:artPixels(role),displayWidth:Math.round(rect?.width||env.viewportWidth),
+  displayHeight:Math.round(rect?.height||env.viewportHeight),dpr:env.dpr};
+}
+function applyArtworkQuality(element,asset,role){
+ const density=Math.min(3,Math.max(1,window.devicePixelRatio||1));
+ const safeWidth=Math.max(160,Math.floor(Math.min(asset.width||360,asset.height||360)/density));
+ element.dataset.artQuality=asset.quality||'unknown';
+ element.style.setProperty('--gnarly-art-safe-width',safeWidth+'px');
+ element.dataset.artPixels=asset.width&&asset.height?asset.width+'×'+asset.height:'';
+ if(role==='background')background.dataset.coverQuality=asset.quality||'unknown';
+}
 let coverArtVersion=0,lastCoverArt='',surfaceArtVersion=0,lastSurfaceArt='',backgroundArtVersion=0,lastBackgroundArt='';
 const fullscreen=createFullscreenController(document,{
  onChange:active=>{
@@ -275,8 +289,11 @@ function updatePlayer(){
   lastCoverArt=coverKey;const version=++coverArtVersion;
   const image=$('#cover-image');image.decoding='async';image.src=cover;
   image.onerror=()=>{if(version!==coverArtVersion)return;image.onerror=null;image.src=icon};
-  if(cover!==icon)void resolveArtwork(cover,{pixels:artPixels('cover'),minDimension:260}).then(url=>{
-   if(version===coverArtVersion&&url!==cover&&lastCoverArt===coverKey){image.src=url;}
+  if(cover!==icon)void resolveArtworkAsset(cover,{...artworkViewport('cover'),minDimension:260}).then(asset=>{
+   if(version===coverArtVersion&&lastCoverArt===coverKey){
+    applyArtworkQuality(image,asset,'cover');
+    if(asset.url!==cover&&asset.url)image.src=asset.url;
+   }
   });
  }
  updatePlayerSurfaceArtwork();
@@ -310,8 +327,11 @@ function updatePlayerSurfaceArtwork(){
   $('#player-surface-artwork-repeat').style.backgroundImage=layers;
  };
  apply(raw); // Never flash a missing 4K file over a usable thumbnail.
- if(raw!==fallback)void resolveArtwork(raw,{pixels,minDimension:300}).then(url=>{
-  if(version===surfaceArtVersion&&lastSurfaceArt===key&&state.current?.artwork===raw)apply(url);
+ if(raw!==fallback)void resolveArtworkAsset(raw,{...artworkViewport('surface'),pixels,minDimension:300}).then(asset=>{
+  if(version===surfaceArtVersion&&lastSurfaceArt===key&&safeSurfaceArtwork(state.current?.artwork)===raw){
+   for(const element of [$('#player-surface-artwork'),$('#player-surface-artwork-repeat')])applyArtworkQuality(element,asset,'surface');
+   apply(asset.url||raw);
+  }
  });
 }
 function closePlayerSurfaceMenu(restoreFocus=false){
@@ -347,6 +367,7 @@ function applyBackground(){
  photo.hidden=!ownPhoto&&!coverPhoto;
  if(ownPhoto){
   lastBackgroundArt='';++backgroundArtVersion;
+  delete photo.dataset.artQuality;
   const layer='url('+JSON.stringify(state.backgroundURL)+')';
   if(photo.style.backgroundImage!==layer)photo.style.backgroundImage=layer;
   photo.style.transform=`translate3d(${state.photoX}%,${state.photoY}%,0) scale(${state.photoZoom})`;
@@ -356,19 +377,28 @@ function applyBackground(){
    lastBackgroundArt=key;const version=++backgroundArtVersion;
    const apply=url=>{photo.style.backgroundImage='url('+JSON.stringify(url)+')'};
    apply(source);
-   void resolveArtwork(source,{pixels,minDimension:480}).then(url=>{
-    if(version===backgroundArtVersion&&lastBackgroundArt===key&&state.backgroundMode==='cover'&&state.current?.artwork===cover)apply(url);
+   void resolveArtworkAsset(source,{...artworkViewport('background'),pixels,minDimension:480}).then(asset=>{
+    if(version===backgroundArtVersion&&lastBackgroundArt===key&&state.backgroundMode==='cover'&&state.current?.artwork===cover){
+     applyArtworkQuality(photo,asset,'background');
+     apply(asset.url||source);
+    }
    });
   }
   photo.style.transform='';
  }else{
   lastBackgroundArt='';++backgroundArtVersion;
   if(photo.style.backgroundImage)photo.style.backgroundImage='';
+  delete photo.dataset.artQuality;
+  photo.style.removeProperty('--gnarly-art-safe-width');
   photo.style.transform='';
  }
  app.style.backgroundImage='';visual.setPaused(ownPhoto||coverPhoto);
 }
-async function loadArtworkHue(track){if(!track?.artwork||track.artwork===icon){state.artworkHue=.58;return}try{const img=new Image();img.crossOrigin='anonymous';img.src=track.artwork;await img.decode();if(state.current!==track)return;const cv=document.createElement('canvas');cv.width=cv.height=20;const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,20,20);const data=ctx.getImageData(0,0,20,20).data;let x=0,y=0;for(let i=0;i<data.length;i+=4){const r=data[i]/255,g=data[i+1]/255,b=data[i+2]/255,max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;let h=0;if(d>.08){if(max===r)h=((g-b)/d+6)%6/6;else if(max===g)h=((b-r)/d+2)/6;else h=((r-g)/d+4)/6}x+=Math.cos(h*2*Math.PI)*d;y+=Math.sin(h*2*Math.PI)*d}if(x||y)state.artworkHue=(Math.atan2(y,x)/(Math.PI*2)+1)%1}catch{/* third-party artwork might be CORS protected; deterministic fallback */}}
+async function loadArtworkHue(track){if(!track?.artwork||track.artwork===icon){state.artworkHue=.58;return}try{const img=new Image();img.crossOrigin='anonymous';img.src=track.artwork;await img.decode();if(state.current!==track)return;const cv=document.createElement('canvas');cv.width=cv.height=20;const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,20,20);const data=ctx.getImageData(0,0,20,20).data;let x=0,y=0;for(let i=0;i<data.length;i+=4){const r=data[i]/255,g=data[i+1]/255,b=data[i+2]/255,max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;let h=0;if(d>.08){if(max===r)h=((g-b)/d+6)%6/6;else if(max===g)h=((b-r)/d+2)/6;else h=((r-g)/d+4)/6}x+=Math.cos(h*2*Math.PI)*d;y+=Math.sin(h*2*Math.PI)*d}if(x||y)state.artworkHue=(Math.atan2(y,x)/(Math.PI*2)+1)%1;
+ const tint=Math.round(state.artworkHue*360)+'deg';
+ background.style.setProperty('--gnarly-cover-hue',tint);
+ app.style.setProperty('--gnarly-cover-hue',tint);
+ }catch{/* third-party artwork might be CORS protected; deterministic fallback */}}
 let lyricsAIAutoSession=false;
 const lyricsAIOnce=new Set();
 async function loadAutoLyrics(track){
@@ -446,7 +476,7 @@ async function enrichSelectedTrack(track,knownDuration=0){
  if(!track||!['youtube','local'].includes(track.source)||state.current!==track)return;
  // An opaque video ID is not a song title; do not invent an artist for it.
  if(/^[A-Za-z0-9_-]{11}$/.test(track.title||'')&&isGenericArtist(track.artist))return;
- if(track.metadataConfidence>=84&&track.album&&track.artwork&&!isGenericArtist(track.artist))return;
+ if(track.metadataConfidence>=84&&track.album&&track.artwork&&!isGenericArtist(track.artist)&&!/(?:i\.ytimg\.com|img\.youtube\.com)/.test(track.artwork))return;
  const duration=Number(track.duration)>0?Number(track.duration):Number(knownDuration)||0;
  const credit=inferredCredit(track.title,track.artist);
  if(!duration&&!credit.artist)return;
@@ -804,7 +834,7 @@ function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet)
  case 'reaction':content.innerHTML=renderVisualLayer(state.sheet);break;
  case 'lyric-style':content.innerHTML=renderLyricStylePanel(state.lyricStyle,{scope:lyricScope,track:state.current,resolution:lyricFonts.selected(state.current),recents:lyricFonts.recents,group:lyricGroup,previewText:state.lyrics[lyricIndex(state.lyrics,audio.currentTime||0)]?.text||'TUA VOZ ME LEVA'});break;
   case 'karaoke':content.innerHTML=`<div class="card-help">O GNARLY procura letras primeiro no LRCLIB, com conferência de artista, título e duração. Quando só existe letra simples, ela aparece sem tempos inventados. A transcrição por IA usa apenas áudio que você escolher enviar.</div><p class="status-text" id="lyrics-status">${safe(state.lyricsStatus)}</p>${btn('Importar letra .lrc','load-lrc')}<div class="lyrics-actions">${btn('Aa · Estilo da legenda','go-lyric-style','alt')}${state.current&&!state.lyricsLoading&&!state.lyricsAIWorking?btn('Buscar letras novamente','retry-lyrics','alt'):''}${state.current&&!state.lyrics.length?btn(state.lyricsAIWorking?'Transcrevendo…':state.plainLyrics.length?'Transcrever com IA para obter tempos':'Transcrever meu áudio com IA','lyrics-ai','alt'):''}</div><label class="section-note lyrics-ai-consent"><input id="lyrics-ai-autofallback" type="checkbox" ${lyricsAIAutoSession?'checked':''} /> Transcrever automaticamente meus arquivos locais, apenas nesta sessão, caso o banco não encontre letra (envia o áudio à IA).</label><p class="section-note">Transcrição por IA é experimental. Para músicas de catálogo, selecione manualmente um áudio da mesma gravação que você tenha autorização para processar.</p><div class="section-head">${state.lyricsSynced?'Letra sincronizada':state.plainLyrics.length?'Letra sem sincronização':'Letra'}</div>${state.lyrics.length?`<div class="lyrics-box">${state.lyrics.map((line,i)=>{const active=i===lyricIndex(state.lyrics,audio.currentTime);return `<div class="lyric-line ${active?'active':''}" data-lyric-time="${line.time}">${active?renderLyricArtwork(line.text,state.lyricStyle,{lineId:i,active:true}):safe(line.text)}</div>`}).join('')}</div>`:state.plainLyrics.length?`<div class="lyrics-box lyrics-unsynced">${state.plainLyrics.map(line=>`<div class="lyric-line">${safe(line)}</div>`).join('')}</div>`:'<p class="section-note">Nenhuma letra confirmada. Você pode importar .lrc ou transcrever seu arquivo de áudio autorizado.</p>'}`;break;
- case 'background':content.innerHTML=`<div class="background-menu"><button class="background-menu-row" data-command="show-visual">✦ <span>Tema visual</span><b>${state.backgroundMode==='visual'?'✓':''}</b></button><button class="background-menu-row" data-command="show-cover">▧ <span>Capa do álbum</span><b>${state.backgroundMode==='cover'?'✓':''}</b></button><button class="background-menu-row" data-command="load-background">▣ <span>Minha foto · escolher / trocar</span></button><button class="background-menu-row" data-command="use-photo" ${state.backgroundURL?'':'disabled'}>✓ <span>Usar minha foto</span><b>${state.backgroundMode==='custom'?'✓':''}</b></button><button class="background-menu-row" data-command="adjust-photo" ${state.backgroundURL?'':'disabled'}>☷ <span>Ajustar foto</span></button><button class="background-menu-row danger" data-command="remove-background">× <span>Remover foto</span></button></div>${state.photoAdjust&&state.backgroundURL?`<div class="photo-editor"><p class="section-note">Ajustes locais · a imagem não é enviada ao servidor</p><label for="photo-zoom">Zoom <output id="photo-zoom-value">${Math.round(state.photoZoom*100)}%</output></label><input type="range" id="photo-zoom" data-photo-parameter="photoZoom" min="1" max="2.5" step=".025" value="${state.photoZoom}" /><label for="photo-x">Posição horizontal</label><input type="range" id="photo-x" data-photo-parameter="photoX" min="-40" max="40" step="1" value="${state.photoX}"/><label for="photo-y">Posição vertical</label><input type="range" id="photo-y" data-photo-parameter="photoY" min="-40" max="40" step="1" value="${state.photoY}"/><button class="action-button" data-command="done-photo">Concluído</button></div>`:''}`;break;
+ case 'background':content.innerHTML=`<div class="background-menu"><button class="background-menu-row" data-command="show-visual">✦ <span>Tema visual</span><b>${state.backgroundMode==='visual'?'✓':''}</b></button><button class="background-menu-row" data-command="show-cover">▧ <span>Capa do álbum</span><b>${state.backgroundMode==='cover'?'✓':''}</b></button><button class="background-menu-row" data-command="load-background">▣ <span>Minha foto · escolher / trocar</span></button><button class="background-menu-row" data-command="use-photo" ${state.backgroundURL?'':'disabled'}>✓ <span>Usar minha foto</span><b>${state.backgroundMode==='custom'?'✓':''}</b></button><button class="background-menu-row" data-command="adjust-photo" ${state.backgroundURL?'':'disabled'}>☷ <span>Ajustar foto</span></button><button class="background-menu-row danger" data-command="remove-background">× <span>Remover foto</span></button></div>${state.backgroundMode==='cover'&&state.current?.artwork?`<p class="section-note" id="artwork-quality-info">Resolução real da capa: ${safe($('#photo-background').dataset.artPixels||'verificando…')}. ${$('#photo-background').dataset.artQuality==='low'?'A fonte original tem poucos pixels; o GNARLY preserva o tamanho nativo para evitar blocos e artefatos.':'A melhor versão disponível será aplicada sem interromper a música.'}</p>`:''}${state.photoAdjust&&state.backgroundURL?`<div class="photo-editor"><p class="section-note">Ajustes locais · a imagem não é enviada ao servidor</p><label for="photo-zoom">Zoom <output id="photo-zoom-value">${Math.round(state.photoZoom*100)}%</output></label><input type="range" id="photo-zoom" data-photo-parameter="photoZoom" min="1" max="2.5" step=".025" value="${state.photoZoom}" /><label for="photo-x">Posição horizontal</label><input type="range" id="photo-x" data-photo-parameter="photoX" min="-40" max="40" step="1" value="${state.photoX}"/><label for="photo-y">Posição vertical</label><input type="range" id="photo-y" data-photo-parameter="photoY" min="-40" max="40" step="1" value="${state.photoY}"/><button class="action-button" data-command="done-photo">Concluído</button></div>`:''}`;break;
  default:content.textContent='';
  }}
 function renderSheet(){renderSheetCore();if(OMNIBOX_TABS.includes(state.sheet))$('#sheet-content').insertAdjacentHTML('afterbegin',omniboxTabs());refreshMixerRails();if(state.sheet==='lyric-style'){updateLyricFontFilter();observeLyricFontCards()}}
