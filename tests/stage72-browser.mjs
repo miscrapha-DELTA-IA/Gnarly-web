@@ -431,8 +431,8 @@ assert.equal(await karaokePage.locator('#karaoke-stage').isVisible(),true);
 // Regression: no header/play/pause clipping after expanding stage while
 // the body is scrolled or browser fullscreen is active.
 const stageGeometry=await karaokePage.evaluate(()=>{
- const rect=id=>{const {top,bottom,left,right}=document.getElementById(id).getBoundingClientRect();return {top,bottom,left,right}};
- return {header:rect('karaoke-stage-header'),play:rect('karaoke-stage-play'),close:rect('karaoke-stage-close'),reader:rect('karaoke-reader'),footer:rect('karaoke-stage-footer'),height:innerHeight};
+ const rect=selector=>{const {top,bottom,left,right}=document.querySelector(selector).getBoundingClientRect();return {top,bottom,left,right}};
+ return {header:rect('.karaoke-stage-header'),play:rect('#karaoke-stage-play'),close:rect('#karaoke-stage-close'),reader:rect('#karaoke-reader'),footer:rect('.karaoke-stage-footer'),height:innerHeight};
 });
 assert.ok(stageGeometry.header.top>=0&&stageGeometry.header.bottom<stageGeometry.height/3,
  'Karaoke header must remain fully visible: '+JSON.stringify(stageGeometry));
