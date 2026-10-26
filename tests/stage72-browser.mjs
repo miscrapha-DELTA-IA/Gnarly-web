@@ -160,7 +160,7 @@ assert.equal(await page.locator('[data-lyric-style="font-inter"]').isVisible(),f
 await page.locator('#lyric-font-search').fill('bebas');
 await page.locator('[data-lyric-style="font-bebas-neue"]').click();
 assert.equal(await page.locator('#app-shell').getAttribute('data-lyric-style'),'font-bebas-neue');
-assert.equal(await page.locator('[data-lyric-style="font-bebas-neue"]').getAttribute('aria-pressed'),'true');
+assert.equal(await page.locator('button[data-lyric-style="font-bebas-neue"]').getAttribute('aria-pressed'),'true');
 assert.match(await page.locator('#app-shell').evaluate(el=>el.style.getPropertyValue('--gnarly-lyric-font')),/Bebas Neue/);
 await page.locator('[data-lyric-scope="global"]').click();
 assert.equal(await page.locator('[data-lyric-scope="global"]').getAttribute('aria-pressed'),'true');
