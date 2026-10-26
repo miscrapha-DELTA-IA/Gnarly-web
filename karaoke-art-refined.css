@@ -42,7 +42,7 @@
 .app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-face-3{font-family:"Bricolage Grotesque",Arial,sans-serif;font-weight:800;letter-spacing:-.04em}
 .app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-tone-0{background:#111217;color:#f9fbf6}
 .app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-tone-1{background:#f3efe7;color:#181714}
-.app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-tone-2{background:#c8fc28;color:#132013}
+.app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-tone-2{background:var(--acid,#c8fc28);color:#101513}
 .app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-tone-3{background:#c8fc28;color:#132013}
 .app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-word:nth-of-type(5n){border-bottom:.07em solid #d02f72}
 .app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-word:nth-of-type(7n){text-decoration:none;outline:1px solid rgba(255,255,255,.44);outline-offset:-2px}
