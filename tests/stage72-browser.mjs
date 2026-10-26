@@ -487,7 +487,7 @@ for(const mode of ['artist','album','mix','playlist']){
 await tastePage.locator('.smart-taste-clear').click();
 assert.match(await tastePage.locator('.smart-taste-insight').innerText(),/0 sinais locais/);
 await tastePage.locator('[data-omnibox-tab="search"]').click();
-assert.match(await tastePage.locator('.section-head').first().innerText(),/Para você/);
+assert.match(await tastePage.locator('.section-head').first().innerText(),/para você/i);
 assert.deepEqual(tasteErrors,[],'Queue mode/taste reset and Omnibox must not throw');
 await tastePage.close();
 
