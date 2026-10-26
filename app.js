@@ -5,7 +5,8 @@ import {searchCatalog,searchNativeBackend,resolveTrackMetadata} from './lib/cata
 import {applyMetadata,enrichSearchCredits,isGenericArtist,inferredCredit,displayArtist,reconcileCatalogCredits} from './lib/metadata-intelligence.js';
 import {OmniboxSession,classifyIntent,rank} from './lib/omnibox.js';
 import {MUSIC_PRESETS,musicalPreset} from './lib/music-presets.js';
-import {autoLyrics} from './lib/lyrics-auto.js';
+import {autoLyrics,cachedAutoLyrics,prefetchAutoLyrics} from './lib/lyrics-auto.js';
+import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
 import {trackAudioURL,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
 import {AudioDeliveryRecovery} from './lib/audio-delivery.js';
 import {appendUnique,commitPlaying,moveTrack,removeTrack,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
@@ -323,10 +324,14 @@ let lyricsAIAutoSession=false;
 const lyricsAIOnce=new Set();
 async function loadAutoLyrics(track){
  state.lyricsAbort?.abort();const ac=new AbortController();state.lyricsAbort=ac;
- state.lyrics=[];state.plainLyrics=[];state.lyricsSource=null;state.lyricsSynced=false;state.lyricsInstrumental=false;
- state.lyricsLoading=true;state.lastLyric=-2;
- state.lyricsStatus='Procurando letra no banco de dados…';syncLyrics();
+ const immediate=cachedAutoLyrics(track);
+ state.lyrics=immediate?.lines||[];state.plainLyrics=immediate?.plainLines||[];
+ state.lyricsSource=immediate?.source||null;state.lyricsSynced=!!immediate?.synced;state.lyricsInstrumental=!!immediate?.instrumental;
+ state.lyricsLoading=!immediate;state.lastLyric=-2;
+ state.lyricsStatus=immediate?.status||'Procurando letra automaticamente…';
+ syncLyrics();
  if(state.sheet==='karaoke')renderSheet();
+ if(immediate)return; // Synchronous cached LRC: no blank frame on a returning song.
  try{
   const found=await autoLyrics(track,{signal:ac.signal});
   if(ac.signal.aborted||state.current!==track)return;
@@ -377,10 +382,14 @@ function syncLyrics(){
  if(state.lastLyric===i)return;
  state.lastLyric=i;
  const el=$('#floating-lyrics'),line=$('#floating-line');
- if(!state.lyrics.length||!state.current){el.hidden=true;return}
- el.hidden=false;
+ el.hidden=!state.current;
+ if(!state.current)return;
+ // Automatic feedback even before the very first LRC arrives; compact mic remains visible.
+ // This is a status line, not fabricated synchronized lyrics.
+ const text=state.lyrics.length?(i>=0?state.lyrics[i].text:'♪ ♪ ♪'):
+  state.lyricsLoading?'Buscando letra…':state.plainLyrics.length?state.plainLyrics[0]:
+  state.lyricsInstrumental?'♪ Faixa instrumental':'Karaokê · abra para cantar';
  // Escaped per-word paper compositions only for the active line; no LRC changes.
- const text=i>=0?state.lyrics[i].text:'♪ ♪ ♪';
  line.innerHTML=renderLyricArtwork(text,state.lyricStyle,{lineId:i,active:true});
  if(state.sheet==='karaoke')renderSheet();
 }
@@ -427,7 +436,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false}={}){
    // Deferred until Play: avoids wasting a Render extraction on every tapped row.
    audio.removeAttribute('src');audio.preload='none';audio.load();
  }else{audio.preload='metadata';audio.src=track.url;audio.load();}
- reportAudioStatus('');state.lastLyric=-2;updatePlayer();void loadArtworkHue(track);void loadAutoLyrics(track);
+ reportAudioStatus('');state.lastLyric=-2;updatePlayer();void loadArtworkHue(track);void loadAutoLyrics(track);prefetchNextLyrics();
  if(track.source==='youtube')void enrichSelectedTrack(track);omnibox.record(track);state.history=omnibox.history;
  if(isModuleOpen('performance'))void pads.prepareSong(track);
  if(autoplay)void play();if(state.sheet&&['library','queue','search','lyric-style'].includes(state.sheet))renderSheet();
@@ -493,8 +502,12 @@ async function play(){
 }
 function pause(){state.userPaused=true;audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
 function next(){const nextTrack=state.queue[0];if(nextTrack)selectTrack(nextTrack,true,{fromQueue:true});else{pause();audio.currentTime=0;toast('Fim da fila')}updatePlayer()}
+function prefetchNextLyrics(){
+ const nextTrack=state.queue.find(x=>x.id!==state.current?.id);
+ if(nextTrack)void prefetchAutoLyrics(nextTrack).catch(()=>{});
+}
 function previous(){if(audio.currentTime>3){audio.currentTime=0;return}const idx=state.tracks.findIndex(x=>x.id===state.current?.id);if(idx>0)selectTrack(state.tracks[idx-1]);else audio.currentTime=0}
-function addToQueue(track,{quiet=false}={}){if(!track)return false;const before=state.queue.length;state.queue=appendUnique(state.queue,[track],state.current?.id);if(before===state.queue.length){if(!quiet)toast('Esta música já está na fila ou tocando.');return false}updatePlayer();if(state.sheet==='queue')renderSheet();if(!quiet)toast('Adicionado à fila: '+track.title);return true}
+function addToQueue(track,{quiet=false}={}){if(!track)return false;const before=state.queue.length;state.queue=appendUnique(state.queue,[track],state.current?.id);if(before===state.queue.length){if(!quiet)toast('Esta música já está na fila ou tocando.');return false}updatePlayer();prefetchNextLyrics();if(state.sheet==='queue')renderSheet();if(!quiet)toast('Adicionado à fila: '+track.title);return true}
 function importAudio(files){const valid=[...files].filter(x=>x.type.startsWith('audio/')||/\.(mp3|m4a|aac|wav|ogg|flac)$/i.test(x.name));if(!valid.length){toast('Escolha arquivos de áudio compatíveis.');return}for(const file of valid){const names=titleForFile(file);state.tracks.push({id:`local:${crypto.randomUUID?.()||Date.now()+Math.random()}`,title:names.title,artist:names.artist,album:'Biblioteca local',artwork:icon,url:URL.createObjectURL(file),file,source:'local',duration:0})}if(!state.current){selectTrack(state.tracks[0],true);state.queue=appendUnique(state.queue,state.tracks.slice(1),state.current?.id);updatePlayer()}else if(valid.length>1)toast(`${valid.length} músicas importadas`);if(state.sheet==='library')renderSheet()}
 function applyPreset(id){const v=musicalPreset(id);if(!v)return;state.preset=id;state.speed=v.speed;state.reverb=v.reverb;state.pitch=v.pitch;engine.setSpeed(v.speed,v.pitch);engine.setReverb(v.reverb);for(const key of ['speed','reverb','pitch','preset'])setSetting(key,key==='pitch'?(state.pitch?'yes':'no'):state[key]);updatePresetButtons();renderModule('controls');if(stems.ready)stems.sync();toast(id==='ORIGINAL'?'Som original restaurado':id+' ativado')}
 function updatePresetButtons(){document.querySelectorAll('[data-preset]').forEach(b=>{const selected=b.dataset.preset===state.preset;b.classList.toggle('active',selected);b.setAttribute('aria-pressed',String(selected))})}
@@ -631,6 +644,7 @@ async function maybeFillSmartQueue({force=false}={}){
   const choices=chooseSmartTracks({mode,anchor,candidates:[...cached,...remote],existing:state.queue,recent:state.history,max:7});
   const count=state.queue.length;
   state.queue=appendUnique(state.queue,choices,anchor.id);
+  prefetchNextLyrics();
   smartStatus=state.queue.length>count?'Adicionadas '+(state.queue.length-count)+' faixas verificadas.':'Sem novas faixas confirmadas. Sua fila foi preservada.';
   updatePlayer();
  }finally{
@@ -795,9 +809,36 @@ $('#add-button').addEventListener('click',()=>$('#audio-import').click());
 $('#library-button').addEventListener('click',()=>openSheet('library'));
 $('#favorite-button').addEventListener('click',toggleFavorite);
 $('#controls-button').addEventListener('click',()=>openSheet('controls'));
-$('#theme-button').addEventListener('click',()=>openSheet('theme'));
-$('#experience-button').addEventListener('click',()=>openSheet('experience'));
-$('#lyric-style-button').addEventListener('click',()=>openSheet('lyric-style'));
+// Tap: instantly apply next visual / typeface. Hold ~0.5 s, right-click or
+// Shift+Enter: open the full curated library for a precise manual selection.
+const QUICK_THEMES=['ACID','CYBER NIGHT','CRIMSON','ULTRAVIOLET','PRISM CARMINE','XEROX SERPENTINE','GNARLY','NOIR','SOLAR','SAPPHIRE'];
+const QUICK_EXPERIENCES=['original','cyber-night','liquid-dream','neon-pulse','chrome-night','organic-pulse','atmospheric-smoke','gnarly-exp-subcultural-archive','gnarly-exp-vector-drift-2000','gnarly-exp-liquid-monochrome'];
+const QUICK_LYRIC_STYLES=['original','art-magazine-cutout','art-xerox-ransom','art-glitch-zine','art-chrome-surge','studio-vogue-editorial','studio-concrete-poster','art-y2k-warp','studio-neon-serif','art-stereo-echo'];
+bindQuickCreative($('#theme-button'),{
+ cycle:()=>{
+  const next=cycleValue(QUICK_THEMES,state.theme);
+  if(!GNARLY_MODES.includes(state.theme)&&GNARLY_MODES.includes(next)){state.previousTheme=state.theme;setSetting('previousTheme',next===state.theme?state.previousTheme:state.theme)}
+  state.theme=next;setSetting('theme',next);updateBadges();renderActiveSurfaces();
+  toast('🎨 Tema · '+next);
+ },
+ expand:()=>openSheet('theme')
+});
+bindQuickCreative($('#experience-button'),{
+ cycle:()=>{
+  state.experience=cycleValue(QUICK_EXPERIENCES,state.experience);
+  setSetting('experience',state.experience);updateBadges();renderActiveSurfaces();
+  toast('⚡ Experiência · '+(EXPERIENCES.find(x=>x.id===state.experience)?.name||state.experience));
+ },
+ expand:()=>openSheet('experience')
+});
+bindQuickCreative($('#lyric-style-button'),{
+ cycle:()=>{
+  const next=cycleValue(QUICK_LYRIC_STYLES,state.lyricStyle);
+  applyChosenLyricFont(next);
+  toast('Aa · '+resolveLyricStyle(next).name);
+ },
+ expand:()=>openSheet('lyric-style')
+});
 $('#background-button').addEventListener('click',()=>openSheet('background'));
 $('#search-toggle').addEventListener('click',()=>state.sheet==='display'?closeSheet():openSheet('display'));
 $('#omnibox-toggle').addEventListener('click',()=>OMNIBOX_TABS.includes(state.sheet)?closeSheet():openSheet(OMNIBOX_TABS.includes(state.omniboxTab)?state.omniboxTab:'search'));
