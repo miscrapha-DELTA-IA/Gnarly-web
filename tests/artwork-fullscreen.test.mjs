@@ -93,12 +93,12 @@ test('Artwork and immersive UI integrate throughout player, wallpaper, karaoke a
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
  const stage=readFileSync(new URL('../ui/karaoke-stage.js',import.meta.url),'utf8');
  const css=readFileSync(new URL('../module-dock.css',import.meta.url),'utf8');
- for(const marker of ["artPixels('cover')","artPixels('background')","artPixels('surface')","artPixels('thumb')",'resolveArtwork(']){
+ for(const marker of ["artPixels('cover')","artPixels('background')","artPixels('surface')","artPixels('thumb')",'resolveArtworkAsset(']){
   assert.ok(app.includes(marker),marker);
  }
  assert.match(html,/id="fullscreen-button"/);
  assert.match(stage,/id="karaoke-stage-fullscreen"/);
- assert.match(stage,/resolveArtwork\(art/);
+ assert.match(stage,/resolveArtworkAsset\(art/);
  assert.match(css,/html\.gnarly-fullscreen \.app-shell/);
  assert.match(app,/data-original-art/);
 });
