@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {PLAYER_SURFACE_MODES,normalizePlayerSurfaceMode,renderPlayerSurfaceMenu} from '../ui/player-surface.js';
+import {PLAYER_SURFACE_MODES,normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel} from '../ui/player-surface.js';
 import {readFileSync} from 'node:fs';
 const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
@@ -23,12 +23,17 @@ test('popover has exactly four radio options in reference order with checked sta
  assert.ok(output.indexOf('Em movimento')<output.indexOf('Turbulent Displacement'));
  assert.match(output,/data-player-surface="moving" aria-checked="true"/);
 });
-test('handle is anchored inside player, artwork loop has two equal tiles',()=>{
+test('appearance button replaces the side handle beside the track time; artwork still loops',()=>{
  assert.match(html,/id="player-surface-button"/);
  assert.match(html,/aria-haspopup="menu"/);
  assert.match(html,/id="player-surface-artwork-repeat"/);
  assert.ok(html.indexOf('id="player-surface"')>html.indexOf('id="player-section"'));
- assert.match(css,/top:50%;left:-17px/);
+ assert.match(html,/class="player-surface-pill" id="player-surface-button"/);
+ assert.doesNotMatch(html,/class="player-surface-handle"/);
+ assert.doesNotMatch(html,/id="reaction-button"/);
+ assert.match(css,/right:12px;bottom:57px/);
+ assert.match(css,/\.progress-foot \.player-surface-pill/);
+ assert.equal(playerSurfaceShortLabel('frosted'),'FOSCO');
  assert.match(css,/width:200%;height:100%/);
  assert.match(css,/flex:0 0 50%/);
  assert.match(css,/translate3d\(-50%,0,0\)/);
