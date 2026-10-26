@@ -143,5 +143,25 @@
 @media(max-width:380px){.lyric-font-option{gap:5px;padding:9px 7px;min-height:77px}.lyric-font-specimen{flex-basis:33px;font-size:22px}.lyric-font-detail strong{font-size:11px}.lyric-font-scope button{flex:1 1 auto}}
 @media(prefers-reduced-motion:reduce){.lyric-type-preview>div{transition:none}}
 
+
+/* GNARLY Fullscreen · app and independent viewport-fixed artwork.
+ * True browser Fullscreen API where available, immersive viewport on iOS Safari. */
+.app-shell .fullscreen-toggle{width:39px;height:39px;min-width:37px;flex:0 0 39px;display:grid;place-items:center;border-radius:12px;background:rgba(255,255,255,.11);border:1px solid rgba(255,255,255,.20);color:#eef5f1;touch-action:manipulation}
+.app-shell .fullscreen-toggle [data-fullscreen-glyph]{font-size:24px;line-height:1;font-weight:700}
+.app-shell .fullscreen-toggle[aria-pressed="true"]{color:var(--acid);border-color:color-mix(in srgb,var(--acid) 60%,transparent);background:color-mix(in srgb,var(--acid) 11%,rgba(10,20,14,.8))}
+html.gnarly-fullscreen,html.gnarly-fullscreen body{min-height:100%;width:100%;background:#080e10}
+html.gnarly-fullscreen .app-shell{max-width:min(100%,1240px);min-height:100dvh;height:auto;margin:0 auto;border:0;border-radius:0;box-shadow:none}
+html.gnarly-fullscreen .app-shell .main{max-width:1120px;margin:0 auto;min-height:calc(100dvh - 100px)}
+html.gnarly-fullscreen .app-shell .brand-line,
+html.gnarly-fullscreen .app-shell .omnibox-shell,
+html.gnarly-fullscreen .app-shell .module-dock{max-width:870px;margin-left:auto;margin-right:auto}
+html.gnarly-fullscreen .app-shell .player{max-width:min(680px,100%);margin-left:auto;margin-right:auto}
+html.gnarly-fullscreen .gnarly-background,html.gnarly-fullscreen .photo-background{min-height:100dvh;min-width:100%}
+html.gnarly-fullscreen .app-shell .topbar{max-width:1080px;margin-left:auto;margin-right:auto}
+body.gnarly-immersive{min-height:100dvh}
+.app-shell #cover-image,.app-shell .media-item img,.karaoke-stage-art{image-rendering:auto;object-fit:cover}
+.gnarly-background .photo-background{background-position:center;background-size:cover;background-repeat:no-repeat;image-rendering:auto}
+@media(max-width:380px){.app-shell .fullscreen-toggle{width:32px;height:36px;flex-basis:32px;min-width:32px}.app-shell .fullscreen-toggle [data-fullscreen-glyph]{font-size:20px}.app-shell .quick-actions{gap:4px}}
+
 /* One-tap GNARLY layer cycling, hold for the full manual selector. */
 #theme-button,#experience-button,#lyric-style-button{touch-action:manipulation;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
