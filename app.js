@@ -472,7 +472,7 @@ async function enrichSelectedTrack(track,knownDuration=0){
  if(!track||!['youtube','local'].includes(track.source)||state.current!==track)return;
  // An opaque video ID is not a song title; do not invent an artist for it.
  if(/^[A-Za-z0-9_-]{11}$/.test(track.title||'')&&isGenericArtist(track.artist))return;
- if(track.metadataConfidence>=84&&track.album&&track.artwork&&!isGenericArtist(track.artist))return;
+ if(track.metadataConfidence>=84&&track.album&&track.artwork&&!isGenericArtist(track.artist)&&!/(?:i\.ytimg\.com|img\.youtube\.com)/.test(track.artwork))return;
  const duration=Number(track.duration)>0?Number(track.duration):Number(knownDuration)||0;
  const credit=inferredCredit(track.title,track.artist);
  if(!duration&&!credit.artist)return;
