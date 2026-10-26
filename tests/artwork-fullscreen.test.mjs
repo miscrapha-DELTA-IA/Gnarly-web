@@ -120,7 +120,7 @@ test('real 1280x720 thumbnail is not called Ultra HD on retina portrait',async()
   assert.equal(regular.quality,'high');
  }finally{globalThis.Image=Old;clearArtworkQualityCache()}
 });
-test('quality metadata is scoped to full-viewport background and player surface, not a CSS upscaler',()=>{
+test('artwork quality metadata never reduces the approved full-screen cover framing',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
  const stage=readFileSync(new URL('../ui/karaoke-stage.js',import.meta.url),'utf8');
@@ -128,9 +128,11 @@ test('quality metadata is scoped to full-viewport background and player surface,
  assert.match(app,/resolveArtworkAsset\(raw/);
  assert.match(app,/dataset\.artQuality/);
  assert.match(css,/data-art-quality="low"/);
- assert.match(css,/gnarly-art-safe-width/);
+ assert.match(css,/#gnarly-background \.photo-background\[data-art-quality="low"\]/);
  assert.match(stage,/resolveArtworkAsset\(art/);
- assert.match(css,/background-size:min\(91vw/);
+ assert.match(css,/#gnarly-background \.photo-background[\s\S]*?background-size:cover!important/);
+ assert.doesNotMatch(css,/background-size:min\(91vw/);
+ assert.match(app,/background\.classList\.add\('cover-art-ready'\)/);
 });
 test('metadata service requests original album master art and Worker routes metadata lookup',()=>{
  const service=readFileSync(new URL('../lib/metadata-service.js',import.meta.url),'utf8');
