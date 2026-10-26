@@ -49,8 +49,12 @@ test('authored material remains primary and selected experience now participates
  assert.equal(textured.secondary.texture,3);
  assert.equal(compositionStrength(textured,{renderScale:.6}),0,'safeguard constrained GPU');
  assert.equal(compositionStrength(textured,{reducedMotion:true}),0);
- const unaltered=resolveVisual('GNARLY','gnarly-texture-plasma-lava');
- assert.equal(unaltered.secondary,null,'traditional GNARLY look is preserved by default');
+ const unaltered=resolveVisual('GNARLY','original');
+ assert.equal(unaltered.secondary,null,'traditional GNARLY remains unchanged with original experience');
+ assert.equal(resolveVisual('GNARLY','gnarly-texture-plasma-lava').secondary.texture,3);
+ const combination=resolveVisual('PRISM CARMINE','gnarly-exp-vector-drift-2000');
+ assert.equal(combination.look,2,'Prism Carmine retains primary visual identity');
+ assert.equal(combination.secondary.look,10,'Vector Drift participates without replacing Prism Carmine');
 });
 test('GNARLY 2 song choreography is deterministic, bounded and interpolates only near scene changes',()=>{
  const frame={duration:200,artworkHue:.42,anchorTheme:'CRIMSON',experience:'liquid-dream'};
