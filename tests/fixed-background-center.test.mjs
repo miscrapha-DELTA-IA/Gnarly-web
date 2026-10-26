@@ -11,7 +11,8 @@ test('visual background lives outside the scrollable player and retractable draw
  assert.match(css,/#gnarly-background #fluid-canvas/);
  assert.match(app,/background\.classList\.toggle\('cover-bg',coverPhoto\)/);
  assert.match(app,/photo\.hidden=!ownPhoto&&!coverPhoto/);
- assert.match(app,/visual\.setPaused\(ownPhoto\|\|coverPhoto\)/);
+ assert.match(app,/visual\.setPaused\(ownPhoto\|\|\(coverPhoto&&background\.classList\.contains\('cover-art-ready'\)\)\)/);
+ assert.match(css,/#gnarly-background\.cover-bg:not\(\.cover-art-ready\) #fluid-canvas\{opacity:1\}/);
 });
 test('player center is not coupled to flex auto margins or module height',()=>{
  assert.match(css,/\.app-shell \.player,[\s\S]*?margin:clamp\(/);

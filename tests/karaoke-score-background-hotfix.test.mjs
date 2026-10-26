@@ -1,0 +1,71 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {KaraokeLiveScore,analyzeVoice} from '../lib/karaoke-live-score.js';
+const vocal={rms:.1,hz:210,confidence:.8,voiced:true};
+const silent={rms:.001,hz:null,confidence:.01,voiced:false};
+const lines=[{time:0,text:'One first line'},{time:3.5,text:'Another line'},{time:7,text:'Final line'}];
+test('microphone presence generates honest points even before LRCLIB synced timestamps arrive',()=>{
+ const s=new KaraokeLiveScore();
+ assert.equal(s.startPresence(2,160),true);
+ assert.equal(s.snapshot().mode,'presence');
+ for(let t=2.1;t<=6;t+=.1)s.tick(t,true,vocal);
+ assert.ok(s.snapshot().score>130,JSON.stringify(s.snapshot()));
+ assert.ok(s.snapshot().judged>0,'short singing intervals produce feedback without waiting until song end');
+ assert.equal(s.snapshot().hasReference,false,'never pretend vocal presence is verified pitch');
+});
+test('unvoiced silence, audio pause and seeks never generate points',()=>{
+ const s=new KaraokeLiveScore();s.startPresence(3,150);
+ s.tick(3.1,true,silent);s.tick(3.2,true,silent);
+ assert.equal(s.snapshot().score,0);
+ s.tick(3.3,true,vocal);const before=s.snapshot().score;
+ s.tick(3.4,false,vocal);assert.equal(s.snapshot().score,before,'paused microphone does not score');
+ s.tick(45,true,vocal);assert.equal(s.snapshot().score,before,'big skip never fabricates progress');
+ s.tick(44,true,vocal);assert.equal(s.snapshot().score,before,'backward seek cannot score');
+});
+test('late synchronized LRC upgrade keeps earned real-microphone points and combo',()=>{
+ const s=new KaraokeLiveScore();s.startPresence(0,100);
+ for(let t=.1;t<4;t+=.1)s.tick(t,true,vocal);
+ const before=s.snapshot();
+ assert.ok(before.score>0);
+ assert.ok(before.combo>0);
+ s.retime(lines,4.2,100);
+ const now=s.snapshot();
+ assert.equal(now.mode,'synced');
+ assert.equal(now.score,before.score);
+ assert.equal(now.combo,before.combo);
+ assert.equal(now.bestCombo,before.bestCombo);
+ s.tick(4.3,true,vocal);
+ assert.ok(s.snapshot().score>before.score);
+});
+test('vocal tracking stays forgiving of airy harmonics but ignores low-confidence noise',()=>{
+ const s=new KaraokeLiveScore();s.startPresence(1,100);
+ const breathy={rms:.03,hz:null,confidence:.42,voiced:false};
+ s.tick(1.1,true,breathy);
+ assert.ok(s.snapshot().score>0);
+ const previous=s.snapshot().score;
+ s.tick(1.2,true,{...breathy,confidence:.1});
+ assert.equal(s.snapshot().score,previous);
+ assert.equal(analyzeVoice(new Float32Array(4096),44100).voiced,false);
+});
+test('source-time scoring is triggered from mic samples and stops cleanly when stage hides',()=>{
+ const stage=readFileSync(new URL('../ui/karaoke-stage.js',import.meta.url),'utf8');
+ assert.match(stage,/this\.mic\.onChange=\(\)=>\{/);
+ assert.match(stage,/this\.scorer\.tick\(this\.audio\.currentTime\|\|0/);
+ assert.match(stage,/this\.scorer\.startPresence\(/);
+ assert.match(stage,/this\.scorer\.retime\(/);
+ assert.match(stage,/this\.mic\.stop\(\);this\.scorer\.stop\(\)/);
+ assert.doesNotMatch(stage,/this\.query\('karaoke-stage-wallpaper'\)\.src=art;/,'no eager network image src before decode');
+});
+test('all album artwork compositions remain full bleed regardless of quality flags',()=>{
+ const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
+ const stage=readFileSync(new URL('../karaoke-stage.css',import.meta.url),'utf8');
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ assert.match(css,/#gnarly-background \.photo-background\[data-art-quality="low"\][\s\S]*?background-size:cover!important/);
+ assert.match(css,/#gnarly-background\.cover-bg:not\(\.cover-art-ready\) #fluid-canvas\{opacity:1\}/);
+ assert.match(stage,/\.karaoke-stage-wallpaper img\[data-art-quality="low"\][\s\S]*?object-fit:cover;width:100%/);
+ assert.doesNotMatch(stage,/object-fit:contain;width:min/);
+ assert.match(app,/background\.classList\.add\('cover-art-ready'\)/);
+ assert.match(app,/if\(img\.decode\)await img\.decode\(\)/);
+ assert.doesNotMatch(app,/const apply=url=>\{photo\.style\.backgroundImage/,'never eagerly swap a non-decoded image');
+});

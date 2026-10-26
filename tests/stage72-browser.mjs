@@ -563,4 +563,24 @@ assert.equal(await visualPage.locator('#player-audio').count(),1);
 assert.deepEqual(visualErrors,[],'New visual layers and GNARLY 2 do not throw browser runtime errors');
 await visualPage.close();
 
+// Device-size regression: artwork quality is metadata, never a request to
+// shrink the approved full-screen album cover into a tiny centred thumbnail.
+const bleed=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+const bleedErrors=[];bleed.on('pageerror',e=>bleedErrors.push(e.message));
+await bleed.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
+const artworkSizes=await bleed.evaluate(()=>{
+ const stage=document.getElementById('karaoke-stage-wallpaper');
+ const photo=document.getElementById('photo-background');
+ const player=document.getElementById('player-surface-artwork');
+ for(const el of [stage,photo,player])el.dataset.artQuality='low';
+ return {photo:getComputedStyle(photo).backgroundSize,
+  player:getComputedStyle(player).backgroundSize,
+  stage:getComputedStyle(stage).objectFit};
+});
+assert.equal(artworkSizes.photo,'cover');
+assert.ok(artworkSizes.player.split(',').every(size=>size.trim()==='cover'),artworkSizes.player);
+assert.equal(artworkSizes.stage,'cover');
+assert.deepEqual(bleedErrors,[]);
+await bleed.close();
+
 await browser.close();

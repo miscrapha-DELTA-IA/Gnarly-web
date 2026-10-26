@@ -61,7 +61,17 @@ export class KaraokeStage {
   this.reducedMotion=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches||false;
   this.trigger=null;this.artworkSource='';this.artworkRequest=0;this.feedbackTimer=null;
   this.savedDocumentScroll={x:0,y:0};
-  this.mic.onChange=()=>{if(this.opened)this.updateScore()};
+  // Safari may deliver HTMLAudioElement timeupdate only a few times per
+  // second. Score on each REAL microphone sample (~90 ms), using the player's
+  // currentTime (not Date.now), and keep timeupdate as a harmless fallback.
+  this.mic.onChange=()=>{
+   if(!this.opened)return;
+   if(this.mic.active&&this.scorer.active)
+    this.scorer.tick(this.audio.currentTime||0,
+     !this.audio.paused&&!this.audio.ended&&!this.audio.seeking,
+     this.mic.frameNow());
+   this.updateScore();
+  };
   this.mic.onRecording=blob=>{if(blob.size){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;
    a.download='gnarly-karaoke-voz-'+new Date().toISOString().slice(0,19).replaceAll(':','-')+(blob.type.includes('mp4')?'.m4a':'.webm');
    document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2500);
@@ -87,6 +97,9 @@ export class KaraokeStage {
   this.opened=false;this.root.hidden=true;this.query('karaoke-stage-font-menu').hidden=true;document.documentElement.classList.remove('karaoke-stage-open');
   clearTimeout(this.feedbackTimer);this.query('karaoke-stage-feedback').hidden=true;
   this.mic.stop();this.scorer.stop();this.updateScore();
+  // A pending image upgrade must be retried on reopen, not leave the stage
+  // with a permanently stale wallpaper when it completed while hidden.
+  ++this.artworkRequest;this.artworkSource='';
   this.trigger?.focus?.({preventScroll:true});this.trigger=null;
  }
  destroy(){this.close();clearTimeout(this.feedbackTimer);this.mic.stop()}
@@ -105,21 +118,31 @@ export class KaraokeStage {
   const art=track?.artwork||'./assets/gnarly-icon.png';
   if(this.artworkSource!==art){
    this.artworkSource=art;const revision=++this.artworkRequest;
-   this.query('karaoke-stage-art').src=art;this.query('karaoke-stage-wallpaper').src=art;
+   // Keep the already decoded wallpaper/cover on screen during the next fetch.
+   // Mutating img.src to an uncached remote thumbnail first caused a dark/black
+   // frame on iOS Safari before the higher quality candidate decoded.
+   const coverElement=this.query('karaoke-stage-art');
+   const wallpaperElement=this.query('karaoke-stage-wallpaper');
    const opts={viewportWidth:window.innerWidth,viewportHeight:window.innerHeight,dpr:window.devicePixelRatio||1,
     saveData:!!navigator.connection?.saveData,deviceMemory:Number(navigator.deviceMemory)||8};
    void resolveArtworkAsset(art,{
     pixels:artworkBudget({role:'stage',...opts}),minDimension:340,
     displayWidth:opts.viewportWidth,displayHeight:opts.viewportHeight,dpr:opts.dpr
-   }).then(asset=>{
+   }).then(async asset=>{
     if(this.artworkRequest!==revision||this.artworkSource!==art||!this.opened)return;
-    this.query('karaoke-stage-art').src=asset.url||art;
-    const wallpaper=this.query('karaoke-stage-wallpaper');
-    wallpaper.src=asset.url||art;
-    wallpaper.dataset.artQuality=asset.quality;
-    wallpaper.style.setProperty('--gnarly-art-safe-width',
-     Math.max(160,Math.round(Math.min(asset.width||320,asset.height||320)/Math.max(1,opts.dpr)))+'px');
-   });
+    const nextUrl=asset.url||art;
+    // resolveArtworkAsset already decodes candidates for dimensions; finish
+    // the image decode before swapping either visible stage image.
+    const prepared=new Image();prepared.src=nextUrl;
+    try{if(prepared.decode)await prepared.decode();else await new Promise((resolve,reject)=>{
+     prepared.onload=resolve;prepared.onerror=reject;
+     if(prepared.complete&&prepared.naturalWidth)resolve();
+    })}catch{return}
+    if(this.artworkRequest!==revision||this.artworkSource!==art||!this.opened)return;
+    if(coverElement.src!==prepared.src)coverElement.src=prepared.src;
+    if(wallpaperElement.src!==prepared.src)wallpaperElement.src=prepared.src;
+    wallpaperElement.dataset.artQuality=asset.quality;
+   }).catch(()=>{/* keep previous decoded artwork instead of a black frame */});
   }
   if(force||this.lineRef!==lines){
    this.lineRef=lines;this.currentIndex=-999;
@@ -138,10 +161,14 @@ export class KaraokeStage {
     });
     holder.append(fragment);
    }else{const p=document.createElement('p');p.className='karaoke-reader-empty';p.textContent=track?'A letra ainda não está disponível. O áudio continua normalmente.':'Selecione uma música para começar.';holder.append(p)}
-   if(this.mic.active)this.scorer.start(synced?lines:[],this.audio.currentTime||0,this.audio.duration||0);
+   if(this.mic.active){
+    // Late LRC arrival switches from presence to synchronized feedback without
+    // resetting accumulated real-microphone points to zero.
+    this.scorer.retime(synced?lines:[],this.audio.currentTime||0,this.audio.duration||0);
+   }
   }
   this.updateTransport();
-  this.query('karaoke-stage-status').textContent=data.synced?'Letra sincronizada · acompanhamento ao vivo':(plain.length?'Letra simples · pontuação desativada sem tempos confirmados':data.status||'Buscando letra...');
+  this.query('karaoke-stage-status').textContent=data.synced?'Letra sincronizada · acompanhamento ao vivo':(plain.length?'Letra simples · pontos por presença vocal, sem sincronização':data.status||'Buscando letra...');
   this.setFollowing(this.follow);
   this.tick(true);
  }
@@ -204,11 +231,16 @@ export class KaraokeStage {
   this.query('karaoke-voice-toggle').setAttribute('aria-pressed',String(active));
   const record=this.query('karaoke-voice-record');record.disabled=!active;record.textContent=this.mic.recording?'■ Parar gravação':'● Gravar voz';
   record.setAttribute('aria-pressed',String(this.mic.recording));
-  this.query('karaoke-score-label').textContent=active?(result.active?'CANTO AO VIVO':'MICROFONE ATIVO'):'MICROFONE INATIVO';
+  this.query('karaoke-score-label').textContent=active?(result.mode==='presence'?'VOZ AO VIVO':result.active?'CANTO AO VIVO':'MICROFONE ATIVO'):'MICROFONE INATIVO';
   this.query('karaoke-score-number').textContent=String(result.score);
   this.query('karaoke-score-combo').textContent=result.multiplier+'× · '+result.combo+' combo';
-  this.query('karaoke-score-mode').textContent=result.active?'Ritmo e presença · tom indisponível':'Sem tempos sincronizados para pontuar';
-  this.query('karaoke-score-rating').textContent=result.rating||(!active?'Ative o microfone para pontuar sua voz.':!result.active?'Microfone ligado; aguardando letra sincronizada.':voice.voiced?'Sua voz está sendo acompanhada.':'Cante junto usando fones para evitar retorno.');
+  this.query('karaoke-score-mode').textContent=!active?'Ative o microfone para pontuar':
+   result.mode==='presence'?'Presença vocal · sem sincronização':
+   result.active?'Ritmo e presença · tom indisponível':'Aguardando letra';
+  this.query('karaoke-score-rating').textContent=result.rating||(!active?'Ative o microfone para pontuar sua voz.':
+   result.mode==='presence'?'Pontos pela sua voz · sincronização e afinação não avaliadas.':
+   !result.active?'Microfone ligado; aguardando letra.':
+   voice.voiced?'Sua voz está sendo acompanhada.':'Cante junto usando fones para evitar retorno.');
   this.query('karaoke-voice-meter').style.width=active?Math.min(100,Math.round(voice.rms*850))+'%':'0%';
   this.query('karaoke-voice-tuning').textContent=active&&voice.voiced&&voice.hz
    ?'Voz detectada: '+Math.round(voice.hz)+' Hz · sem referência para nota musical'
@@ -222,8 +254,12 @@ export class KaraokeStage {
    const ok=await this.mic.start();
    if(!ok||!this.opened){this.mic.stop();return}
    const d=this.getState();
-   this.scorer.start(d.synced?d.lines:[],this.audio.currentTime||0,this.audio.duration||0);
-   this.onNotify(this.scorer.active?'Microfone ativo · pontuação de ritmo e presença.':'Microfone ativo · letra sem sincronização, sem pontuação.');
+   if(d.synced&&Array.isArray(d.lines)&&d.lines.length)
+    this.scorer.start(d.lines,this.audio.currentTime||0,this.audio.duration||0);
+   else this.scorer.startPresence(this.audio.currentTime||0,this.audio.duration||0);
+   this.onNotify(this.scorer.mode==='synced'&&this.scorer.active?
+    'Microfone ativo · pontuação sincronizada com a letra.':
+    'Microfone ativo · pontuação por presença vocal enquanto buscamos LRC.');
   }catch(e){
    this.onNotify(e?.name==='NotAllowedError'?'Permissão de microfone negada. Autorize o microfone no navegador.':'Não foi possível ativar o microfone (requer HTTPS e autorização).');
   }finally{this.query('karaoke-voice-toggle').disabled=false;this.updateScore()}
@@ -266,7 +302,7 @@ export class KaraokeStage {
     }
     if(target.hasAttribute('data-lyric-seek')&&this.getState().synced){
      const at=Number(target.dataset.lyricSeek);
-     if(Number.isFinite(at)){this.audio.currentTime=at;this.setFollowing(true);this.scorer.start(this.getState().lines,at,this.audio.duration||0);this.tick(true)}
+     if(Number.isFinite(at)){this.audio.currentTime=at;this.setFollowing(true);this.scorer.retime(this.getState().lines,at,this.audio.duration||0);this.tick(true)}
     }
   }
  }
