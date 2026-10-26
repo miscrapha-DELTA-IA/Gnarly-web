@@ -96,6 +96,7 @@ let smartMode=effectiveMode(getSetting('smartMode','off'));
 let smartStatus='Escolha um modo para complementar a fila sem substituir músicas.';
 let pendingQueueId=null,smartFillEpoch=0,smartFillPending=false,lastSmartSeed='',smartRevision=0;
 let playbackSelection=0,lastRecordedSelection=-1;
+const playbackBackstack=[]; // Session-only previous track, like iOS queue navigation.
 const recommendationsByMode=new Map();
 const audioWarmup=new AudioConnectionWarmup((url,options)=>fetch(url,options));
 let playbackStartedAt=0;
@@ -598,8 +599,12 @@ async function enrichSelectedTrack(track,knownDuration=0){
   if(state.sheet==='search')displaySearch(state.searchResults);
  }catch(error){if(error?.name!=='AbortError')console.debug('Metadata enrichment unavailable');}
 }
-function selectTrack(track,autoplay=true,{fromQueue=false}={}){
+function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={}){
  if(!track)return;
+ if(!fromHistory&&state.current?.id&&state.current.id!==track.id){
+  playbackBackstack.push(state.current);
+  if(playbackBackstack.length>30)playbackBackstack.shift();
+ }
  playbackSelection++;
  pendingQueueId=fromQueue?track.id:null;
  if(isGenericArtist(track.artist))track.artist=displayArtist(track);
@@ -714,7 +719,15 @@ function prefetchNextLyrics(){
  const nextTrack=state.queue.find(x=>x.id!==state.current?.id);
  if(nextTrack)void prefetchAutoLyrics(nextTrack).catch(()=>{});
 }
-function previous(){if(audio.currentTime>3){audio.currentTime=0;return}const idx=state.tracks.findIndex(x=>x.id===state.current?.id);if(idx>0)selectTrack(state.tracks[idx-1]);else audio.currentTime=0}
+function previous(){
+ if(!state.current)return;
+ if(audio.currentTime>3){externalSeek(0);return}
+ const previousTrack=playbackBackstack.pop();
+ if(previousTrack){selectTrack(previousTrack,true,{fromHistory:true});return}
+ const idx=state.tracks.findIndex(x=>x.id===state.current?.id);
+ if(idx>0)selectTrack(state.tracks[idx-1],true,{fromHistory:true});
+ else externalSeek(0);
+}
 function addToQueue(track,{quiet=false}={}){
  if(!track)return false;
  const auto=state.queue.find(q=>q._gnarlyAutoMode&&sameRecording(q,track));
