@@ -405,7 +405,7 @@ await stage80.close();
 const karaokePage=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
 const karaokeErrors=[];karaokePage.on('pageerror',e=>karaokeErrors.push(e.message));
 await karaokePage.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
-await karaokePage.waitForSelector('#karaoke-expand-button');
+await karaokePage.locator('#karaoke-expand-button').waitFor({state:'attached'});
 await karaokePage.locator('#floating-lyrics').evaluate(el=>{el.hidden=false});
 await karaokePage.locator('#karaoke-expand-button').click();
 assert.equal(await karaokePage.locator('#karaoke-stage').isVisible(),true);
