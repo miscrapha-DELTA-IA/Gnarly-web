@@ -9,3 +9,9 @@
 /manifest.webmanifest
   Content-Type: application/manifest+json; charset=utf-8
   Cache-Control: public, max-age=300
+
+/basic-pitch-worker.js
+  Cache-Control: public, max-age=604800
+
+/models/basic-pitch/*
+  Cache-Control: public, max-age=604800

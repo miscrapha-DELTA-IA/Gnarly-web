@@ -23,6 +23,7 @@ export function renderPerformancePanel(model){
  const steps=Array.from({length:16},(_,i)=>'<span class="dj-step'+(model.running&&i===model.step?' is-current':'')+'" data-dj-step="'+i+'" aria-hidden="true"></span>').join('');
  const midiStatus=!model.midiSupported?'Seu navegador não oferece controladores MIDI externos. Os pads funcionam sem eles.':
   model.midiReady?'Controlador conectado · as notas 36 a 51 disparam os pads desta música.':'Conectar teclado/controlador MIDI é opcional.';
+ const intelligence=model.intelligence||{};
  const outputs=model.midiReady&&model.outputs?.length?'<label class="dj-output-label">Saída do controlador (opcional)<select data-dj-output aria-label="Saída MIDI"><option value="off">Nenhuma</option>'+
   model.outputs.map(p=>'<option value="'+escapeText(p.id)+'"'+(p.id===model.outputId?' selected':'')+'>'+escapeText(p.name)+'</option>').join('')+'</select></label>':'';
  return '<section class="dj-panel" aria-label="Performance musical"><div class="dj-heading"><div><span class="dj-overline">GNARLY / LIVE</span>'+
@@ -32,6 +33,15 @@ export function renderPerformancePanel(model){
   '<div class="dj-track-copy"><span class="dj-track-eyebrow">'+subtitle+'</span><strong id="dj-song-name">'+escapeText(model.songTitle||'Nenhuma faixa selecionada')+
   '</strong><span id="dj-song-status" role="status">'+escapeText(status)+'</span></div>'+
   '<button type="button" class="dj-refresh" data-dj-command="refresh" aria-label="Recriar pads desta música" title="Recriar pads">↻</button></div>'+
+  '<details class="dj-intelligence"><summary>✧ INTELIGÊNCIA MUSICAL <small>Opcional · local</small></summary>'+
+  '<div class="dj-intelligence-inner"><p>Spotify Basic Pitch analisa um arquivo de áudio <strong>no seu aparelho</strong>, sem enviar a gravação a servidores. O modelo carrega apenas ao solicitar. Até 25 s / 10 MB; melhores resultados com instrumento isolado.</p>'+
+  '<div class="dj-intelligence-actions">'+
+  '<button type="button" data-dj-command="analyze-midi"'+(intelligence.busy?' disabled':'')+'>♮ '+(intelligence.busy?'Analisando…':'Áudio → MIDI')+'</button>'+
+  (intelligence.busy?'<button type="button" data-dj-command="cancel-midi">Cancelar</button>':'')+
+  (intelligence.ready?'<button type="button" data-dj-command="save-midi">↓ Exportar .mid</button><button type="button" data-dj-command="map-midi">◈ Mapear aos pads</button>':'')+
+  '</div><p class="dj-intelligence-status" id="dj-intelligence-status" role="status">'+escapeText(intelligence.status||'MIDI transcrito não é o MIDI original embutido na música.')+'</p>'+
+  (intelligence.ready?'<div class="dj-intelligence-results"><strong>'+escapeText(intelligence.notes+' notas estimadas')+'</strong><span>Centro tonal: '+escapeText(intelligence.tonalCenter)+'</span><span>Acordes sugeridos: '+escapeText(intelligence.displayChords?.join(' · ')||'indeterminados')+'</span></div>':'')+
+  '<p class="dj-intelligence-hint">Notas estimadas podem conter erros. “Mapear aos pads” transforma as notas detectadas em comandos para os 16 recortes existentes, sem substituir o timbre da música.</p></div></details>'+
   '<div class="dj-stage"><div class="dj-grid-head"><span>TOQUE / RECOMBINE</span><span>01 — 16</span></div>'+
   '<div class="dj-pads" role="group" aria-label="16 pads de bateria e efeitos">'+pads+'</div>'+
   '<div class="dj-under-grid"><span class="dj-under-accent" aria-hidden="true"></span>'+
