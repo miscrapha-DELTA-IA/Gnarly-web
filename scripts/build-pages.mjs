@@ -20,5 +20,7 @@ if(!existsSync(join(basicPitchPkg,'model.json'))||!existsSync(join(basicPitchPkg
 }
 mkdirSync(join(out,'models','basic-pitch'),{recursive:true});
 for(const file of ['model.json','group1-shard1of1.bin'])copyFileSync(join(basicPitchPkg,file),join(out,'models','basic-pitch',file));
+const license=join(root,'node_modules','@spotify','basic-pitch','LICENSE');
+if(existsSync(license))copyFileSync(license,join(out,'models','basic-pitch','LICENSE'));
 execFileSync(bundleBin,[join(root,'lib','basic-pitch-worker.js'),'--bundle','--platform=browser','--format=esm','--target=es2022','--minify','--outfile='+join(out,'basic-pitch-worker.js')],{stdio:'inherit'});
 console.log('Cloudflare Pages static assets staged in dist/; Basic Pitch bundled lazily, models first-party; API in functions/.');
