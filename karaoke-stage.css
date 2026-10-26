@@ -65,3 +65,9 @@ html.karaoke-stage-open,html.karaoke-stage-open body{overflow:hidden;overscroll-
  .karaoke-stage-footer button{font-size:11px}
 }
 @media(prefers-reduced-motion:reduce){.karaoke-reader-line,.karaoke-score-meter span{transition:none}}
+
+/* Scope existing Aa art compositions inside the fullscreen reader without
+ * promoting the entire dialog to the app's layout shell. */
+.karaoke-stage .karaoke-stage-art-root.app-shell{all:unset;display:block;width:100%;min-height:100%;font-family:inherit;color:inherit}
+.karaoke-stage .karaoke-stage-art-root .gnarly-typeart{font-size:inherit;max-width:100%;justify-content:center}
+.karaoke-stage .karaoke-reader-line.is-live .gnarly-typeart{font-size:inherit}
