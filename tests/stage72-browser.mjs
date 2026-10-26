@@ -233,7 +233,7 @@ async function inspectDesktop(expectedWidth,expectedHeight){
 }
 const desk1=await inspectDesktop(1440,900);
 assert.ok(desk1.desktop,'Desktop media query should detect a full-size browser with fine pointer');
-assert.ok(Math.abs(desk1.root.width-1440)<2&&Math.abs(desk1.root.height-900)<2,'PC shell should occupy 1440 × 900: '+JSON.stringify(desk1));
+assert.ok(Math.abs(desk1.root.width-1440)<2&&desk1.root.height>=900,'PC shell must span full width AND accommodate content past the viewport: '+JSON.stringify(desk1));
 assert.ok(Math.abs(desk1.canvas.width-1440)<2&&Math.abs(desk1.canvas.height-900)<2,'PC GPU canvas should cover viewport');
 assert.ok(desk1.gpu,'Desktop background must retain WebGL2');
 assert.ok(desk1.canvas.backingWidth>=2700&&desk1.canvas.backingHeight>=1600,'Retina 1440px desktop must not render a blurry 2.1MP texture: '+JSON.stringify(desk1));
@@ -246,6 +246,28 @@ assert.ok(Math.abs(desk2.root.width-1920)<2&&Math.abs(desk2.root.height-1080)<2,
 assert.ok(desk2.canvas.backingWidth>=1800&&desk2.canvas.backingHeight>=1000,'Full HD frame must retain crisp backing');
 assert.ok(desk2.player.x>=0&&desk2.player.right<=1920,'Desktop content should fit screen');
 await desktop.screenshot({path:'stage78-ui-desktop.png',fullPage:false});
+
+await desktop.locator('#music-toggle-button').click();
+await desktop.locator('#share-button').click();
+await desktop.locator('#performance-button').click();
+const beforeDesktopScroll=await desktop.evaluate(()=>{
+ const p=document.querySelector('#player-section').getBoundingClientRect();
+ return {top:p.top+scrollY,center:p.left+p.width/2};
+});
+await desktop.evaluate(()=>scrollTo({top:document.scrollingElement.scrollHeight,behavior:'instant'}));
+await desktop.waitForTimeout(250);
+const afterDesktopScroll=await desktop.evaluate(()=>{
+ const p=document.querySelector('#player-section').getBoundingClientRect(),c=document.querySelector('#fluid-canvas').getBoundingClientRect();
+ return {scrollY,top:p.top+scrollY,center:p.left+p.width/2,canvasTop:c.top,canvasW:c.width,canvasH:c.height,
+  height:document.scrollingElement.scrollHeight};
+});
+assert.ok(afterDesktopScroll.scrollY>150,'Desktop document must be scrollable when drawers expand');
+assert.ok(Math.abs(afterDesktopScroll.top-beforeDesktopScroll.top)<2,'Player cannot shift when desktop drawers expand');
+assert.ok(Math.abs(afterDesktopScroll.center-960)<2,'Player must remain horizontally centered');
+assert.ok(Math.abs(afterDesktopScroll.canvasTop)<2&&Math.abs(afterDesktopScroll.canvasW-1920)<2,
+ 'Desktop visual background must cover viewport during scroll: '+JSON.stringify(afterDesktopScroll));
+await desktop.screenshot({path:'stage80-long-page-desktop.png',fullPage:false});
+
 await desktop.close();
 assert.deepEqual(desktopErrors,[],'No uncaught desktop rendering exceptions');
 
@@ -285,4 +307,51 @@ assert.ok(flashed,'Real audio pad should flash synchronously on pointerdown');
 await djPage.screenshot({path:'stage79-dj-mobile.png',fullPage:true});
 assert.deepEqual(djErrors,[],'DJ must not crash Web Audio or GPU');
 await djPage.close();
+
+// Stage80: open a long real DJ drawer, then scroll BELOW the original viewport.
+// Backdrop stays viewport-fixed, not a clipped/solid-green shell wallpaper.
+// The player's DOCUMENT position must not change as panels expand below it.
+const stage80=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:2,isMobile:true,hasTouch:true});
+const stage80Errors=[];stage80.on('pageerror',e=>stage80Errors.push(e.message));
+await stage80.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
+await stage80.waitForSelector('#player-section');
+const snapshot=()=>stage80.evaluate(()=>{
+ const player=document.querySelector('#player-section').getBoundingClientRect();
+ const canvas=document.querySelector('#fluid-canvas').getBoundingClientRect();
+ const bg=document.querySelector('#gnarly-background').getBoundingClientRect();
+ return {playerTop:player.top+scrollY,playerX:player.x,playerW:player.width,
+  bgTop:bg.top,bgWidth:bg.width,bgHeight:bg.height,
+  canvasTop:canvas.top,canvasHeight:canvas.height,backingWidth:document.querySelector('#fluid-canvas').width,
+  pageHeight:document.scrollingElement.scrollHeight,scrollY,
+  bgPosition:getComputedStyle(document.querySelector('#gnarly-background')).position,
+  shellBackground:getComputedStyle(document.querySelector('#app-shell')).backgroundImage,
+  bgColor:getComputedStyle(document.body).backgroundColor};
+});
+const beforeExpand=await snapshot();
+assert.ok(Math.abs(beforeExpand.playerX+(beforeExpand.playerW/2)-195)<2,'Player should be centered before opening drawers');
+await stage80.locator('#music-toggle-button').click();
+await stage80.locator('#share-button').click();
+await stage80.locator('#performance-button').click();
+await stage80.locator('#module-performance-body [data-dj-pad]').first().waitFor();
+await stage80.waitForTimeout(400);
+const expanded=await snapshot();
+assert.ok(Math.abs(expanded.playerTop-beforeExpand.playerTop)<2,
+ 'Opening modules must NOT shift the player in document coordinates: '+JSON.stringify({beforeExpand,expanded}));
+assert.ok(Math.abs(expanded.playerX+expanded.playerW/2-195)<2,'Player remains horizontally centered');
+assert.ok(expanded.pageHeight>844+400,'Modules must genuinely extend scrollable document: '+JSON.stringify(expanded));
+assert.equal(expanded.bgPosition,'fixed','Animated background should be independent of document scrolling');
+assert.equal(expanded.shellBackground,'none','Scrollable shell must not draw a flat/solid background');
+await stage80.evaluate(()=>window.scrollTo({top:document.scrollingElement.scrollHeight,behavior:'instant'}));
+await stage80.waitForTimeout(250);
+const afterScroll=await snapshot();
+assert.ok(afterScroll.scrollY>250,'Expanded content should be reachable by scrolling');
+assert.ok(Math.abs(afterScroll.canvasTop)<2&&Math.abs(afterScroll.bgTop)<2,
+ 'Viewport shader must remain pinned to 0 when document scrolls: '+JSON.stringify(afterScroll));
+assert.ok(Math.abs(afterScroll.canvasHeight-844)<2&&Math.abs(afterScroll.bgHeight-844)<2,'Shader stays fullscreen');
+assert.equal(afterScroll.backingWidth,expanded.backingWidth,
+ 'Opening drawers and scrolling must not cause unnecessary GPU canvas reallocation');
+assert.deepEqual(stage80Errors,[]);
+await stage80.screenshot({path:'stage80-long-page-mobile.png',fullPage:false});
+await stage80.close();
+
 await browser.close();
