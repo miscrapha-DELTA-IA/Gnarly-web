@@ -53,6 +53,7 @@ test('track change updates art without restarting playback or touching visuals',
 test('sharp and moving surfaces prefer true published 800px Apple artwork',async()=>{
  const {preferHighResolutionArtwork}=await import('../ui/player-surface.js');
  assert.equal(preferHighResolutionArtwork('https://is1-ssl.mzstatic.com/image/thumb/12345/100x100bb.jpg'),'https://is1-ssl.mzstatic.com/image/thumb/12345/800x800bb.jpg');
+ assert.equal(preferHighResolutionArtwork('https://is1-ssl.mzstatic.com/image/thumb/12345/100x100bb.jpg',1600),'https://is1-ssl.mzstatic.com/image/thumb/12345/1600x1600bb.jpg');
  assert.equal(preferHighResolutionArtwork('https://i.ytimg.com/vi/abc/hqdefault.jpg'),'https://i.ytimg.com/vi/abc/hqdefault.jpg');
  assert.equal(preferHighResolutionArtwork('blob:https://gnarly.example/123'),'blob:https://gnarly.example/123');
  assert.match(app,/if\(lastSurfaceArtwork!==original\)return/);

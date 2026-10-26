@@ -122,7 +122,7 @@ function safeSurfaceArtwork(raw){
 }
 function updatePlayerSurfaceArtwork(){
  const original=safeSurfaceArtwork(state.current?.artwork);
- const url=safeSurfaceArtwork(preferHighResolutionArtwork(original));
+ const url=safeSurfaceArtwork(preferHighResolutionArtwork(original,1600));
  if(lastSurfaceArtwork===original)return;
  lastSurfaceArtwork=original;
  const fallback=new URL(icon,location.href).href;
@@ -176,7 +176,7 @@ function applyBackground(){
   photo.style.backgroundImage=`url("${state.backgroundURL}")`;
   photo.style.transform=`translate3d(${state.photoX}%,${state.photoY}%,0) scale(${state.photoZoom})`;
  }else{photo.style.backgroundImage='';photo.style.transform=''}
- if(coverPhoto)app.style.backgroundImage=`linear-gradient(#0002,#0007),url("${cover.replaceAll('"','%22')}")`;
+ if(coverPhoto)app.style.backgroundImage=`linear-gradient(#0002,#0007),url("${preferHighResolutionArtwork(cover,2000).replaceAll('"','%22')}")`;
  else app.style.backgroundImage='';
  visual.setPaused(ownPhoto||coverPhoto);
 }
