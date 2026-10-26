@@ -2,7 +2,7 @@ import {chromium} from 'playwright';
 import assert from 'node:assert/strict';
 const browser=await chromium.launch({headless:true,args:['--no-sandbox','--enable-webgl','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:2});
-const errs=[];page.on('pageerror',x=>errs.push(x.message));
+const errs=[],warnings=[];page.on('pageerror',x=>errs.push(x.message));page.on('console',x=>{if(x.type()==='warning'||x.type()==='error')warnings.push(x.text())});
 await page.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
 await page.waitForSelector('#omnibox-toggle');
 async function assertAppearanceControlFits(label){
@@ -27,11 +27,11 @@ await page.waitForTimeout(900);
 const nativeGPU=await page.evaluate(()=>{
  const canvas=document.querySelector('#fluid-canvas');
  const gl=canvas.getContext('webgl2');
- if(!gl)return {available:false};
+ if(!gl)return {available:false,freshCanvas:!!document.createElement('canvas').getContext('webgl2')};
  const program=gl.getParameter(gl.CURRENT_PROGRAM);
  return {available:!!gl,compiled:!!program,error:gl.getError()};
 });
-assert.ok(nativeGPU.available&&nativeGPU.compiled,'Metal shader port must compile in WebGL2, never silently use Canvas fallback: '+JSON.stringify(nativeGPU));
+assert.ok(nativeGPU.available&&nativeGPU.compiled,'Metal shader port must compile in WebGL2, never silently use Canvas fallback: '+JSON.stringify(nativeGPU)+'; warnings: '+warnings.slice(0,5).join(' | '));
 await page.locator('#theme-button').click();
 await page.locator('[data-theme="PRISM CARMINE"]').click();
 await page.waitForTimeout(150);
