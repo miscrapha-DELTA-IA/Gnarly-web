@@ -263,17 +263,19 @@ async function loadAutoLyrics(track){
   }
  }
 }
+let lyricsAIController=null;
 async function transcribeOwnLyrics(file){
  const track=state.current;if(!track||!file)return;
  if(!/^audio\//.test(file.type)&&!/\.(mp3|m4a|wav|ogg|flac|aac)$/i.test(file.name)){toast('Selecione um arquivo de áudio válido.');return}
  if(file.size>9*1024*1024){toast('Para transcrição, o áudio deve ter até 9 MB.');return}
+ lyricsAIController?.abort();const ctl=new AbortController();lyricsAIController=ctl;
  state.lyricsAIWorking=true;state.lyricsStatus='IA transcrevendo áudio autorizado · pode demorar…';
  if(state.sheet==='karaoke')renderSheet();
  try{
   const r=await fetch('/api/lyrics-ai',{
    method:'POST',
    headers:{'content-type':file.type||'application/octet-stream','x-gnarly-audio-consent':'yes'},
-   body:file
+   body:file,signal:ctl.signal
   });
   const response=await r.json();
   if(state.current!==track)return;
@@ -286,7 +288,7 @@ async function transcribeOwnLyrics(file){
   state.lyricsStatus=response.status||'Transcrição por IA · verifique a letra.';
   state.lastLyric=-2;syncLyrics();
  }catch{if(state.current===track)state.lyricsStatus='Sem conexão com o serviço de transcrição.'}
- finally{if(state.current===track){state.lyricsAIWorking=false;if(state.sheet==='karaoke')renderSheet()}}
+ finally{if(lyricsAIController===ctl){lyricsAIController=null;state.lyricsAIWorking=false;if(state.current===track&&state.sheet==='karaoke')renderSheet()}}
 }
 function syncLyrics(){const i=lyricIndex(state.lyrics,audio.currentTime||0);if(state.lastLyric===i)return;state.lastLyric=i;const el=$('#floating-lyrics');const line=$('#floating-line');if(!state.lyrics.length||!state.current){el.hidden=true;return}el.hidden=false;line.textContent=i>=0?state.lyrics[i].text:'♪ ♪ ♪';if(state.sheet==='karaoke')renderSheet()}
 let metadataAbort=null;
@@ -316,7 +318,7 @@ async function enrichSelectedTrack(track,knownDuration=0){
 }
 function selectTrack(track,autoplay=true){
  if(!track)return;
- state.demucsAbort?.abort();metadataAbort?.abort();pads.resetSong();stems.clear();state.stemModel='';state.stemStatus='Escolha quatro Stems ou solicite separação automática.';
+ state.demucsAbort?.abort();metadataAbort?.abort();lyricsAIController?.abort();state.lyricsAIWorking=false;pads.resetSong();stems.clear();state.stemModel='';state.stemStatus='Escolha quatro Stems ou solicite separação automática.';
  closeYouTubePlayer();audio.pause();state.playing=false;state.current=track;state.artworkHue=.58;state.playbackError='';state.audioState='idle';
  if(track.source==='youtube'){
    // Deferred until Play: avoids wasting a Render extraction on every tapped row.
@@ -567,7 +569,7 @@ for(const [action,fn] of [['play',()=>void play()],['pause',pause],['previoustra
 window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select')||e.ctrlKey||e.altKey||e.metaKey)return;if(isModuleOpen('performance')&&!state.sheet){const pad=PAD_KEYS.indexOf(e.key.toLowerCase());if(pad>=0){e.preventDefault();if(!e.repeat)void pads.trigger(pad);return}}if(e.code==='Space'){e.preventDefault();state.playing?pause():void play()}if(e.code==='Escape'){if(!$('#player-surface-menu').hidden){e.preventDefault();closePlayerSurfaceMenu(true);return}closeSheet();closeYouTubePlayer()};if(e.key==='ArrowRight'&&state.current)audio.currentTime=Math.min(audio.duration||0,audio.currentTime+5);if(e.key==='ArrowLeft'&&state.current)audio.currentTime=Math.max(0,audio.currentTime-5)});
 window.addEventListener('dragover',e=>{if(e.dataTransfer?.types.includes('Files')){e.preventDefault();app.classList.add('dragover')}});window.addEventListener('dragleave',e=>{if(!e.relatedTarget)app.classList.remove('dragover')});window.addEventListener('drop',e=>{e.preventDefault();app.classList.remove('dragover');importAudio(e.dataTransfer?.files||[])});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&pads.running)pads.stopLoop()});
-window.addEventListener('beforeunload',()=>{metadataAbort?.abort();pads.destroy();state.micRecorder?.state==='recording'&&state.micRecorder.stop();state.micStream?.getTracks()?.forEach(x=>x.stop());state.demucsAbort?.abort();stems.clear();for(const item of state.tracks)if(item.source==='local')URL.revokeObjectURL(item.url);if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL)});
+window.addEventListener('beforeunload',()=>{lyricsAIController?.abort();metadataAbort?.abort();pads.destroy();state.micRecorder?.state==='recording'&&state.micRecorder.stop();state.micStream?.getTracks()?.forEach(x=>x.stop());state.demucsAbort?.abort();stems.clear();for(const item of state.tracks)if(item.source==='local')URL.revokeObjectURL(item.url);if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL)});
 applyPlayerSurfaceMode(state.playerSurfaceMode,{persist:false});updatePlayer();applyPanelVisibility();
 
 // Direct backend playback has no separate invite login or YouTube modal on Play.
