@@ -1,6 +1,6 @@
 import {KaraokeMicrophone} from '../lib/karaoke-microphone.js';
 import {KaraokeLiveScore} from '../lib/karaoke-live-score.js';
-import {applyLyricStyle} from '../lib/lyric-style.js';
+import {applyLyricStyle,allLyricStyles} from '../lib/lyric-style.js';
 const esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 export function karaokeStageMarkup(){
  return `<section class="karaoke-stage" id="karaoke-stage" role="dialog" aria-modal="true" aria-labelledby="karaoke-stage-heading" hidden>
@@ -16,6 +16,7 @@ export function karaokeStageMarkup(){
    <button type="button" id="karaoke-voice-record" disabled aria-pressed="false">● Gravar voz</button>
    <button type="button" id="karaoke-caption-settings">Aa · Legenda</button>
   </nav>
+  <div class="karaoke-stage-font-menu" id="karaoke-stage-font-menu" aria-label="Escolher estilo da legenda" hidden></div>
   <section class="karaoke-score-card" aria-label="Pontuação do canto">
    <div><span class="karaoke-score-label" id="karaoke-score-label">MICROFONE INATIVO</span><strong class="karaoke-score-number" id="karaoke-score-number">0</strong></div>
    <div class="karaoke-score-right"><strong id="karaoke-score-combo">1× · 0 combo</strong><small id="karaoke-score-mode">Ritmo e presença · tom indisponível</small></div>
@@ -58,13 +59,13 @@ export class KaraokeStage {
  open(trigger){
   if(this.opened)return;
   this.trigger=trigger||null;this.opened=true;this.follow=true;
-  this.root.hidden=false;document.documentElement.classList.add('karaoke-stage-open');
+  this.root.hidden=false;this.query('karaoke-stage-font-menu').hidden=true;document.documentElement.classList.add('karaoke-stage-open');
   this.trackId=null;this.lineRef=null;this.currentIndex=-999;
   this.refresh(true);this.query('karaoke-stage-close').focus({preventScroll:true});
  }
  close(){
   if(!this.opened)return;
-  this.opened=false;this.root.hidden=true;document.documentElement.classList.remove('karaoke-stage-open');
+  this.opened=false;this.root.hidden=true;this.query('karaoke-stage-font-menu').hidden=true;document.documentElement.classList.remove('karaoke-stage-open');
   this.mic.stop();this.scorer.stop();this.updateScore();
   this.trigger?.focus?.({preventScroll:true});this.trigger=null;
  }
@@ -170,9 +171,29 @@ export class KaraokeStage {
     if(this.mic.recording)this.mic.stopRecording();
     else if(!this.mic.beginRecording())this.onNotify('Gravação não suportada pelo navegador.');
     this.updateScore();break;
-   case 'karaoke-caption-settings':this.onStyle();break;
+   case 'karaoke-caption-settings':{
+    const menu=this.query('karaoke-stage-font-menu');
+    if(!menu.hidden){menu.hidden=true;break}
+    menu.replaceChildren();
+    const available=allLyricStyles().slice(0,14);
+    for(const style of available){
+     const option=document.createElement('button');
+     option.type='button';option.dataset.stageFont=style.id;option.textContent=style.name;
+     option.setAttribute('aria-pressed',String(this.root.dataset.lyricStyle===style.id));
+     menu.append(option);
+    }
+    const full=document.createElement('button');full.type='button';full.dataset.stageFont='__all__';
+    full.textContent='Mais fontes…';menu.append(full);menu.hidden=false;break
+   }
+   
    case 'karaoke-follow-live':this.setFollowing(true);this.tick(true);break;
    default:
+    if(target.dataset.stageFont){
+     const name=target.dataset.stageFont;this.query('karaoke-stage-font-menu').hidden=true;
+     if(name==='__all__')this.onStyle(null);
+     else this.onStyle(name);
+     break;
+    }
     if(target.hasAttribute('data-lyric-seek')&&this.getState().synced){
      const at=Number(target.dataset.lyricSeek);
      if(Number.isFinite(at)){this.audio.currentTime=at;this.setFollowing(true);this.scorer.start(this.getState().lines,at,this.audio.duration||0);this.tick(true)}
