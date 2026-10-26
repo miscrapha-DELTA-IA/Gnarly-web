@@ -49,9 +49,9 @@ assert.equal(secondTime.error,0,'Pixel finishing cannot introduce WebGL errors')
 
 async function openCreativeLayer(button){
  if(await page.locator('#bottom-sheet').isVisible())await page.locator('#close-sheet').click();
- await page.locator(button).click();
+ await page.locator(button).click({button:'right'});
 }
-await page.locator('#theme-button').click();
+await page.locator('#theme-button').click({button:'right'});
 await page.locator('[data-theme="PRISM CARMINE"]').click();
 await page.waitForFunction(({name,want})=>{
  const gl=document.querySelector('#fluid-canvas').getContext('webgl2');
