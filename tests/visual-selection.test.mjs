@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {CLASSIC_THEMES,MATERIAL_THEMES,GNARLY_MODES,EXPERIENCES,CREATIVE_LOOKS,CREATIVE_PALETTES,EXPERIENCE_MATERIALS,resolveVisual,restoredThemeAfterGnarly} from '../lib/visual-selection.js';
 test('Stage72 keeps themes, seven classic experiences, six GNARLY experiences, separate reaction',()=>{
  assert.equal(CLASSIC_THEMES.length,17);assert.equal(MATERIAL_THEMES.length,6);assert.equal(GNARLY_MODES.length,4);
- assert.equal(EXPERIENCES.filter(x=>x.category==='classic'&&x.id!=='original').length,13);
+ assert.equal(EXPERIENCES.filter(x=>x.category==='classic'&&x.id!=='original').length,17);
  assert.equal(EXPERIENCES.filter(x=>x.category==='gnarly').length,6);
 });
 test('GNARLY override retains chosen experience',()=>{
@@ -32,4 +32,16 @@ test('all visual families have native geometry rather than a shared Cyber Night 
  for(const signature of ['evaluateLiquidMarble','evaluateProceduralMaterial','evaluateTexturedMarble','universePlateMetric','universeFbm','universePrintDots','universeStrataHeight'])
   assert.ok(metal.includes(signature),signature);
  assert.ok(metal.includes('look == 15'));
+});
+
+test('four physical texture families preserve the same selected palette',()=>{
+ const ids=['gnarly-texture-organic-web','gnarly-texture-fractured-cells','gnarly-texture-plasma-lava','gnarly-texture-topographic-moire'];
+ assert.deepEqual(ids.map(id=>resolveVisual('CRIMSON',id,'REATIVO').texture),[1,2,3,4]);
+ for(const id of ids){
+   const x=resolveVisual('CRIMSON',id,'DESLIGADO');
+   assert.equal(x.theme,'CRIMSON');assert.equal(x.look,null);
+   assert.equal(x.reaction,'DESLIGADO');
+ }
+ assert.equal(resolveVisual('GNARLY ORGANISM',ids[2]).texture,null);
+ assert.equal(resolveVisual('JACQUARD SIGNAL',ids[0]).texture,1);
 });
