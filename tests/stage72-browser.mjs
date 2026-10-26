@@ -38,9 +38,13 @@ await page.waitForTimeout(150);
 const prism=await page.evaluate(()=>{
  const gl=document.querySelector('#fluid-canvas').getContext('webgl2');
  const program=gl.getParameter(gl.CURRENT_PROGRAM);
- return {look:gl.getUniform(program,gl.getUniformLocation(program,'u_look')),error:gl.getError()};
+ const loc=gl.getUniformLocation(program,'u_look');
+ return {look:loc?gl.getUniform(program,loc):null,error:gl.getError(),
+  uniforms:Array.from({length:gl.getProgramParameter(program,gl.ACTIVE_UNIFORMS)},(_,i)=>gl.getActiveUniform(program,i)?.name),
+  theme:document.querySelector('.build-badge')?.textContent,
+  selected:document.querySelector('.visual-choice.active[data-theme]')?.dataset.theme};
 });
-assert.equal(prism.look,2,'Prism must render the native diamond lattice, not a generic Cyber Night warp');
+assert.equal(prism.look,2,'Prism must render native diamond lattice instead of generic Cyber Night: '+JSON.stringify(prism));
 assert.equal(prism.error,0);
 await page.locator('[data-visual-tab="theme"]').click();
 await page.locator('[data-theme="ACID"]').click();
