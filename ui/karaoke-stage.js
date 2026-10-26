@@ -1,6 +1,7 @@
 import {KaraokeMicrophone} from '../lib/karaoke-microphone.js';
 import {KaraokeLiveScore} from '../lib/karaoke-live-score.js';
 import {applyLyricStyle,allLyricStyles} from '../lib/lyric-style.js';
+import {renderLyricArtwork} from '../lib/karaoke-art-direction.js';
 const esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 export function karaokeStageMarkup(){
  return `<section class="karaoke-stage" id="karaoke-stage" role="dialog" aria-modal="true" aria-labelledby="karaoke-stage-heading" hidden>
@@ -26,7 +27,7 @@ export function karaokeStageMarkup(){
   </section>
   <div class="karaoke-stage-status" id="karaoke-stage-status" role="status">Aguardando letra...</div>
   <section class="karaoke-reader" id="karaoke-reader" aria-label="Letras da música">
-   <div id="karaoke-reader-lines" class="karaoke-reader-lines"></div>
+   <div class="app-shell karaoke-stage-art-root"><div id="karaoke-reader-lines" class="karaoke-reader-lines"></div></div>
   </section>
   <div class="karaoke-stage-footer">
    <button type="button" id="karaoke-follow-live">⌖ Voltar à letra ao vivo</button>
@@ -128,6 +129,15 @@ export class KaraokeStage {
     el.classList.toggle('is-past',index>i&&!!data.synced);
     el.classList.toggle('is-future',index<i&&!!data.synced);
     el.style.setProperty('--distance',Math.min(3,Math.abs(offset)));
+    // Latest Aa Creative Editions use deterministic, escaped markup only
+    // for the active line; remove DOM treatments once the line is inactive.
+    const live=i===index&&!!data.synced,mode=live?'art':'plain';
+    const current=typeof lines?.[i]==='object'?lines[i]?.text||'':String(lines?.[i]||'');
+    if(el.dataset.renderedMode!==mode||live&&el.dataset.renderedStyle!==data.style){
+     if(live)el.innerHTML=renderLyricArtwork(current,data.style,{lineId:i,active:true});
+     else if(el.dataset.renderedMode==='art')el.textContent=current;
+     el.dataset.renderedMode=mode;el.dataset.renderedStyle=data.style||'original';
+    }
    });
    const active=holder.querySelector('.is-live');
    if(active&&this.follow)active.scrollIntoView({block:'center',behavior:this.reducedMotion?'instant':'smooth'});
