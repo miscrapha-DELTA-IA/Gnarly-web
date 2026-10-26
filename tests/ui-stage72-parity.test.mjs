@@ -42,7 +42,7 @@ test('panel store preserves visibility, Zen escape and quick layouts',()=>{
  assert.equal(store.isVisible('search'),false);
  store.toggle('search');assert.equal(store.isVisible('search'),true);
  store.setZen(true);assert.equal(store.isVisible('player'),false);
- store=createDisplayStore(storage);assert.equal(store.zen,true);
+ store=createDisplayStore(storage);assert.equal(store.zen,false); // Stage72 Zen is session-only
  store.setZen(false);assert.equal(store.isVisible('player'),true);
  store.apply('essential');assert.equal(store.visible.presets,false);
  store.setGroup(['presets','controls'],true);
@@ -58,4 +58,27 @@ test('background manager uses independent photo transform, never file selection 
  assert.match(app,/case 'remove-background'/);
  assert.match(app,/style\.transform=/);
  assert.match(html,/id="photo-background"/);
+});
+
+test('Player density and material adjust independently of visibility and Zen',()=>{
+ const data=new Map(),storage={getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v)};
+ let store=createDisplayStore(storage);
+ assert.equal(store.size,'compact');
+ assert.equal(store.material,'clear');
+ assert.match(renderDisplayPanel(store),/PLAYER · TAMANHO/);
+ assert.match(renderDisplayPanel(store),/VIDRO · TRANSPARÊNCIA/);
+ store.setSize('minimal');store.setMaterial('frosted');
+ store.set('player',false);store.setZen(true);
+ store=createDisplayStore(storage);
+ assert.equal(store.zen,false);
+ assert.equal(store.size,'minimal');
+ assert.equal(store.material,'frosted');
+ assert.equal(store.isVisible('player'),false);
+ store.setSize('invalid');store.setMaterial('invalid');
+ assert.equal(store.size,'minimal');
+ assert.equal(store.material,'frosted');
+ store.apply('all');
+ assert.equal(store.isVisible('player'),true);
+ assert.equal(store.size,'minimal');
+ assert.equal(store.material,'frosted');
 });
