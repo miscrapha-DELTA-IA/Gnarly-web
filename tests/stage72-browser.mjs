@@ -410,4 +410,29 @@ assert.deepEqual(stage80Errors,[]);
 await stage80.screenshot({path:'stage80-long-page-mobile.png',fullPage:false});
 await stage80.close();
 
+// Karaoke expansion: operates on the existing page/player and never asks for mic
+// permission by simply opening the native-inspired lyric interface.
+const karaokePage=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+const karaokeErrors=[];karaokePage.on('pageerror',e=>karaokeErrors.push(e.message));
+await karaokePage.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
+await karaokePage.locator('#karaoke-expand-button').waitFor({state:'attached'});
+await karaokePage.locator('#floating-lyrics').evaluate(el=>{el.hidden=false});
+await karaokePage.locator('#karaoke-expand-button').click();
+assert.equal(await karaokePage.locator('#karaoke-stage').isVisible(),true);
+assert.equal(await karaokePage.locator('#karaoke-voice-toggle').getAttribute('aria-pressed'),'false');
+assert.equal(await karaokePage.locator('#karaoke-voice-record').isDisabled(),true);
+assert.equal(await karaokePage.locator('audio').count(),1,'Expanded karaoke must reuse the one and only audio element');
+await karaokePage.locator('#karaoke-caption-settings').click();
+assert.equal(await karaokePage.locator('#karaoke-stage-font-menu').isVisible(),true);
+await karaokePage.locator('[data-stage-font="neon"]').click();
+assert.equal(await karaokePage.locator('#karaoke-stage').getAttribute('data-lyric-style'),'neon');
+assert.equal(await karaokePage.locator('#karaoke-stage').isVisible(),true);
+await karaokePage.locator('#karaoke-follow-live').click();
+await karaokePage.screenshot({path:'karaoke-expanded-web-mobile.png',fullPage:false});
+await karaokePage.locator('#karaoke-stage-close').click();
+assert.equal(await karaokePage.locator('#karaoke-stage').isVisible(),false);
+assert.equal(await karaokePage.locator('#player-section').count(),1);
+assert.deepEqual(karaokeErrors,[],'Karaoke expanded overlay must not throw runtime errors');
+await karaokePage.close();
+
 await browser.close();
