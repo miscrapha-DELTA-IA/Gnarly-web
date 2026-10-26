@@ -16,6 +16,7 @@ import {PerformancePads,PAD_KEYS} from './lib/performance-pads.js';
 import {renderPerformancePanel} from './ui/performance-panel.js';
 import {resolveLyricStyle,applyLyricStyle,allLyricStyles} from './lib/lyric-style.js';
 import {loadLyricTypeface,findFont} from './lib/lyric-font-catalog.js';
+import {renderLyricArtwork,findKaraokeDesign,designFont} from './lib/karaoke-art-direction.js';
 import {LyricFontPreferences,artistKey} from './lib/lyric-font-preferences.js';
 import {renderLyricStylePanel} from './ui/lyric-style-panel.js';
 import {transcribeMidiFile,PITCH_FILE_LIMIT} from './lib/audio-midi-transcriber.js';
@@ -41,7 +42,7 @@ let omniboxStorage=null;try{omniboxStorage=window.localStorage}catch{}
 const omnibox=new OmniboxSession(omniboxStorage);
 const displayStore=createDisplayStore(omniboxStorage);
 const lyricFonts=new LyricFontPreferences(omniboxStorage);
-let lyricScope='song',lyricGroup='all',fontPreviewObserver=null;
+let lyricScope='song',lyricGroup='art',fontPreviewObserver=null;
 const safe=(v)=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
 const svg=(name)=>`<svg class="icon" aria-hidden="true"><use href="#i-${name}" /></svg>`;
 const getSetting=(name,fallback)=>{try{return localStorage.getItem('gnarly.web.'+name)||fallback}catch{return fallback}};
@@ -81,7 +82,8 @@ const karaokeStage=new KaraokeStage({
   const style=resolveLyricStyle(id);
   lyricFonts.set(style.id,'song',state.current);
   state.lyricStyle=style.id;applyLyricStyle(app,style.id);
-  void loadLyricTypeface(style.id);
+  void loadLyricTypeface(designFont(style.id));
+  refreshLyricArtwork();
   karaokeStage.refresh(true);
  }
 });
@@ -137,7 +139,7 @@ if(!PALETTES[state.theme])state.theme='ACID';
 if(!['DESLIGADO','FLUIDO','REATIVO'].includes(state.reaction))state.reaction='FLUIDO';
 visual.setTheme(state.theme);visual.setExperience(state.experience);visual.setReaction(state.reaction);visual.startLoop();
 applyLyricStyle(app,state.lyricStyle);
-void loadLyricTypeface(state.lyricStyle);
+void loadLyricTypeface(designFont(state.lyricStyle));
 engine.setSpeed(state.speed,state.pitch);engine.setReverb(state.reverb);engine.setBass(state.bass);
 function toast(message){const el=$('#toast');el.textContent=message;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,4200)}
 function flashDJPad(index){
@@ -398,10 +400,13 @@ function syncLyrics(){
  const el=$('#floating-lyrics'),line=$('#floating-line');
  el.hidden=!state.current;
  if(!state.current)return;
- line.textContent=state.lyrics.length?(i>=0?state.lyrics[i].text:'♪ ♪ ♪'):
+ const text=state.lyrics.length?(i>=0?state.lyrics[i].text:'♪ ♪ ♪'):
   state.lyricsLoading?'Buscando letra…':state.plainLyrics.length?state.plainLyrics[0]:'Karaokê · expandir para cantar';
+ // The latest Aa Creative Editions renderer is kept intact, with escaped text.
+ line.innerHTML=renderLyricArtwork(text,state.lyricStyle,{lineId:i,active:true});
  if(state.sheet==='karaoke')renderSheet();
 }
+function refreshLyricArtwork(){state.lastLyric=-2;syncLyrics()}
 let metadataAbort=null;
 async function enrichSelectedTrack(track,knownDuration=0){
  if(!track||!['youtube','local'].includes(track.source)||state.current!==track)return;
@@ -419,7 +424,7 @@ async function enrichSelectedTrack(track,knownDuration=0){
   if(!changed)return;
   if(isGenericArtist(before)&&!isGenericArtist(track.artist)){
    const choice=lyricFonts.selected(track).style;
-   if(choice!==state.lyricStyle){state.lyricStyle=choice;applyLyricStyle(app,choice);void loadLyricTypeface(choice)}
+   if(choice!==state.lyricStyle){state.lyricStyle=choice;applyLyricStyle(app,choice);void loadLyricTypeface(designFont(choice))}
   }
   // Transport, playback URL, audio graph and queue identity remain untouched.
   omnibox.updateMetadata(track);state.history=omnibox.history;
@@ -439,7 +444,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false}={}){
  state.demucsAbort?.abort();metadataAbort?.abort();invalidateMidiAnalysis();lyricsAIController?.abort();state.lyricsAIWorking=false;pads.resetSong();stems.clear();state.stemModel='';state.stemStatus='Escolha quatro Stems ou solicite separação automática.';
  closeYouTubePlayer();audio.pause();state.playing=false;state.current=track;
  karaokeStage.resetForTrack();
- state.lyricStyle=lyricFonts.selected(track).style;applyLyricStyle(app,state.lyricStyle);void loadLyricTypeface(state.lyricStyle);
+ state.lyricStyle=lyricFonts.selected(track).style;applyLyricStyle(app,state.lyricStyle);void loadLyricTypeface(designFont(state.lyricStyle));
  state.artworkHue=.58;state.playbackError='';state.audioState='idle';
  if(track.source==='youtube'){
    // Deferred until Play: avoids wasting a Render extraction on every tapped row.
@@ -711,8 +716,8 @@ function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet)
  case 'theme':
  case 'experience':
  case 'reaction':content.innerHTML=renderVisualLayer(state.sheet);break;
- case 'lyric-style':content.innerHTML=renderLyricStylePanel(state.lyricStyle,{scope:lyricScope,track:state.current,resolution:lyricFonts.selected(state.current),recents:lyricFonts.recents});break;
-  case 'karaoke':content.innerHTML=`<div class="card-help">O GNARLY procura letras primeiro no LRCLIB, com conferência de artista, título e duração. Quando só existe letra simples, ela aparece sem tempos inventados. A transcrição por IA usa apenas áudio que você escolher enviar.</div><p class="status-text" id="lyrics-status">${safe(state.lyricsStatus)}</p>${btn('Importar letra .lrc','load-lrc')}<div class="lyrics-actions">${btn('Aa · Estilo da legenda','go-lyric-style','alt')}${state.current&&!state.lyricsLoading&&!state.lyricsAIWorking?btn('Buscar letras novamente','retry-lyrics','alt'):''}${state.current&&!state.lyrics.length?btn(state.lyricsAIWorking?'Transcrevendo…':state.plainLyrics.length?'Transcrever com IA para obter tempos':'Transcrever meu áudio com IA','lyrics-ai','alt'):''}</div><label class="section-note lyrics-ai-consent"><input id="lyrics-ai-autofallback" type="checkbox" ${lyricsAIAutoSession?'checked':''} /> Transcrever automaticamente meus arquivos locais, apenas nesta sessão, caso o banco não encontre letra (envia o áudio à IA).</label><p class="section-note">Transcrição por IA é experimental. Para músicas de catálogo, selecione manualmente um áudio da mesma gravação que você tenha autorização para processar.</p><div class="section-head">${state.lyricsSynced?'Letra sincronizada':state.plainLyrics.length?'Letra sem sincronização':'Letra'}</div>${state.lyrics.length?`<div class="lyrics-box">${state.lyrics.map((line,i)=>{const active=i===lyricIndex(state.lyrics,audio.currentTime);return `<div class="lyric-line ${active?'active':''}" data-lyric-time="${line.time}">${safe(line.text)}</div>`}).join('')}</div>`:state.plainLyrics.length?`<div class="lyrics-box lyrics-unsynced">${state.plainLyrics.map(line=>`<div class="lyric-line">${safe(line)}</div>`).join('')}</div>`:'<p class="section-note">Nenhuma letra confirmada. Você pode importar .lrc ou transcrever seu arquivo de áudio autorizado.</p>'}`;break;
+ case 'lyric-style':content.innerHTML=renderLyricStylePanel(state.lyricStyle,{scope:lyricScope,track:state.current,resolution:lyricFonts.selected(state.current),recents:lyricFonts.recents,group:lyricGroup,previewText:state.lyrics[lyricIndex(state.lyrics,audio.currentTime||0)]?.text||'TUA VOZ ME LEVA'});break;
+  case 'karaoke':content.innerHTML=`<div class="card-help">O GNARLY procura letras primeiro no LRCLIB, com conferência de artista, título e duração. Quando só existe letra simples, ela aparece sem tempos inventados. A transcrição por IA usa apenas áudio que você escolher enviar.</div><p class="status-text" id="lyrics-status">${safe(state.lyricsStatus)}</p>${btn('Importar letra .lrc','load-lrc')}<div class="lyrics-actions">${btn('Aa · Estilo da legenda','go-lyric-style','alt')}${state.current&&!state.lyricsLoading&&!state.lyricsAIWorking?btn('Buscar letras novamente','retry-lyrics','alt'):''}${state.current&&!state.lyrics.length?btn(state.lyricsAIWorking?'Transcrevendo…':state.plainLyrics.length?'Transcrever com IA para obter tempos':'Transcrever meu áudio com IA','lyrics-ai','alt'):''}</div><label class="section-note lyrics-ai-consent"><input id="lyrics-ai-autofallback" type="checkbox" ${lyricsAIAutoSession?'checked':''} /> Transcrever automaticamente meus arquivos locais, apenas nesta sessão, caso o banco não encontre letra (envia o áudio à IA).</label><p class="section-note">Transcrição por IA é experimental. Para músicas de catálogo, selecione manualmente um áudio da mesma gravação que você tenha autorização para processar.</p><div class="section-head">${state.lyricsSynced?'Letra sincronizada':state.plainLyrics.length?'Letra sem sincronização':'Letra'}</div>${state.lyrics.length?`<div class="lyrics-box">${state.lyrics.map((line,i)=>{const active=i===lyricIndex(state.lyrics,audio.currentTime);return `<div class="lyric-line ${active?'active':''}" data-lyric-time="${line.time}">${active?renderLyricArtwork(line.text,state.lyricStyle,{lineId:i,active:true}):safe(line.text)}</div>`}).join('')}</div>`:state.plainLyrics.length?`<div class="lyrics-box lyrics-unsynced">${state.plainLyrics.map(line=>`<div class="lyric-line">${safe(line)}</div>`).join('')}</div>`:'<p class="section-note">Nenhuma letra confirmada. Você pode importar .lrc ou transcrever seu arquivo de áudio autorizado.</p>'}`;break;
  case 'background':content.innerHTML=`<div class="background-menu"><button class="background-menu-row" data-command="show-visual">✦ <span>Tema visual</span><b>${state.backgroundMode==='visual'?'✓':''}</b></button><button class="background-menu-row" data-command="show-cover">▧ <span>Capa do álbum</span><b>${state.backgroundMode==='cover'?'✓':''}</b></button><button class="background-menu-row" data-command="load-background">▣ <span>Minha foto · escolher / trocar</span></button><button class="background-menu-row" data-command="use-photo" ${state.backgroundURL?'':'disabled'}>✓ <span>Usar minha foto</span><b>${state.backgroundMode==='custom'?'✓':''}</b></button><button class="background-menu-row" data-command="adjust-photo" ${state.backgroundURL?'':'disabled'}>☷ <span>Ajustar foto</span></button><button class="background-menu-row danger" data-command="remove-background">× <span>Remover foto</span></button></div>${state.photoAdjust&&state.backgroundURL?`<div class="photo-editor"><p class="section-note">Ajustes locais · a imagem não é enviada ao servidor</p><label for="photo-zoom">Zoom <output id="photo-zoom-value">${Math.round(state.photoZoom*100)}%</output></label><input type="range" id="photo-zoom" data-photo-parameter="photoZoom" min="1" max="2.5" step=".025" value="${state.photoZoom}" /><label for="photo-x">Posição horizontal</label><input type="range" id="photo-x" data-photo-parameter="photoX" min="-40" max="40" step="1" value="${state.photoX}"/><label for="photo-y">Posição vertical</label><input type="range" id="photo-y" data-photo-parameter="photoY" min="-40" max="40" step="1" value="${state.photoY}"/><button class="action-button" data-command="done-photo">Concluído</button></div>`:''}`;break;
  default:content.textContent='';
  }}
@@ -749,7 +754,8 @@ function applyChosenLyricFont(id,scope=lyricScope){
  lyricFonts.set(style.id,scope,state.current);
  state.lyricStyle=style.id;
  applyLyricStyle(app,style.id);
- void loadLyricTypeface(style.id);
+ void loadLyricTypeface(designFont(style.id));
+ refreshLyricArtwork();
  const picker=$('#sheet-content .lyric-style-panel');
  if(picker){
   for(const b of picker.querySelectorAll('[data-lyric-style]')){
@@ -757,7 +763,11 @@ function applyChosenLyricFont(id,scope=lyricScope){
    const mark=b.querySelector('.lyric-font-selection');if(mark)mark.textContent=b.dataset.lyricStyle===style.id?'✓':'';
   }
   const sample=picker.querySelector('#lyric-live-specimen');
-  if(sample){const info=findFont(style.id);sample.style.fontFamily=info?info.fontFamily+','+info.fallback:'var(--gnarly-lyric-font)'}
+  if(sample){
+   const currentText=sample.dataset.sample||'TUA VOZ ME LEVA',info=findFont(designFont(style.id));
+   sample.style.fontFamily=info?info.fontFamily+','+info.fallback:'var(--gnarly-lyric-font)';
+   sample.innerHTML=renderLyricArtwork(currentText,style.id,{lineId:7,active:true,preview:true});
+  }
   const title=picker.querySelector('.lyric-type-preview small');if(title)title.textContent='PRÉVIA AO VIVO · '+style.name;
   const help=picker.querySelector('.lyric-font-scope-description');if(help)help.textContent=scope==='song'?'Fonte salva exclusivamente para esta música.':scope==='artist'?'Fonte salva para este artista.':'Fonte padrão salva para músicas sem preferência própria.';
  }
@@ -844,7 +854,6 @@ async function toggleMicRecording(){
 }
 $('#record-button').addEventListener('click',()=>void toggleMicRecording());
 $('#karaoke-expand-button').addEventListener('click',e=>{if(state.sheet)closeSheet();karaokeStage.open(e.currentTarget)});
-
 $('#play-button').addEventListener('click',()=>state.playing?pause():void play());
 $('#youtube-close').addEventListener('click',closeYouTubePlayer);
 $('#youtube-player-dialog').addEventListener('click',e=>{if(e.target.id==='youtube-player-dialog')closeYouTubePlayer()});
@@ -859,7 +868,7 @@ for(const host of [$('#sheet-content'),$('#module-dock')])host.addEventListener(
 $('#sheet-content').addEventListener('submit',e=>{if(e.target.id==='search-form'){e.preventDefault();void runSearch($('#search-term').value)}});
 function handlePanelClick(e){const target=e.target.closest('button,[data-lyric-time]');if(!target)return;if(target.dataset.djPad!==undefined){if(e.detail===0)void pads.trigger(Number(target.dataset.djPad));return}if(target.dataset.djCommand){const c=target.dataset.djCommand;if(c==='loop')void pads.startLoop().catch(()=>toast('Não foi possível iniciar o áudio do loop.'));if(c==='record')void pads.setRecording(!pads.recording).catch(()=>toast('Não foi possível iniciar a gravação.'));if(c==='clear')pads.clearPattern();if(c==='refresh')void pads.prepareSong(state.current,{force:true});if(c==='midi')void pads.connectMIDI().then(ok=>{renderModule('performance');toast(ok?'Controlador MIDI conectado aos pads.':'Controlador MIDI indisponível. Os pads funcionam sem ele.')});if(c==='analyze-midi'){if(state.current?.source==='local'&&state.current.file)void analyzeMidi(state.current.file);else $('#dj-midi-import').click()}if(c==='cancel-midi'){invalidateMidiAnalysis();renderModule('performance')}if(c==='save-midi')exportEstimatedMidi();if(c==='map-midi'){const count=pads.applyNotePattern(midiAnalysis.notes);toast(count?`${count} passos da transcrição mapeados para pads. Toque Loop para ouvir os recortes.`:'Nenhuma nota válida para mapear.');renderModule('performance')}return}if(target.dataset.omniboxTab){openSheet(target.dataset.omniboxTab);return}if(target.dataset.playerSize){displayStore.setSize(target.dataset.playerSize);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.playerMaterial){displayStore.setMaterial(target.dataset.playerMaterial);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.layout){displayStore.apply(target.dataset.layout);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.layoutGroup){displayStore.setGroup(['presets','controls'],target.dataset.layoutGroup==='all');applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.exportStyle){state.exportStyle=target.dataset.exportStyle;renderActiveSurfaces();return}if(target.dataset.exportFormat){toast(target.dataset.exportFormat==='image'?'A exportação de imagem será habilitada após validar a captura WebGL.':'Este formato ainda depende do motor web de exportação; nenhum arquivo foi gerado.');return}if(target.dataset.lyricTime){audio.currentTime=Number(target.dataset.lyricTime);return}if(target.dataset.command){handleCommand(target.dataset.command);return}if(target.dataset.visualTab){openSheet(target.dataset.visualTab);return}if(target.dataset.lyricScope){if(!['song','artist','global'].includes(target.dataset.lyricScope))return;lyricScope=target.dataset.lyricScope;renderSheet();return}
  if(target.dataset.fontGroup){lyricGroup=target.dataset.fontGroup;updateLyricFontFilter();return}
- if(target.hasAttribute('data-lyric-reset')){const result=lyricFonts.clear(lyricScope,state.current);state.lyricStyle=result.style;applyLyricStyle(app,result.style);void loadLyricTypeface(result.style);renderSheet();return}
+ if(target.hasAttribute('data-lyric-reset')){const result=lyricFonts.clear(lyricScope,state.current);state.lyricStyle=result.style;applyLyricStyle(app,result.style);void loadLyricTypeface(designFont(result.style));refreshLyricArtwork();renderSheet();return}
  if(target.hasAttribute('data-lyric-next')){const styles=allLyricStyles();const index=styles.findIndex(x=>x.id===state.lyricStyle);applyChosenLyricFont(styles[(index+1)%styles.length].id);return}
  if(target.dataset.lyricStyle){applyChosenLyricFont(target.dataset.lyricStyle);return}if(target.dataset.experience){state.experience=target.dataset.experience;setSetting('experience',state.experience);updateBadges();renderActiveSurfaces();return}if(target.dataset.stemPreset){stems.applyPreset(target.dataset.stemPreset);renderActiveSurfaces();return}if(target.dataset.preset){applyPreset(target.dataset.preset);return}if(target.dataset.theme){if(!GNARLY_MODES.includes(state.theme)&&GNARLY_MODES.includes(target.dataset.theme)){state.previousTheme=state.theme;setSetting('previousTheme',state.theme)}state.theme=target.dataset.theme;setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();return}if(target.dataset.reaction){state.reaction=target.dataset.reaction;setSetting('reaction',state.reaction);updateBadges();renderActiveSurfaces();return}if(target.dataset.smartMode){setSmartMode(target.dataset.smartMode);return}
  if(target.dataset.action){
