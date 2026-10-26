@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {artworkCandidates,artworkBudget,resolveArtwork,clearArtworkQualityCache} from '../lib/artwork-quality.js';
+import {artworkCandidates,artworkBudget,resolveArtwork,resolveArtworkAsset,clearArtworkQualityCache} from '../lib/artwork-quality.js';
 import {createFullscreenController} from '../lib/fullscreen-controller.js';
 
 const id='abcdefghijk';
@@ -101,4 +101,42 @@ test('Artwork and immersive UI integrate throughout player, wallpaper, karaoke a
  assert.match(stage,/resolveArtwork\(art/);
  assert.match(css,/html\.gnarly-fullscreen \.app-shell/);
  assert.match(app,/data-original-art/);
+});
+
+test('real 1280x720 thumbnail is not called Ultra HD on retina portrait',async()=>{
+ clearArtworkQualityCache();
+ const Old=globalThis.Image;
+ class VideoThumb{naturalWidth=0;naturalHeight=0;
+  set src(value){this.naturalWidth=value.includes('maxres')?1280:640;this.naturalHeight=value.includes('maxres')?720:480;queueMicrotask(()=>this.onload?.())}
+ }
+ globalThis.Image=VideoThumb;
+ try{
+  const source='https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg';
+  const hd=await resolveArtworkAsset(source,{pixels:1600,minDimension:400,displayWidth:390,displayHeight:844,dpr:3});
+  assert.equal(hd.width,1280);assert.equal(hd.height,720);
+  assert.equal(hd.quality,'low','retina 844px portrait needs real vertical pixels, not filename maxres');
+  assert.ok(hd.ratio<.5);
+  const regular=await resolveArtworkAsset(source,{pixels:1600,minDimension:400,displayWidth:640,displayHeight:360,dpr:1});
+  assert.equal(regular.quality,'high');
+ }finally{globalThis.Image=Old;clearArtworkQualityCache()}
+});
+test('quality metadata is scoped to full-viewport background and player surface, not a CSS upscaler',()=>{
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
+ const stage=readFileSync(new URL('../ui/karaoke-stage.js',import.meta.url),'utf8');
+ assert.match(app,/resolveArtworkAsset\(source/);
+ assert.match(app,/resolveArtworkAsset\(raw/);
+ assert.match(app,/dataset\.artQuality/);
+ assert.match(css,/data-art-quality="low"/);
+ assert.match(css,/gnarly-art-safe-width/);
+ assert.match(stage,/resolveArtworkAsset\(art/);
+ assert.match(css,/background-size:min\(91vw/);
+});
+test('metadata service requests original album master art and Worker routes metadata lookup',()=>{
+ const service=readFileSync(new URL('../lib/metadata-service.js',import.meta.url),'utf8');
+ const worker=readFileSync(new URL('../src/worker.js',import.meta.url),'utf8');
+ assert.match(service,/coverartarchive\.org\/release/);
+ assert.match(service,/\+'\/front'/);
+ assert.doesNotMatch(service,/\/front-500/);
+ assert.match(worker,/'\/api\/metadata': \{method:'GET', handler:metadata\}/);
 });
