@@ -9,6 +9,7 @@ import {autoLyrics,cachedAutoLyrics,prefetchAutoLyrics} from './lib/lyrics-auto.
 import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
 import {trackAudioURL,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
 import {AudioDeliveryRecovery,inspectPlaybackLimit,playbackLimitMessage} from './lib/audio-delivery.js';
+import {createMediaSessionController,configureBrowserAudioSession} from './lib/media-session-controller.js';
 import {appendUnique,commitPlaying,moveTrack,removeTrack,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
 import {ListeningMemory,MEMORY_KEY,recommendTracks,retainManualQueue,markAutoTracks,sameRecording,discoverySuggestions} from './lib/listening-intelligence.js';
 import {renderSmartQueuePanel} from './ui/smart-queue-panel.js';
@@ -95,6 +96,7 @@ let smartMode=effectiveMode(getSetting('smartMode','off'));
 let smartStatus='Escolha um modo para complementar a fila sem substituir músicas.';
 let pendingQueueId=null,smartFillEpoch=0,smartFillPending=false,lastSmartSeed='',smartRevision=0;
 let playbackSelection=0,lastRecordedSelection=-1;
+const playbackBackstack=[]; // Session-only previous track, like iOS queue navigation.
 const recommendationsByMode=new Map();
 const audioWarmup=new AudioConnectionWarmup((url,options)=>fetch(url,options));
 let playbackStartedAt=0;
@@ -116,6 +118,37 @@ const state={
   audioState:'idle', playbackError:'',userPaused:false,
   lyrics:[],plainLyrics:[],lyricsSource:null,lyricsSynced:false,lyricsInstrumental:false,lyricsLoading:false,lyricsAIWorking:false,lyricsStatus:'As letras aparecem automaticamente quando disponíveis.',lyricsAbort:null,sheet:null,backgroundURL:null,backgroundMode:getSetting('backgroundMode','visual'),photoZoom:Number(getSetting('photoZoom','1')),photoX:Number(getSetting('photoX','0')),photoY:Number(getSetting('photoY','0')),photoAdjust:false,artworkHue:.58,searchTimer:null,lastLyric:-2,searchLoading:false,searchError:'',searchTerm:omnibox.query,history:omnibox.history,searchGeneration:0
 };
+// The browser equivalent of MPRemoteCommandCenter: hardware/lock-screen
+// events re-enter the SAME playback, queue and seek functions as onscreen UI.
+function externalSeek(seconds,{fastSeek=false}={}){
+ if(!state.current||!Number.isFinite(Number(seconds)))return;
+ const duration=Number.isFinite(audio.duration)&&audio.duration>0?audio.duration:Number(state.current.duration);
+ if(!(duration>0))return;
+ const position=Math.max(0,Math.min(duration,Number(seconds)));
+ try{if(fastSeek&&typeof audio.fastSeek==='function')audio.fastSeek(position);else audio.currentTime=position}catch{return}
+ externalMedia.position({track:state.current,force:true});
+}
+const externalMedia=createMediaSessionController({
+ audio,session:navigator.mediaSession||null,
+ MediaMetadataCtor:typeof MediaMetadata==='function'?MediaMetadata:null,
+ baseUrl:location.href,
+ actions:{
+  play:()=>{if(state.current&&(audio.paused||audio.ended))void play()},
+  pause:()=>{if(state.current&&!audio.paused)pause()},
+  previoustrack:()=>{if(state.current)previous()},
+  nexttrack:()=>{if(state.queue.length)next()},
+  seekto:detail=>externalSeek(detail.seekTime,{fastSeek:detail.fastSeek===true}),
+  seekforward:detail=>externalSeek((audio.currentTime||0)+(Number(detail.seekOffset)||10)),
+  seekbackward:detail=>externalSeek((audio.currentTime||0)-(Number(detail.seekOffset)||10)),
+  stop:()=>{if(state.current){pause();externalSeek(0)}}
+ }
+});
+function syncSystemPlayback(forcePosition=false){
+ const track=state.current;
+ externalMedia.sync({track,artist:track?displayArtist(track):'',canNext:state.queue.length>0,
+  playing:!!track&&!audio.paused&&!audio.ended,
+  forcePosition});
+}
 // Expanded karaoke shares this audio element, existing LRCLIB/LRC and typography state.
 document.body.insertAdjacentHTML('beforeend',karaokeStageMarkup());
 const karaokeStage=new KaraokeStage({
@@ -326,9 +359,9 @@ function updatePlayer(){
  $('#duration-label').textContent=track?.source==='preview'?'PRÉVIA · 0:30':fmt(Number.isFinite(audio.duration)&&audio.duration>0?audio.duration:track?.duration||0);
  updatePresetButtons();
  updateBadges(); updateProgress();
- if('mediaSession' in navigator && typeof MediaMetadata!=='undefined'){try{navigator.mediaSession.metadata=track?new MediaMetadata({title:track.title,artist:displayArtist(track),album:track.album||'GNARLY WEB',artwork:[{src:artworkCandidates(track.artwork||new URL(icon,location.href).href,{pixels:512})[0]||new URL(icon,location.href).href}]}):null}catch{}}
+ syncSystemPlayback(true);
 }
-function updateProgress(){const d=audio.duration||0,t=audio.currentTime||0,p=d?Math.min(1000,1000*t/d):0;const slider=$('#seek-slider');slider.value=String(p);slider.style.setProperty('--progress',`${p/10}%`);$('#elapsed-label').textContent=fmt(t);if(state.current?.source!=='preview')$('#duration-label').textContent=fmt(d||state.current?.duration||0)}
+function updateProgress(){const d=audio.duration||0,t=audio.currentTime||0,p=d?Math.min(1000,1000*t/d):0;const slider=$('#seek-slider');slider.value=String(p);slider.style.setProperty('--progress',`${p/10}%`);$('#elapsed-label').textContent=fmt(t);if(state.current?.source!=='preview')$('#duration-label').textContent=fmt(d||state.current?.duration||0);externalMedia.position({track:state.current})}
 // Internal artwork uses a separate layer, never the app's backgroundMode.
 // Repeating two identical tiles produces a cyclic lateral loop with no reset jump.
 function safeSurfaceArtwork(raw){
@@ -566,8 +599,12 @@ async function enrichSelectedTrack(track,knownDuration=0){
   if(state.sheet==='search')displaySearch(state.searchResults);
  }catch(error){if(error?.name!=='AbortError')console.debug('Metadata enrichment unavailable');}
 }
-function selectTrack(track,autoplay=true,{fromQueue=false}={}){
+function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={}){
  if(!track)return;
+ if(!fromHistory&&state.current?.id&&state.current.id!==track.id){
+  playbackBackstack.push(state.current);
+  if(playbackBackstack.length>30)playbackBackstack.shift();
+ }
  playbackSelection++;
  pendingQueueId=fromQueue?track.id:null;
  if(isGenericArtist(track.artist))track.artist=displayArtist(track);
@@ -656,6 +693,10 @@ async function play(){
   state.audioState='loading';reportAudioStatus('Conectando ao backend GNARLY · preparando áudio…');
  }
  try{
+  // Safari/WebKit: request the native playback category *before* building
+  // the Web Audio graph. Keep duplex while an explicitly authorized mic runs.
+  configureBrowserAudioSession({navigatorObject:navigator,
+   recording:!!(karaokeStage.mic.active||state.micStream)});
   // Both calls start synchronously within the user's click gesture (Safari).
   const unlock=engine.resume(),start=audio.play();
   await Promise.all([unlock,start]);
@@ -678,7 +719,15 @@ function prefetchNextLyrics(){
  const nextTrack=state.queue.find(x=>x.id!==state.current?.id);
  if(nextTrack)void prefetchAutoLyrics(nextTrack).catch(()=>{});
 }
-function previous(){if(audio.currentTime>3){audio.currentTime=0;return}const idx=state.tracks.findIndex(x=>x.id===state.current?.id);if(idx>0)selectTrack(state.tracks[idx-1]);else audio.currentTime=0}
+function previous(){
+ if(!state.current)return;
+ if(audio.currentTime>3){externalSeek(0);return}
+ const previousTrack=playbackBackstack.pop();
+ if(previousTrack){selectTrack(previousTrack,true,{fromHistory:true});return}
+ const idx=state.tracks.findIndex(x=>x.id===state.current?.id);
+ if(idx>0)selectTrack(state.tracks[idx-1],true,{fromHistory:true});
+ else externalSeek(0);
+}
 function addToQueue(track,{quiet=false}={}){
  if(!track)return false;
  const auto=state.queue.find(q=>q._gnarlyAutoMode&&sameRecording(q,track));
@@ -1303,10 +1352,26 @@ audio.addEventListener('play',()=>{if(stems.ready)void stems.play();state.playin
  // Ignore a late error from the previous source after another Omnibox selection.
  if(audio.hasAttribute('src')&&audio.src===trackAudioURL(state.current,{attempt:audioDelivery.attempt}))void recoverNativeAudio(state.current);
  }else reportAudioError('Não foi possível carregar o áudio.');});
-for(const [action,fn] of [['play',()=>void play()],['pause',pause],['previoustrack',previous],['nexttrack',next],['seekto',details=>{audio.currentTime=details.seekTime||0}]]){try{navigator.mediaSession?.setActionHandler(action,fn)}catch{/* not supported */}}
-window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select')||e.ctrlKey||e.altKey||e.metaKey)return;if(isModuleOpen('performance')&&!state.sheet){const pad=PAD_KEYS.indexOf(e.key.toLowerCase());if(pad>=0){e.preventDefault();if(!e.repeat)void pads.trigger(pad);return}}if(e.code==='Space'){e.preventDefault();state.playing?pause():void play()}if(e.code==='Escape'){if(!$('#player-surface-menu').hidden){e.preventDefault();closePlayerSurfaceMenu(true);return}closeSheet();closeYouTubePlayer()};if(e.key==='ArrowRight'&&state.current)audio.currentTime=Math.min(audio.duration||0,audio.currentTime+5);if(e.key==='ArrowLeft'&&state.current)audio.currentTime=Math.max(0,audio.currentTime-5)});
+// MediaSession handlers are registered exactly once by externalMedia.
+// The native media element owns the authoritative play/pause and clock.
+for(const name of ['playing','pause','ended','emptied','durationchange','ratechange','seeked']){
+ audio.addEventListener(name,()=>syncSystemPlayback(name!=='playing'));
+}
+window.addEventListener('pageshow',()=>syncSystemPlayback(true));
+window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select')||e.ctrlKey||e.altKey||e.metaKey)return;if(isModuleOpen('performance')&&!state.sheet){const pad=PAD_KEYS.indexOf(e.key.toLowerCase());if(pad>=0){e.preventDefault();if(!e.repeat)void pads.trigger(pad);return}}if(['MediaPlayPause','MediaPlay','MediaPause','MediaTrackNext','MediaTrackPrevious','MediaStop'].includes(e.key)){
+  if(!state.current)return;
+  e.preventDefault();
+  if(e.key==='MediaPlayPause')audio.paused?void play():pause();
+  else if(e.key==='MediaPlay')void play();
+  else if(e.key==='MediaPause')pause();
+  else if(e.key==='MediaTrackNext'&&state.queue.length)next();
+  else if(e.key==='MediaTrackPrevious')previous();
+  else if(e.key==='MediaStop'){pause();externalSeek(0)}
+  return;
+ }
+ if(e.code==='Space'){e.preventDefault();state.playing?pause():void play()}if(e.code==='Escape'){if(!$('#player-surface-menu').hidden){e.preventDefault();closePlayerSurfaceMenu(true);return}closeSheet();closeYouTubePlayer()};if(e.key==='ArrowRight'&&state.current)audio.currentTime=Math.min(audio.duration||0,audio.currentTime+5);if(e.key==='ArrowLeft'&&state.current)audio.currentTime=Math.max(0,audio.currentTime-5)});
 window.addEventListener('dragover',e=>{if(e.dataTransfer?.types.includes('Files')){e.preventDefault();app.classList.add('dragover')}});window.addEventListener('dragleave',e=>{if(!e.relatedTarget)app.classList.remove('dragover')});window.addEventListener('drop',e=>{e.preventDefault();app.classList.remove('dragover');importAudio(e.dataTransfer?.files||[])});
-document.addEventListener('visibilitychange',()=>{if(document.hidden){if(pads.running)pads.stopLoop();if(karaokeStage.mic.active){karaokeStage.mic.stop();karaokeStage.scorer.stop();karaokeStage.updateScore();}}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){if(pads.running)pads.stopLoop();if(karaokeStage.mic.active){karaokeStage.mic.stop();karaokeStage.scorer.stop();karaokeStage.updateScore();}}syncSystemPlayback(true);});
 window.addEventListener('storage',event=>{if(event.key===MEMORY_KEY){listeningMemory.refresh();if(state.sheet==='search'||state.sheet==='queue')renderSheet();}});
 window.addEventListener('beforeunload',()=>{karaokeStage.destroy();fontPreviewObserver?.disconnect();midiAnalysis.abort?.abort();lyricsAIController?.abort();metadataAbort?.abort();pads.destroy();state.micRecorder?.state==='recording'&&state.micRecorder.stop();state.micStream?.getTracks()?.forEach(x=>x.stop());state.demucsAbort?.abort();stems.clear();for(const item of state.tracks)if(item.source==='local')URL.revokeObjectURL(item.url);if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL)});
 applyPlayerSurfaceMode(state.playerSurfaceMode,{persist:false});updatePlayer();applyPanelVisibility();

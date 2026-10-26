@@ -150,6 +150,6 @@ test('player, saved search list and Media Session use the same protected label',
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(app,/\$\('#track-artist'\)\.textContent=track\?displayArtist\(track\)/);
  assert.match(app,/safe\(displayArtist\(tr\)\)/);
- assert.match(app,/artist:displayArtist\(track\)/);
+ assert.match(app,/artist:track\?displayArtist\(track\):''/);
  assert.match(app,/reconcileCatalogCredits\(songs,/);
 });
