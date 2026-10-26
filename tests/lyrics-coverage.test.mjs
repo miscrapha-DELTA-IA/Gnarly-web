@@ -27,37 +27,41 @@ test('LRCLIB exact result includes provenance and real synchronized timings',asy
  }finally{globalThis.fetch=original}
 });
 test('plain-only lyrics are displayed without fictitious LRC timestamps',async()=>{
+ const song={...track,title:'Plain Track'};
  const original=globalThis.fetch;
- try{globalThis.fetch=async()=>result({trackName:track.title,artistName:track.artist,duration:206,plainLyrics:'Line one\nLine two',syncedLyrics:null});
- const lyrics=await autoLyrics(track);
+ try{globalThis.fetch=async()=>result({trackName:song.title,artistName:song.artist,duration:206,plainLyrics:'Line one\nLine two',syncedLyrics:null});
+ const lyrics=await autoLyrics(song);
  assert.equal(lyrics.lines.length,0);
  assert.deepEqual(lyrics.plainLines,['Line one','Line two']);
  assert.equal(lyrics.synced,false);
  }finally{globalThis.fetch=original}
 });
 test('search fallback tries only one LRCLIB search before lyrics.ovh',async()=>{
+ const song={...track,title:'Search Track'};
  const original=globalThis.fetch,paths=[];
  try{globalThis.fetch=async url=>{paths.push(new URL(url).pathname);return result(
   paths.length===1?{error:'missing'}:
-  [{trackName:track.title,artistName:track.artist,duration:206,syncedLyrics:'[00:12.10]Found'}]);
+  [{trackName:song.title,artistName:song.artist,duration:206,syncedLyrics:'[00:12.10]Found'}]);
  };
- const lyrics=await autoLyrics(track);
+ const lyrics=await autoLyrics(song);
  assert.equal(lyrics.lines[0].text,'Found');
  assert.deepEqual(paths,['/api/get','/api/search']);
  }finally{globalThis.fetch=original}
 });
 test('non-synced backup is accurately marked as unsynchronized',async()=>{
+ const song={...track,title:'Plain Backup'};
  const original=globalThis.fetch;let n=0;
  try{globalThis.fetch=async()=>{n++;return result(n===3?{lyrics:'Verse one\nVerse two'}:n===2?[]:{status:404})};
- const lyrics=await autoLyrics(track);
+ const lyrics=await autoLyrics(song);
  assert.equal(n,3);assert.equal(lyrics.source,'lyrics.ovh');
  assert.equal(lyrics.synced,false);assert.deepEqual(lyrics.lines,[]);
  }finally{globalThis.fetch=original}
 });
 test('rate limit never triggers cascading requests',async()=>{
+ const song={...track,title:'Rate Limit Test'};
  const original=globalThis.fetch;let n=0;
  try{globalThis.fetch=async()=>{n++;return new Response('rate limited',{status:429,headers:{'retry-after':'80'}})};
- const lyrics=await autoLyrics(track);
+ const lyrics=await autoLyrics(song);
  assert.equal(n,1);assert.match(lyrics.status,/limitou/);
  }finally{globalThis.fetch=original}
 });
