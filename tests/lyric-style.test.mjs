@@ -5,7 +5,7 @@ import {allLyricStyles,resolveLyricStyle,applyLyricStyle,registerLyricStyle,DEFA
 import {renderLyricStylePanel} from '../ui/lyric-style-panel.js';
 test('six system presets plus 34 curated, lazily-loaded Google Fonts are offered',()=>{
  assert.deepEqual(allLyricStyles().slice(0,6).map(x=>x.id),['original','neon','editorial','mono','kinetic','minimal']);
- assert.equal(allLyricStyles().length,40);
+ assert.equal(allLyricStyles().length,80);
  assert.equal(DEFAULT_LYRIC_STYLE,'original');
  for(const style of allLyricStyles())assert.ok(Object.hasOwn(LYRIC_FONT_FAMILIES,style.family));
  assert.equal(resolveLyricStyle('invalid').id,'original');
@@ -38,7 +38,7 @@ test('Aa panel safely offers all registered presets and selected aria state',()=
  const html=renderLyricStylePanel('neon');
  assert.match(html,/data-lyric-style="neon"/);
  assert.match(html,/aria-pressed="true"/);
- assert.match(html,/Fontes e estilos adicionais/);
+ assert.match(html,/40 COMPOSIÇÕES GNARLY/);
  assert.equal(html.includes('<script'),false);
 });
 test('palette, lightning and Aa are independent accessible controls',()=>{
