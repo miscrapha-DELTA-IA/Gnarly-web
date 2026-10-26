@@ -1,8 +1,8 @@
 import {chromium} from 'playwright';
 import assert from 'node:assert/strict';
-const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
-const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:2});
-const errs=[];page.on('pageerror',x=>errs.push(x.message));
+const browser=await chromium.launch({headless:true,args:['--no-sandbox','--enable-webgl','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1});
+const errs=[],warnings=[];page.on('pageerror',x=>errs.push(x.message));page.on('console',x=>{if(x.type()==='warning'||x.type()==='error')warnings.push(x.text())});
 await page.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
 await page.waitForSelector('#omnibox-toggle');
 async function assertAppearanceControlFits(label){
@@ -23,6 +23,65 @@ await assertAppearanceControlFits('compact 390px');
 assert.equal(await page.locator('.player .preset-chip').count(),0);
 assert.equal(await page.locator('.omnibox-shell').count(),1);
 assert.equal(await page.locator('#player-section').count(),1);
+await page.waitForTimeout(900);
+const nativeGPU=await page.evaluate(()=>{
+ const canvas=document.querySelector('#fluid-canvas');
+ const gl=canvas.getContext('webgl2');
+ if(!gl)return {available:false,freshCanvas:!!document.createElement('canvas').getContext('webgl2')};
+ const program=gl.getParameter(gl.CURRENT_PROGRAM);
+ return {available:!!gl,compiled:!!program,error:gl.getError()};
+});
+assert.ok(nativeGPU.available&&nativeGPU.compiled,'Metal shader port must compile in WebGL2, never silently use Canvas fallback: '+JSON.stringify(nativeGPU)+'; warnings: '+warnings.slice(0,5).join(' | '));
+await page.locator('#theme-button').click();
+await page.locator('[data-theme="PRISM CARMINE"]').click();
+await page.waitForFunction(({name,want})=>{
+ const gl=document.querySelector('#fluid-canvas').getContext('webgl2');
+ if(!gl)return false;const p=gl.getParameter(gl.CURRENT_PROGRAM);
+ if(!p)return false;const loc=gl.getUniformLocation(p,name);
+ return !!loc&&Math.abs(gl.getUniform(p,loc)-want)<0.01;
+},{name:'u_look',want:2},{timeout:15000});
+const prism=await page.evaluate(()=>{
+ const gl=document.querySelector('#fluid-canvas').getContext('webgl2');
+ const program=gl.getParameter(gl.CURRENT_PROGRAM);
+ const loc=gl.getUniformLocation(program,'u_look');
+ return {look:loc?gl.getUniform(program,loc):null,error:gl.getError(),
+  uniforms:Array.from({length:gl.getProgramParameter(program,gl.ACTIVE_UNIFORMS)},(_,i)=>gl.getActiveUniform(program,i)?.name),
+  theme:document.querySelector('.build-badge')?.textContent,
+  selected:document.querySelector('.visual-choice.active[data-theme]')?.dataset.theme};
+});
+assert.equal(prism.look,2,'Prism must render native diamond lattice instead of generic Cyber Night: '+JSON.stringify(prism));
+assert.equal(prism.error,0);
+await page.locator('[data-visual-tab="theme"]').click();
+await page.locator('[data-theme="ACID"]').click();
+await page.locator('[data-visual-tab="experience"]').click();
+await page.locator('[data-experience="gnarly-exp-vector-drift-2000"]').click();
+await page.waitForFunction(({name,want})=>{
+ const gl=document.querySelector('#fluid-canvas').getContext('webgl2');
+ if(!gl)return false;const p=gl.getParameter(gl.CURRENT_PROGRAM);
+ if(!p)return false;const loc=gl.getUniformLocation(p,name);
+ return !!loc&&Math.abs(gl.getUniform(p,loc)-want)<0.01;
+},{name:'u_look',want:10},{timeout:15000});
+const vector=await page.evaluate(()=>{
+ const gl=document.querySelector('#fluid-canvas').getContext('webgl2');
+ const program=gl.getParameter(gl.CURRENT_PROGRAM);
+ return gl.getUniform(program,gl.getUniformLocation(program,'u_look'));
+});
+assert.equal(vector,10,'Vector Drift must use the native cylindrical tunnel shader');
+await page.locator('[data-experience="chrome-night"]').click();
+await page.waitForFunction(({name,want})=>{
+ const gl=document.querySelector('#fluid-canvas').getContext('webgl2');
+ if(!gl)return false;const p=gl.getParameter(gl.CURRENT_PROGRAM);
+ if(!p)return false;const loc=gl.getUniformLocation(p,name);
+ return !!loc&&Math.abs(gl.getUniform(p,loc)-want)<0.01;
+},{name:'u_material',want:1},{timeout:15000});
+const chrome=await page.evaluate(()=>{
+ const gl=document.querySelector('#fluid-canvas').getContext('webgl2');
+ const program=gl.getParameter(gl.CURRENT_PROGRAM);
+ return {kind:gl.getUniform(program,gl.getUniformLocation(program,'u_material')),material:gl.getUniform(program,gl.getUniformLocation(program,'u_textureC'))};
+});
+assert.equal(chrome.kind,1,'Chrome Night uses a separate procedural Metal material, not CreativeUniverse');
+assert.equal(chrome.material[0],2);
+await page.locator('#close-sheet').click();
 assert.equal(await page.locator('#reaction-button').count(),0);
 assert.equal(await page.locator('.progress-foot #player-surface-button').count(),1);
 await page.locator('#play-button').click();
