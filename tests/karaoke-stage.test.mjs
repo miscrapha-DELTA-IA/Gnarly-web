@@ -66,7 +66,7 @@ test('microphone is never requested by construction; permission only on start',a
 });
 test('expanded karaoke preserves same HTMLAudioElement and renders safe controls',()=>{
  const ui=karaokeStageMarkup();
- for(const key of ['karaoke-stage-close','karaoke-voice-toggle','karaoke-voice-record','karaoke-caption-settings','karaoke-follow-live','karaoke-reader-lines'])
+ for(const key of ['karaoke-stage-close','karaoke-voice-toggle','karaoke-voice-record','karaoke-caption-settings','karaoke-follow-live','karaoke-reader-lines','karaoke-stage-play','karaoke-stage-fullscreen','karaoke-stage-feedback'])
   assert.ok(ui.includes('id="'+key+'"'));
  assert.doesNotMatch(ui,/<audio\b|<iframe\b|autoplay/,'stage must not create a second player');
  assert.doesNotMatch(ui,/<script\b/);
@@ -80,4 +80,22 @@ test('expanded karaoke preserves same HTMLAudioElement and renders safe controls
  assert.match(app,/karaokeStage\.resetForTrack\(\)/);
  assert.match(app,/karaokeStage\.destroy\(\)/);
  assert.match(app,/onMicConflict:/);
+});
+
+test('expanded-stage scroll and controls are owned by karaoke, not the page or queue',()=>{
+ const js=readFileSync(new URL('../ui/karaoke-stage.js',import.meta.url),'utf8');
+ const css=readFileSync(new URL('../karaoke-stage.css',import.meta.url),'utf8');
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ assert.doesNotMatch(js,/active\.scrollIntoView/);
+ assert.match(js,/reader\.scrollTo\(/);
+ assert.match(js,/centerActiveLine\(active\)/);
+ assert.match(js,/case 'karaoke-stage-fullscreen'/);
+ assert.match(js,/case 'karaoke-stage-play'/);
+ assert.match(js,/karaoke-stage-feedback/);
+ assert.match(css,/\.karaoke-stage:not\(\[hidden\]\)/);
+ assert.match(css,/\.karaoke-stage-header\{/);
+ assert.match(css,/\.karaoke-stage-font-menu:not\(\[hidden\]\)/);
+ assert.match(app,/onFullscreen:\(\)=>\{void fullscreen\.toggle\(\)\}/);
+ assert.match(app,/onPlayPause:\(\)=>\{if\(!audio\.paused/);
+ assert.match(app,/ListeningMemory|listeningMemory/,'smart queue/music memory must remain integrated');
 });
