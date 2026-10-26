@@ -14,7 +14,9 @@ import {CLASSIC_THEMES,MATERIAL_THEMES,GNARLY_MODES,EXPERIENCES,REACTIONS,ROLE_E
 import {StemMixer,STEM_KINDS,STEM_LABELS,STEM_PRESETS} from './lib/stem-mixer.js';
 import {PerformancePads,PAD_KEYS} from './lib/performance-pads.js';
 import {renderPerformancePanel} from './ui/performance-panel.js';
-import {resolveLyricStyle,applyLyricStyle} from './lib/lyric-style.js';
+import {resolveLyricStyle,applyLyricStyle,allLyricStyles} from './lib/lyric-style.js';
+import {loadLyricTypeface,findFont} from './lib/lyric-font-catalog.js';
+import {LyricFontPreferences,artistKey} from './lib/lyric-font-preferences.js';
 import {renderLyricStylePanel} from './ui/lyric-style-panel.js';
 import {transcribeMidiFile,PITCH_FILE_LIMIT} from './lib/audio-midi-transcriber.js';
 import {validateNotes,harmonySummary,notesToMidi} from './lib/music-note-intelligence.js';
@@ -37,6 +39,8 @@ const icon='/assets/gnarly-icon.png';
 let omniboxStorage=null;try{omniboxStorage=window.localStorage}catch{}
 const omnibox=new OmniboxSession(omniboxStorage);
 const displayStore=createDisplayStore(omniboxStorage);
+const lyricFonts=new LyricFontPreferences(omniboxStorage);
+let lyricScope='song',lyricGroup='all',fontPreviewObserver=null;
 const safe=(v)=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
 const svg=(name)=>`<svg class="icon" aria-hidden="true"><use href="#i-${name}" /></svg>`;
 const getSetting=(name,fallback)=>{try{return localStorage.getItem('gnarly.web.'+name)||fallback}catch{return fallback}};
@@ -53,7 +57,7 @@ let playbackStartedAt=0;
 const state={
   tracks:[],queue:[],current:null,playing:false,searchResults:[],searchTerm:'',
   playerSurfaceMode:normalizePlayerSurfaceMode(getSetting('playerSurfaceMode','turbulent')),
-  theme:getSetting('theme','ACID'),reaction:getSetting('reaction','FLUIDO'),experience:getSetting('experience','original'),previousTheme:getSetting('previousTheme','ACID'),visualTab:'theme',lyricStyle:resolveLyricStyle(getSetting('lyricStyle','original')).id,
+  theme:getSetting('theme','ACID'),reaction:getSetting('reaction','FLUIDO'),experience:getSetting('experience','original'),previousTheme:getSetting('previousTheme','ACID'),visualTab:'theme',lyricStyle:lyricFonts.global,
   stemStatus:'Separação neural de quatro fontes por GPU gratuita quando disponível. Você também pode carregar quatro Stems.',
   demucsBusy:false,demucsAbort:null,demucsAvailable:false,demucsChecked:false,stemModel:'',
   speed:Number(getSetting('speed','1')),reverb:Number(getSetting('reverb','0')),bass:Number(getSetting('bass','0')),
@@ -114,6 +118,7 @@ if(!PALETTES[state.theme])state.theme='ACID';
 if(!['DESLIGADO','FLUIDO','REATIVO'].includes(state.reaction))state.reaction='FLUIDO';
 visual.setTheme(state.theme);visual.setExperience(state.experience);visual.setReaction(state.reaction);visual.startLoop();
 applyLyricStyle(app,state.lyricStyle);
+void loadLyricTypeface(state.lyricStyle);
 engine.setSpeed(state.speed,state.pitch);engine.setReverb(state.reverb);engine.setBass(state.bass);
 function toast(message){const el=$('#toast');el.textContent=message;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,4200)}
 function flashDJPad(index){
@@ -382,6 +387,10 @@ async function enrichSelectedTrack(track,knownDuration=0){
   if(controller.signal.aborted||state.current!==track||!metadata)return;
   const before=track.artist,changed=applyMetadata(track,metadata);
   if(!changed)return;
+  if(isGenericArtist(before)&&!isGenericArtist(track.artist)){
+   const choice=lyricFonts.selected(track).style;
+   if(choice!==state.lyricStyle){state.lyricStyle=choice;applyLyricStyle(app,choice);void loadLyricTypeface(choice)}
+  }
   // Transport, playback URL, audio graph and queue identity remain untouched.
   omnibox.updateMetadata(track);state.history=omnibox.history;
   for(const favorite of state.favorites)if(favorite.id===track.id){
@@ -398,7 +407,9 @@ function selectTrack(track,autoplay=true,{fromQueue=false}={}){
  if(isGenericArtist(track.artist))track.artist=displayArtist(track);
  audioDelivery.select(track);recoveryOperation=null;state.userPaused=false;
  state.demucsAbort?.abort();metadataAbort?.abort();invalidateMidiAnalysis();lyricsAIController?.abort();state.lyricsAIWorking=false;pads.resetSong();stems.clear();state.stemModel='';state.stemStatus='Escolha quatro Stems ou solicite separação automática.';
- closeYouTubePlayer();audio.pause();state.playing=false;state.current=track;state.artworkHue=.58;state.playbackError='';state.audioState='idle';
+ closeYouTubePlayer();audio.pause();state.playing=false;state.current=track;
+ state.lyricStyle=lyricFonts.selected(track).style;applyLyricStyle(app,state.lyricStyle);void loadLyricTypeface(state.lyricStyle);
+ state.artworkHue=.58;state.playbackError='';state.audioState='idle';
  if(track.source==='youtube'){
    // Deferred until Play: avoids wasting a Render extraction on every tapped row.
    audio.removeAttribute('src');audio.preload='none';audio.load();
@@ -406,7 +417,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false}={}){
  reportAudioStatus('');state.lastLyric=-2;updatePlayer();void loadArtworkHue(track);void loadAutoLyrics(track);
  if(track.source==='youtube')void enrichSelectedTrack(track);omnibox.record(track);state.history=omnibox.history;
  if(isModuleOpen('performance'))void pads.prepareSong(track);
- if(autoplay)void play();if(state.sheet&&['library','queue','search'].includes(state.sheet))renderSheet();
+ if(autoplay)void play();if(state.sheet&&['library','queue','search','lyric-style'].includes(state.sheet))renderSheet();
 }
 async function recoverNativeAudio(track,initialError=null){
  if(!track||track.source!=='youtube'||state.current!==track||state.userPaused)return false;
@@ -668,12 +679,58 @@ function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet)
  case 'theme':
  case 'experience':
  case 'reaction':content.innerHTML=renderVisualLayer(state.sheet);break;
- case 'lyric-style':content.innerHTML=renderLyricStylePanel(state.lyricStyle);break;
+ case 'lyric-style':content.innerHTML=renderLyricStylePanel(state.lyricStyle,{scope:lyricScope,track:state.current,resolution:lyricFonts.selected(state.current),recents:lyricFonts.recents});break;
   case 'karaoke':content.innerHTML=`<div class="card-help">O GNARLY procura letras primeiro no LRCLIB, com conferência de artista, título e duração. Quando só existe letra simples, ela aparece sem tempos inventados. A transcrição por IA usa apenas áudio que você escolher enviar.</div><p class="status-text" id="lyrics-status">${safe(state.lyricsStatus)}</p>${btn('Importar letra .lrc','load-lrc')}<div class="lyrics-actions">${btn('Aa · Estilo da legenda','go-lyric-style','alt')}${state.current&&!state.lyricsLoading&&!state.lyricsAIWorking?btn('Buscar letras novamente','retry-lyrics','alt'):''}${state.current&&!state.lyrics.length?btn(state.lyricsAIWorking?'Transcrevendo…':state.plainLyrics.length?'Transcrever com IA para obter tempos':'Transcrever meu áudio com IA','lyrics-ai','alt'):''}</div><label class="section-note lyrics-ai-consent"><input id="lyrics-ai-autofallback" type="checkbox" ${lyricsAIAutoSession?'checked':''} /> Transcrever automaticamente meus arquivos locais, apenas nesta sessão, caso o banco não encontre letra (envia o áudio à IA).</label><p class="section-note">Transcrição por IA é experimental. Para músicas de catálogo, selecione manualmente um áudio da mesma gravação que você tenha autorização para processar.</p><div class="section-head">${state.lyricsSynced?'Letra sincronizada':state.plainLyrics.length?'Letra sem sincronização':'Letra'}</div>${state.lyrics.length?`<div class="lyrics-box">${state.lyrics.map((line,i)=>{const active=i===lyricIndex(state.lyrics,audio.currentTime);return `<div class="lyric-line ${active?'active':''}" data-lyric-time="${line.time}">${safe(line.text)}</div>`}).join('')}</div>`:state.plainLyrics.length?`<div class="lyrics-box lyrics-unsynced">${state.plainLyrics.map(line=>`<div class="lyric-line">${safe(line)}</div>`).join('')}</div>`:'<p class="section-note">Nenhuma letra confirmada. Você pode importar .lrc ou transcrever seu arquivo de áudio autorizado.</p>'}`;break;
  case 'background':content.innerHTML=`<div class="background-menu"><button class="background-menu-row" data-command="show-visual">✦ <span>Tema visual</span><b>${state.backgroundMode==='visual'?'✓':''}</b></button><button class="background-menu-row" data-command="show-cover">▧ <span>Capa do álbum</span><b>${state.backgroundMode==='cover'?'✓':''}</b></button><button class="background-menu-row" data-command="load-background">▣ <span>Minha foto · escolher / trocar</span></button><button class="background-menu-row" data-command="use-photo" ${state.backgroundURL?'':'disabled'}>✓ <span>Usar minha foto</span><b>${state.backgroundMode==='custom'?'✓':''}</b></button><button class="background-menu-row" data-command="adjust-photo" ${state.backgroundURL?'':'disabled'}>☷ <span>Ajustar foto</span></button><button class="background-menu-row danger" data-command="remove-background">× <span>Remover foto</span></button></div>${state.photoAdjust&&state.backgroundURL?`<div class="photo-editor"><p class="section-note">Ajustes locais · a imagem não é enviada ao servidor</p><label for="photo-zoom">Zoom <output id="photo-zoom-value">${Math.round(state.photoZoom*100)}%</output></label><input type="range" id="photo-zoom" data-photo-parameter="photoZoom" min="1" max="2.5" step=".025" value="${state.photoZoom}" /><label for="photo-x">Posição horizontal</label><input type="range" id="photo-x" data-photo-parameter="photoX" min="-40" max="40" step="1" value="${state.photoX}"/><label for="photo-y">Posição vertical</label><input type="range" id="photo-y" data-photo-parameter="photoY" min="-40" max="40" step="1" value="${state.photoY}"/><button class="action-button" data-command="done-photo">Concluído</button></div>`:''}`;break;
  default:content.textContent='';
  }}
-function renderSheet(){renderSheetCore();if(OMNIBOX_TABS.includes(state.sheet))$('#sheet-content').insertAdjacentHTML('afterbegin',omniboxTabs());refreshMixerRails();}
+function renderSheet(){renderSheetCore();if(OMNIBOX_TABS.includes(state.sheet))$('#sheet-content').insertAdjacentHTML('afterbegin',omniboxTabs());refreshMixerRails();if(state.sheet==='lyric-style'){updateLyricFontFilter();observeLyricFontCards()}}
+function updateLyricFontFilter(){
+ const panel=$('#sheet-content .lyric-style-panel');if(!panel)return;
+ const q=(panel.querySelector('#lyric-font-search')?.value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
+ let count=0;
+ for(const card of panel.querySelectorAll('[data-lyric-style]')){
+  const label=(card.dataset.fontLabel||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const show=(lyricGroup==='all'||card.dataset.fontCategory===lyricGroup||card.dataset.fontCategory==='original'&&lyricGroup==='clean')
+   &&(!q||label.includes(q));
+  card.hidden=!show;if(show)count++;
+ }
+ for(const chip of panel.querySelectorAll('[data-font-group]'))chip.setAttribute('aria-pressed',String(chip.dataset.fontGroup===lyricGroup));
+ const empty=panel.querySelector('.lyric-font-empty');if(empty)empty.hidden=count>0;
+}
+function observeLyricFontCards(){
+ fontPreviewObserver?.disconnect();fontPreviewObserver=null;
+ const root=$('#sheet-content'),cards=root?.querySelectorAll('[data-lazy-typeface]')||[];
+ // Only fetch fonts close to the viewport, never forty families during startup.
+ if(typeof IntersectionObserver!=='function')return;
+ fontPreviewObserver=new IntersectionObserver(entries=>{
+  for(const entry of entries)if(entry.isIntersecting){
+   const card=entry.target;void loadLyricTypeface(card.dataset.lazyTypeface);
+   fontPreviewObserver?.unobserve(card);
+  }
+ },{root,rootMargin:'100px 0px',threshold:0});
+ cards.forEach(card=>fontPreviewObserver.observe(card));
+}
+function applyChosenLyricFont(id,scope=lyricScope){
+ if(!state.current||scope==='artist'&&!artistKey(state.current))scope='global';
+ const style=resolveLyricStyle(id);
+ lyricFonts.set(style.id,scope,state.current);
+ state.lyricStyle=style.id;
+ applyLyricStyle(app,style.id);
+ void loadLyricTypeface(style.id);
+ const picker=$('#sheet-content .lyric-style-panel');
+ if(picker){
+  for(const b of picker.querySelectorAll('[data-lyric-style]')){
+   b.setAttribute('aria-pressed',String(b.dataset.lyricStyle===style.id));
+   const mark=b.querySelector('.lyric-font-selection');if(mark)mark.textContent=b.dataset.lyricStyle===style.id?'✓':'';
+  }
+  const sample=picker.querySelector('#lyric-live-specimen');
+  if(sample){const info=findFont(style.id);sample.style.fontFamily=info?info.fontFamily+','+info.fallback:'var(--gnarly-lyric-font)'}
+  const title=picker.querySelector('.lyric-type-preview small');if(title)title.textContent='PRÉVIA AO VIVO · '+style.name;
+  const help=picker.querySelector('.lyric-font-scope-description');if(help)help.textContent=scope==='song'?'Fonte salva exclusivamente para esta música.':scope==='artist'?'Fonte salva para este artista.':'Fonte padrão salva para músicas sem preferência própria.';
+ }
+}
+
 function resolveTracks(context){if(context==='playlist')return playlistStore.tracks(selectedPlaylist);return ({search:state.searchResults,library:state.tracks,queue:state.queue,favorites:state.favorites,history:state.history})[context]||[]}
 function handleCommand(command){switch(command){
  case 'smart-refresh':lastSmartSeed='';void maybeFillSmartQueue({force:true});break;
@@ -766,7 +823,11 @@ for(const el of document.querySelectorAll('[data-drawer]'))el.addEventListener('
 for(const host of [$('#sheet-content'),$('#module-dock')])host.addEventListener('pointerdown',e=>{const pad=e.target.closest('[data-dj-pad]');if(!pad||!isModuleOpen('performance')||(e.pointerType==='mouse'&&e.button!==0))return;e.preventDefault();void pads.trigger(Number(pad.dataset.djPad));},{passive:false});
 for(const host of [$('#sheet-content'),$('#module-dock')])host.addEventListener('change',e=>{if(e.target.hasAttribute('data-dj-output'))pads.setOutput(e.target.value)});
 $('#sheet-content').addEventListener('submit',e=>{if(e.target.id==='search-form'){e.preventDefault();void runSearch($('#search-term').value)}});
-function handlePanelClick(e){const target=e.target.closest('button,[data-lyric-time]');if(!target)return;if(target.dataset.djPad!==undefined){if(e.detail===0)void pads.trigger(Number(target.dataset.djPad));return}if(target.dataset.djCommand){const c=target.dataset.djCommand;if(c==='loop')void pads.startLoop().catch(()=>toast('Não foi possível iniciar o áudio do loop.'));if(c==='record')void pads.setRecording(!pads.recording).catch(()=>toast('Não foi possível iniciar a gravação.'));if(c==='clear')pads.clearPattern();if(c==='refresh')void pads.prepareSong(state.current,{force:true});if(c==='midi')void pads.connectMIDI().then(ok=>{renderModule('performance');toast(ok?'Controlador MIDI conectado aos pads.':'Controlador MIDI indisponível. Os pads funcionam sem ele.')});if(c==='analyze-midi'){if(state.current?.source==='local'&&state.current.file)void analyzeMidi(state.current.file);else $('#dj-midi-import').click()}if(c==='cancel-midi'){invalidateMidiAnalysis();renderModule('performance')}if(c==='save-midi')exportEstimatedMidi();if(c==='map-midi'){const count=pads.applyNotePattern(midiAnalysis.notes);toast(count?`${count} passos da transcrição mapeados para pads. Toque Loop para ouvir os recortes.`:'Nenhuma nota válida para mapear.');renderModule('performance')}return}if(target.dataset.omniboxTab){openSheet(target.dataset.omniboxTab);return}if(target.dataset.playerSize){displayStore.setSize(target.dataset.playerSize);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.playerMaterial){displayStore.setMaterial(target.dataset.playerMaterial);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.layout){displayStore.apply(target.dataset.layout);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.layoutGroup){displayStore.setGroup(['presets','controls'],target.dataset.layoutGroup==='all');applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.exportStyle){state.exportStyle=target.dataset.exportStyle;renderActiveSurfaces();return}if(target.dataset.exportFormat){toast(target.dataset.exportFormat==='image'?'A exportação de imagem será habilitada após validar a captura WebGL.':'Este formato ainda depende do motor web de exportação; nenhum arquivo foi gerado.');return}if(target.dataset.lyricTime){audio.currentTime=Number(target.dataset.lyricTime);return}if(target.dataset.command){handleCommand(target.dataset.command);return}if(target.dataset.visualTab){openSheet(target.dataset.visualTab);return}if(target.dataset.lyricStyle){const selected=resolveLyricStyle(target.dataset.lyricStyle);state.lyricStyle=selected.id;setSetting('lyricStyle',selected.id);applyLyricStyle(app,selected.id);if(state.sheet==='lyric-style')renderSheet();return}if(target.dataset.experience){state.experience=target.dataset.experience;setSetting('experience',state.experience);updateBadges();renderActiveSurfaces();return}if(target.dataset.stemPreset){stems.applyPreset(target.dataset.stemPreset);renderActiveSurfaces();return}if(target.dataset.preset){applyPreset(target.dataset.preset);return}if(target.dataset.theme){if(!GNARLY_MODES.includes(state.theme)&&GNARLY_MODES.includes(target.dataset.theme)){state.previousTheme=state.theme;setSetting('previousTheme',state.theme)}state.theme=target.dataset.theme;setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();return}if(target.dataset.reaction){state.reaction=target.dataset.reaction;setSetting('reaction',state.reaction);updateBadges();renderActiveSurfaces();return}if(target.dataset.smartMode){setSmartMode(target.dataset.smartMode);return}
+function handlePanelClick(e){const target=e.target.closest('button,[data-lyric-time]');if(!target)return;if(target.dataset.djPad!==undefined){if(e.detail===0)void pads.trigger(Number(target.dataset.djPad));return}if(target.dataset.djCommand){const c=target.dataset.djCommand;if(c==='loop')void pads.startLoop().catch(()=>toast('Não foi possível iniciar o áudio do loop.'));if(c==='record')void pads.setRecording(!pads.recording).catch(()=>toast('Não foi possível iniciar a gravação.'));if(c==='clear')pads.clearPattern();if(c==='refresh')void pads.prepareSong(state.current,{force:true});if(c==='midi')void pads.connectMIDI().then(ok=>{renderModule('performance');toast(ok?'Controlador MIDI conectado aos pads.':'Controlador MIDI indisponível. Os pads funcionam sem ele.')});if(c==='analyze-midi'){if(state.current?.source==='local'&&state.current.file)void analyzeMidi(state.current.file);else $('#dj-midi-import').click()}if(c==='cancel-midi'){invalidateMidiAnalysis();renderModule('performance')}if(c==='save-midi')exportEstimatedMidi();if(c==='map-midi'){const count=pads.applyNotePattern(midiAnalysis.notes);toast(count?`${count} passos da transcrição mapeados para pads. Toque Loop para ouvir os recortes.`:'Nenhuma nota válida para mapear.');renderModule('performance')}return}if(target.dataset.omniboxTab){openSheet(target.dataset.omniboxTab);return}if(target.dataset.playerSize){displayStore.setSize(target.dataset.playerSize);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.playerMaterial){displayStore.setMaterial(target.dataset.playerMaterial);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.layout){displayStore.apply(target.dataset.layout);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.layoutGroup){displayStore.setGroup(['presets','controls'],target.dataset.layoutGroup==='all');applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.exportStyle){state.exportStyle=target.dataset.exportStyle;renderActiveSurfaces();return}if(target.dataset.exportFormat){toast(target.dataset.exportFormat==='image'?'A exportação de imagem será habilitada após validar a captura WebGL.':'Este formato ainda depende do motor web de exportação; nenhum arquivo foi gerado.');return}if(target.dataset.lyricTime){audio.currentTime=Number(target.dataset.lyricTime);return}if(target.dataset.command){handleCommand(target.dataset.command);return}if(target.dataset.visualTab){openSheet(target.dataset.visualTab);return}if(target.dataset.lyricScope){if(!['song','artist','global'].includes(target.dataset.lyricScope))return;lyricScope=target.dataset.lyricScope;renderSheet();return}
+ if(target.dataset.fontGroup){lyricGroup=target.dataset.fontGroup;updateLyricFontFilter();return}
+ if(target.hasAttribute('data-lyric-reset')){const result=lyricFonts.clear(lyricScope,state.current);state.lyricStyle=result.style;applyLyricStyle(app,result.style);void loadLyricTypeface(result.style);renderSheet();return}
+ if(target.hasAttribute('data-lyric-next')){const styles=allLyricStyles();const index=styles.findIndex(x=>x.id===state.lyricStyle);applyChosenLyricFont(styles[(index+1)%styles.length].id);return}
+ if(target.dataset.lyricStyle){applyChosenLyricFont(target.dataset.lyricStyle);return}if(target.dataset.experience){state.experience=target.dataset.experience;setSetting('experience',state.experience);updateBadges();renderActiveSurfaces();return}if(target.dataset.stemPreset){stems.applyPreset(target.dataset.stemPreset);renderActiveSurfaces();return}if(target.dataset.preset){applyPreset(target.dataset.preset);return}if(target.dataset.theme){if(!GNARLY_MODES.includes(state.theme)&&GNARLY_MODES.includes(target.dataset.theme)){state.previousTheme=state.theme;setSetting('previousTheme',state.theme)}state.theme=target.dataset.theme;setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();return}if(target.dataset.reaction){state.reaction=target.dataset.reaction;setSetting('reaction',state.reaction);updateBadges();renderActiveSurfaces();return}if(target.dataset.smartMode){setSmartMode(target.dataset.smartMode);return}
  if(target.dataset.action){
   const context=target.dataset.context,list=resolveTracks(context),track=list[Number(target.dataset.index)];
   if(!track)return;
@@ -789,7 +850,7 @@ function handlePanelClick(e){const target=e.target.closest('button,[data-lyric-t
  }
 }
 
-function handlePanelInput(e){const el=e.target;if(el.id==='lyrics-ai-autofallback'){lyricsAIAutoSession=el.checked;if(el.checked&&state.current?.source==='local'&&state.current.file&&!state.lyrics.length&&!state.plainLyrics.length&&!state.lyricsAIWorking&&!lyricsAIOnce.has(state.current.id)){lyricsAIOnce.add(state.current.id);void transcribeOwnLyrics(state.current.file)}return}if(el.hasAttribute('data-dj-bpm')){pads.setBpm(el.value);return}if(el.dataset.photoParameter){const key=el.dataset.photoParameter;const v=Number(el.value);if(['photoZoom','photoX','photoY'].includes(key)&&Number.isFinite(v)){state[key]=v;setSetting(key,v);applyBackground();if(key==='photoZoom')$('#photo-zoom-value').textContent=Math.round(v*100)+'%'}return}if(el.dataset.panelToggle){displayStore.set(el.dataset.panelToggle,el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.hasAttribute('data-zen-toggle')){displayStore.setZen(el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.id==='search-term'){state.searchTerm=el.value;const local=omnibox.setQuery(state.searchTerm);const kind=classifyIntent(state.searchTerm);state.searchResults=local;searchCounter++;displaySearch(local,kind.kind==='direct'?'Link do YouTube detectado · pressione Buscar':local.length?'Histórico local · pressione Buscar para atualizar':'Pressione Buscar para consultar o catálogo')}if(el.dataset.stemLevel){const kind=el.dataset.stemLevel;stems.setLevel(kind,el.value);const label=$(`#stem-${kind}-value`);if(label)label.textContent=`${Math.round(stems.levels[kind]*100)}%`;return}if(el.dataset.slider){const id=el.dataset.slider,v=Number(el.value);if(id==='speed'){state.speed=v;engine.setSpeed(v,state.pitch);state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='reverb'){state.reverb=v;engine.setReverb(v);state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='bass'){state.bass=v;engine.setBass(v)}setSetting(id,v);const out=$(`#${id}-value`);if(out)out.textContent=mixerValue(id,v)}if(el.id==='pitch-check'){state.pitch=el.checked;engine.setSpeed(state.speed,state.pitch);setSetting('pitch',state.pitch?'yes':'no');state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}}
+function handlePanelInput(e){const el=e.target;if(el.id==='lyric-font-search'){updateLyricFontFilter();return}if(el.id==='lyrics-ai-autofallback'){lyricsAIAutoSession=el.checked;if(el.checked&&state.current?.source==='local'&&state.current.file&&!state.lyrics.length&&!state.plainLyrics.length&&!state.lyricsAIWorking&&!lyricsAIOnce.has(state.current.id)){lyricsAIOnce.add(state.current.id);void transcribeOwnLyrics(state.current.file)}return}if(el.hasAttribute('data-dj-bpm')){pads.setBpm(el.value);return}if(el.dataset.photoParameter){const key=el.dataset.photoParameter;const v=Number(el.value);if(['photoZoom','photoX','photoY'].includes(key)&&Number.isFinite(v)){state[key]=v;setSetting(key,v);applyBackground();if(key==='photoZoom')$('#photo-zoom-value').textContent=Math.round(v*100)+'%'}return}if(el.dataset.panelToggle){displayStore.set(el.dataset.panelToggle,el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.hasAttribute('data-zen-toggle')){displayStore.setZen(el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.id==='search-term'){state.searchTerm=el.value;const local=omnibox.setQuery(state.searchTerm);const kind=classifyIntent(state.searchTerm);state.searchResults=local;searchCounter++;displaySearch(local,kind.kind==='direct'?'Link do YouTube detectado · pressione Buscar':local.length?'Histórico local · pressione Buscar para atualizar':'Pressione Buscar para consultar o catálogo')}if(el.dataset.stemLevel){const kind=el.dataset.stemLevel;stems.setLevel(kind,el.value);const label=$(`#stem-${kind}-value`);if(label)label.textContent=`${Math.round(stems.levels[kind]*100)}%`;return}if(el.dataset.slider){const id=el.dataset.slider,v=Number(el.value);if(id==='speed'){state.speed=v;engine.setSpeed(v,state.pitch);state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='reverb'){state.reverb=v;engine.setReverb(v);state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='bass'){state.bass=v;engine.setBass(v)}setSetting(id,v);const out=$(`#${id}-value`);if(out)out.textContent=mixerValue(id,v)}if(el.id==='pitch-check'){state.pitch=el.checked;engine.setSpeed(state.speed,state.pitch);setSetting('pitch',state.pitch?'yes':'no');state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}}
 for(const host of [$('#sheet-content'),$('#module-dock')]){host.addEventListener('click',handlePanelClick);host.addEventListener('input',handlePanelInput)}
 $('#sheet-content').addEventListener('change',e=>{if(!e.target.hasAttribute('data-smart-playlist'))return;const name=e.target.value;if(!playlistStore.names().includes(name))return;selectedPlaylist=name;setSetting('smartPlaylist',name);if(smartMode==='playlist'){smartFillEpoch++;lastSmartSeed='';void maybeFillSmartQueue({force:true})}renderSheet()});
 // Stage72 Omnibox: local hits while typing, remote search on submit, fresh/stale cache.
@@ -835,7 +896,7 @@ for(const [action,fn] of [['play',()=>void play()],['pause',pause],['previoustra
 window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select')||e.ctrlKey||e.altKey||e.metaKey)return;if(isModuleOpen('performance')&&!state.sheet){const pad=PAD_KEYS.indexOf(e.key.toLowerCase());if(pad>=0){e.preventDefault();if(!e.repeat)void pads.trigger(pad);return}}if(e.code==='Space'){e.preventDefault();state.playing?pause():void play()}if(e.code==='Escape'){if(!$('#player-surface-menu').hidden){e.preventDefault();closePlayerSurfaceMenu(true);return}closeSheet();closeYouTubePlayer()};if(e.key==='ArrowRight'&&state.current)audio.currentTime=Math.min(audio.duration||0,audio.currentTime+5);if(e.key==='ArrowLeft'&&state.current)audio.currentTime=Math.max(0,audio.currentTime-5)});
 window.addEventListener('dragover',e=>{if(e.dataTransfer?.types.includes('Files')){e.preventDefault();app.classList.add('dragover')}});window.addEventListener('dragleave',e=>{if(!e.relatedTarget)app.classList.remove('dragover')});window.addEventListener('drop',e=>{e.preventDefault();app.classList.remove('dragover');importAudio(e.dataTransfer?.files||[])});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&pads.running)pads.stopLoop()});
-window.addEventListener('beforeunload',()=>{midiAnalysis.abort?.abort();lyricsAIController?.abort();metadataAbort?.abort();pads.destroy();state.micRecorder?.state==='recording'&&state.micRecorder.stop();state.micStream?.getTracks()?.forEach(x=>x.stop());state.demucsAbort?.abort();stems.clear();for(const item of state.tracks)if(item.source==='local')URL.revokeObjectURL(item.url);if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL)});
+window.addEventListener('beforeunload',()=>{fontPreviewObserver?.disconnect();midiAnalysis.abort?.abort();lyricsAIController?.abort();metadataAbort?.abort();pads.destroy();state.micRecorder?.state==='recording'&&state.micRecorder.stop();state.micStream?.getTracks()?.forEach(x=>x.stop());state.demucsAbort?.abort();stems.clear();for(const item of state.tracks)if(item.source==='local')URL.revokeObjectURL(item.url);if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL)});
 applyPlayerSurfaceMode(state.playerSurfaceMode,{persist:false});updatePlayer();applyPanelVisibility();
 
 // Direct backend playback has no separate invite login or YouTube modal on Play.
