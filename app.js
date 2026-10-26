@@ -718,6 +718,41 @@ function mediaList(tracks,context){
   return '<div class="media-item"><img src="'+safe(artworkCandidates(tr.artwork||icon,{pixels:artPixels('thumb')})[0]||icon)+'" data-original-art="'+safe(tr.artwork||icon)+'" alt="" loading="lazy" decoding="async" /><div class="media-text"><strong>'+label+'</strong><small>'+safe(displayArtist(tr))+' · '+source+'</small></div>'+play+actions+'</div>';
  }).join('')+'</div>';
 }
+// Only probe rows that can come into view. The old thumbnail path loaded the
+// first guessed CDN URL without checking naturalWidth/naturalHeight, so a
+// 120x90 'maxres' placeholder or tiny embedded art stayed on Retina screens.
+const thumbnailObserver=typeof IntersectionObserver==='function'
+ ? new IntersectionObserver(entries=>{
+   for(const entry of entries)if(entry.isIntersecting)void upgradeThumbnail(entry.target);
+  },{rootMargin:'250px 0px'}):null;
+async function upgradeThumbnail(image){
+ thumbnailObserver?.unobserve(image);
+ const source=image.dataset.originalArt;
+ if(!source||source===icon)return;
+ const rect=image.getBoundingClientRect();
+ const asset=await resolveArtworkAsset(source,{
+  pixels:artPixels('thumb'),displayWidth:Math.max(72,Math.round(rect.width)),
+  displayHeight:Math.max(72,Math.round(rect.height)),dpr:window.devicePixelRatio||1,
+  minDimension:160
+ });
+ if(!image.isConnected||image.dataset.originalArt!==source)return;
+ image.dataset.artQuality=asset.quality;
+ if(!asset.url||image.src===asset.url)return;
+ const prepared=new Image();prepared.decoding='async';prepared.src=asset.url;
+ try{if(prepared.decode)await prepared.decode();else await new Promise((resolve,reject)=>{
+  prepared.onload=resolve;prepared.onerror=reject;
+  if(prepared.complete&&prepared.naturalWidth)resolve();
+ })}catch{return}
+ if(image.isConnected&&image.dataset.originalArt===source)image.src=asset.url;
+}
+function upgradeMediaArtwork(container=$('#sheet-content')){
+ container?.querySelectorAll('img[data-original-art]').forEach(image=>{
+  if(image.dataset.artChecked)return;
+  image.dataset.artChecked='1';
+  if(thumbnailObserver)thumbnailObserver.observe(image);
+  else void upgradeThumbnail(image);
+ });
+}
 const visualTile=(name)=>`<button class="visual-choice ${(state.theme===name||(state.theme==='GNARLY 2'&&(state.previousTheme===name||state.gnarly2LockMaterial&&state.gnarly2Material===name)))?'active':''}" data-theme="${safe(name)}"><i class="swatch" style="--swatch-a:${PALETTES[name]?.[0]||'#000'};--swatch-b:${PALETTES[name]?.[1]||'#444'};--swatch-c:${PALETTES[name]?.[2]||'#aaa'}"></i><strong>${safe(name)}</strong></button>`;
 const experienceTile=(v)=>`<button class="visual-choice ${state.experience===v.id?'active':''}" data-experience="${v.id}"><strong>${safe(v.name)}</strong><small>${safe(v.detail)}</small></button>`;
 const btn=(caption,command,other='')=>`<button class="action-button ${other}" data-command="${command}">${caption}</button>`;
@@ -922,7 +957,7 @@ function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet)
  case 'background':content.innerHTML=`<div class="background-menu"><button class="background-menu-row" data-command="show-visual">✦ <span>Tema visual</span><b>${state.backgroundMode==='visual'?'✓':''}</b></button><button class="background-menu-row" data-command="show-cover">▧ <span>Capa do álbum</span><b>${state.backgroundMode==='cover'?'✓':''}</b></button><button class="background-menu-row" data-command="load-background">▣ <span>Minha foto · escolher / trocar</span></button><button class="background-menu-row" data-command="use-photo" ${state.backgroundURL?'':'disabled'}>✓ <span>Usar minha foto</span><b>${state.backgroundMode==='custom'?'✓':''}</b></button><button class="background-menu-row" data-command="adjust-photo" ${state.backgroundURL?'':'disabled'}>☷ <span>Ajustar foto</span></button><button class="background-menu-row danger" data-command="remove-background">× <span>Remover foto</span></button></div>${state.backgroundMode==='cover'&&state.current?.artwork?`<p class="section-note" id="artwork-quality-info">Resolução real da capa: ${safe($('#photo-background').dataset.artPixels||'verificando…')}. ${$('#photo-background').dataset.artQuality==='low'?'A fonte original tem poucos pixels; o GNARLY preserva o tamanho nativo para evitar blocos e artefatos.':'A melhor versão disponível será aplicada sem interromper a música.'}</p>`:''}${state.photoAdjust&&state.backgroundURL?`<div class="photo-editor"><p class="section-note">Ajustes locais · a imagem não é enviada ao servidor</p><label for="photo-zoom">Zoom <output id="photo-zoom-value">${Math.round(state.photoZoom*100)}%</output></label><input type="range" id="photo-zoom" data-photo-parameter="photoZoom" min="1" max="2.5" step=".025" value="${state.photoZoom}" /><label for="photo-x">Posição horizontal</label><input type="range" id="photo-x" data-photo-parameter="photoX" min="-40" max="40" step="1" value="${state.photoX}"/><label for="photo-y">Posição vertical</label><input type="range" id="photo-y" data-photo-parameter="photoY" min="-40" max="40" step="1" value="${state.photoY}"/><button class="action-button" data-command="done-photo">Concluído</button></div>`:''}`;break;
  default:content.textContent='';
  }}
-function renderSheet(){renderSheetCore();if(OMNIBOX_TABS.includes(state.sheet))$('#sheet-content').insertAdjacentHTML('afterbegin',omniboxTabs());refreshMixerRails();if(state.sheet==='lyric-style'){updateLyricFontFilter();observeLyricFontCards()}}
+function renderSheet(){renderSheetCore();if(OMNIBOX_TABS.includes(state.sheet))$('#sheet-content').insertAdjacentHTML('afterbegin',omniboxTabs());refreshMixerRails();upgradeMediaArtwork();if(state.sheet==='lyric-style'){updateLyricFontFilter();observeLyricFontCards()}}
 function updateLyricFontFilter(){
  const panel=$('#sheet-content .lyric-style-panel');if(!panel)return;
  const q=(panel.querySelector('#lyric-font-search')?.value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
@@ -1188,7 +1223,7 @@ for(const host of [$('#sheet-content'),$('#module-dock')]){host.addEventListener
 $('#sheet-content').addEventListener('change',e=>{if(!e.target.hasAttribute('data-smart-playlist'))return;const name=e.target.value;if(!playlistStore.names().includes(name))return;selectedPlaylist=name;setSetting('smartPlaylist',name);if(smartMode==='playlist'){smartFillEpoch++;lastSmartSeed='';state.queue=retainManualQueue(state.queue);void maybeFillSmartQueue({force:true})}renderSheet()});
 // Stage72 Omnibox: local hits while typing, remote search on submit, fresh/stale cache.
 let searchCounter=0;
-function displaySearch(results,info=''){if(state.sheet!=='search')return;const resultsEl=$('#search-results'),status=$('#search-state');if(resultsEl)resultsEl.innerHTML=mediaList(results,'search');if(status)status.textContent=info}
+function displaySearch(results,info=''){if(state.sheet!=='search')return;const resultsEl=$('#search-results'),status=$('#search-state');if(resultsEl){resultsEl.innerHTML=mediaList(results,'search');upgradeMediaArtwork(resultsEl)}if(status)status.textContent=info}
 async function runSearch(raw){const query=String(raw||'').trim();state.searchTerm=query;omnibox.setQuery(query);const intent=classifyIntent(query);const count=++searchCounter;
  if(intent.kind==='direct'){const id=intent.videoId,track={id:'youtube:'+id,videoId:id,title:id,artist:'Artista não identificado',artwork:'https://i.ytimg.com/vi/'+id+'/hqdefault.jpg',source:'youtube',duration:0};state.searchResults=[track];selectTrack(track,false);displaySearch([track],'Link reconhecido · pronto para reprodução no GNARLY');return}
  if(intent.kind==='empty'){const suggestions=discoverySuggestions({history:state.history,favorites:state.favorites,queue:[...state.queue,state.current].filter(Boolean),memory:listeningMemory});state.searchResults=suggestions.length?suggestions:state.history.slice(0,4);displaySearch(state.searchResults,suggestions.length?'Para você · afinidades sem repetir a fila':'Suas músicas recentes');return}
