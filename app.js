@@ -297,15 +297,22 @@ async function recoverNativeAudio(track,initialError=null){
    isCurrent:()=>state.current===track&&!state.userPaused,
    onRetry:(attempt,total)=>{state.audioState='recovering';reportAudioStatus(`Restabelecendo áudio · tentativa ${attempt}/${total}…`);},
    restart:async attempt=>{
-    if(state.current!==track||state.userPaused||!prepareNativeAudio(track,attempt))return false;
-    // Loading the same ID with a fresh request is a transport retry, not a
-    // fallback to a different recording or a bypass of backend access rules.
+    if(state.current!==track||state.userPaused)return false;
     const position=Number(audio.currentTime)||0;
-    audio.load();
-    const unlock=engine.resume(),start=audio.play();
-    await Promise.all([unlock,start]);
-    if(position>3&&Number.isFinite(audio.duration)&&audio.duration>position)audio.currentTime=position;
-    return true;
+    if(!prepareNativeAudio(track,attempt))return false;
+    // A new URL already starts resource selection: avoid a duplicate load().
+    // Restore the former position only when the same recording is still active.
+    const restore=()=>{
+     if(position>3&&state.current===track&&!state.userPaused&&Number.isFinite(audio.duration)&&audio.duration>position)
+      audio.currentTime=position;
+    };
+    audio.addEventListener('loadedmetadata',restore,{once:true});
+    try{
+     const unlock=engine.resume(),start=audio.play();
+     await Promise.all([unlock,start]);
+     restore();
+     return true;
+    }finally{audio.removeEventListener('loadedmetadata',restore);}
    }
   });
   if(state.current!==track||state.userPaused)return false;
@@ -320,7 +327,7 @@ async function play(){
  if(!state.current){openSheet('search');toast('Escolha uma música na Busca ou adicione seu áudio pelo botão +.');return;}
  if(recoveryOperation)return recoveryOperation;
  const track=state.current;
- if(state.audioState==='error')audioDelivery.select(track); // Manual retry starts a new bounded session.
+ if(state.audioState==='error'||state.userPaused)audioDelivery.select(track); // Manual retry starts a new bounded session.
  state.userPaused=false;
  if(track.source==='youtube'){
   if(!prepareNativeAudio(track,audioDelivery.attempt)){reportAudioError('ID de música inválido. Escolha outro resultado.');return;}
