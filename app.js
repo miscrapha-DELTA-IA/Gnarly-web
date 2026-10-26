@@ -802,7 +802,7 @@ function renderVisualLayer(layer){
    '<div class="section-head">MODOS GNARLY</div><p class="section-note">GNARLY original preservado. Com um modo GNARLY ativo, escolher uma cor acima ajusta sua paleta de referência sem sair do modo. GNARLY 2 combina materiais e experiências ao longo da música.</p>'+
    '<div class="visual-choices">'+GNARLY_MODES.map(visualTile).join('')+'</div>'+
    (state.theme==='GNARLY 2'?renderGnarly2Controls():'')+
-   (resolved.override?btn('Voltar ao tema anterior','restore-theme','alt'):'')+
+   (resolved.override&&state.theme!=='GNARLY 2'?btn('Voltar ao tema anterior','restore-theme','alt'):'')+
    '<div class="button-row">'+btn('Concluído','apply-theme')+btn('Tema original','reset-theme-only','alt')+'</div>';
  }
  if(layer==='experience'){
