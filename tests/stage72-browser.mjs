@@ -277,8 +277,11 @@ assert.equal(await djPage.locator('#module-performance-body .dj-pad').count(),16
 assert.equal(await djPage.locator('#module-performance-body .dj-advanced:not([open])').count(),1);
 assert.match(await djPage.locator('#module-performance-body #dj-song-status').innerText(),/16 trechos reais/);
 assert.ok(await djPage.locator('#module-performance-body [data-dj-pad="0"]').innerText().then(x=>x.includes('0:')),'Pad labels show track-relative timestamps');
-await djPage.locator('#module-performance-body [data-dj-pad="0"]').dispatchEvent('pointerdown',{pointerType:'touch',button:0});
-assert.ok(await djPage.locator('#module-performance-body [data-dj-pad="0"]').evaluate(el=>el.classList.contains('is-hit')),'Real audio pad should flash immediately on contact');
+const flashed=await djPage.locator('#module-performance-body [data-dj-pad="0"]').evaluate(el=>{
+ el.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,cancelable:true,composed:true,pointerType:'touch',button:0}));
+ return el.classList.contains('is-hit');
+});
+assert.ok(flashed,'Real audio pad should flash synchronously on pointerdown');
 await djPage.screenshot({path:'stage79-dj-mobile.png',fullPage:true});
 assert.deepEqual(djErrors,[],'DJ must not crash Web Audio or GPU');
 await djPage.close();
