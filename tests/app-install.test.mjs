@@ -23,7 +23,7 @@ test('a normal Safari tab can never self-hide the URL bar',()=>{
  assert.equal(isStandalone({displayModeStandalone:true}),true);
  assert.equal(installPlatform('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)'), 'ios');
  assert.equal(installPlatform('Mozilla/5.0 (Macintosh; Intel Mac OS X)',5),'ios');
- assert.equal(installPlatform('Mozilla/5.0 (Linux; Android 15)','android');
+ assert.equal(installPlatform('Mozilla/5.0 (Linux; Android 15)'),'android');
 });
 test('the install entry is unobtrusive and instructions appear only on request',()=>{
  assert.match(app,/go-install/);
