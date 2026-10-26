@@ -385,6 +385,7 @@ function applyBackground(){
  photo.hidden=!ownPhoto&&!coverPhoto;
  if(ownPhoto){
   lastBackgroundArt='';++backgroundArtVersion;
+  background.classList.remove('cover-art-ready');
   delete photo.dataset.artQuality;
   const layer='url('+JSON.stringify(state.backgroundURL)+')';
   if(photo.style.backgroundImage!==layer)photo.style.backgroundImage=layer;
@@ -393,24 +394,39 @@ function applyBackground(){
   const source=safeSurfaceArtwork(cover),pixels=artPixels('background'),key=source+'|'+pixels;
   if(lastBackgroundArt!==key){
    lastBackgroundArt=key;const version=++backgroundArtVersion;
-   const apply=url=>{photo.style.backgroundImage='url('+JSON.stringify(url)+')'};
-   apply(source);
-   void resolveArtworkAsset(source,{...artworkViewport('background'),pixels,minDimension:480}).then(asset=>{
-    if(version===backgroundArtVersion&&lastBackgroundArt===key&&state.backgroundMode==='cover'&&state.current?.artwork===cover){
+   // Do not replace the visible cover with an un-decoded HTTP asset. Keeping
+   // the previous cover (or the last shader frame) prevents iOS black flashes.
+   if(!photo.style.backgroundImage)background.classList.remove('cover-art-ready');
+   void resolveArtworkAsset(source,{...artworkViewport('background'),pixels,minDimension:480})
+    .then(async asset=>{
+     const candidate=asset.url||source,img=new Image();
+     img.src=candidate;
+     try{
+      if(img.decode)await img.decode();
+      else await new Promise((resolve,reject)=>{
+       img.onload=resolve;img.onerror=reject;
+       if(img.complete&&img.naturalWidth)resolve();
+      });
+     }catch{return}
+     if(version!==backgroundArtVersion||lastBackgroundArt!==key||
+      state.backgroundMode!=='cover'||state.current?.artwork!==cover)return;
+     photo.style.backgroundImage='url('+JSON.stringify(candidate)+')';
      applyArtworkQuality(photo,asset,'background');
-     apply(asset.url||source);
-    }
-   });
+     background.classList.add('cover-art-ready');
+     visual.setPaused(true);
+    }).catch(()=>{/* preserve decoded previous image and player */});
   }
   photo.style.transform='';
  }else{
   lastBackgroundArt='';++backgroundArtVersion;
+  background.classList.remove('cover-art-ready');
   if(photo.style.backgroundImage)photo.style.backgroundImage='';
   delete photo.dataset.artQuality;
   photo.style.removeProperty('--gnarly-art-safe-width');
   photo.style.transform='';
  }
- app.style.backgroundImage='';visual.setPaused(ownPhoto||coverPhoto);
+ app.style.backgroundImage='';
+ visual.setPaused(ownPhoto||(coverPhoto&&background.classList.contains('cover-art-ready')));
 }
 async function loadArtworkHue(track){if(!track?.artwork||track.artwork===icon){state.artworkHue=.58;return}try{const img=new Image();img.crossOrigin='anonymous';img.src=track.artwork;await img.decode();if(state.current!==track)return;const cv=document.createElement('canvas');cv.width=cv.height=20;const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,20,20);const data=ctx.getImageData(0,0,20,20).data;let x=0,y=0;for(let i=0;i<data.length;i+=4){const r=data[i]/255,g=data[i+1]/255,b=data[i+2]/255,max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;let h=0;if(d>.08){if(max===r)h=((g-b)/d+6)%6/6;else if(max===g)h=((b-r)/d+2)/6;else h=((r-g)/d+4)/6}x+=Math.cos(h*2*Math.PI)*d;y+=Math.sin(h*2*Math.PI)*d}if(x||y)state.artworkHue=(Math.atan2(y,x)/(Math.PI*2)+1)%1;
  const tint=Math.round(state.artworkHue*360)+'deg';
