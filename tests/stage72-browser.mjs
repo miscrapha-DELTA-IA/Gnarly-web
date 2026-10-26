@@ -1,7 +1,7 @@
 import {chromium} from 'playwright';
 import assert from 'node:assert/strict';
 const browser=await chromium.launch({headless:true,args:['--no-sandbox','--enable-webgl','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
-const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:2});
+const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1});
 const errs=[],warnings=[];page.on('pageerror',x=>errs.push(x.message));page.on('console',x=>{if(x.type()==='warning'||x.type()==='error')warnings.push(x.text())});
 await page.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
 await page.waitForSelector('#omnibox-toggle');
@@ -34,7 +34,12 @@ const nativeGPU=await page.evaluate(()=>{
 assert.ok(nativeGPU.available&&nativeGPU.compiled,'Metal shader port must compile in WebGL2, never silently use Canvas fallback: '+JSON.stringify(nativeGPU)+'; warnings: '+warnings.slice(0,5).join(' | '));
 await page.locator('#theme-button').click();
 await page.locator('[data-theme="PRISM CARMINE"]').click();
-await page.waitForTimeout(150);
+await page.waitForFunction(({name,want})=>{
+ const gl=document.querySelector('#fluid-canvas').getContext('webgl2');
+ if(!gl)return false;const p=gl.getParameter(gl.CURRENT_PROGRAM);
+ if(!p)return false;const loc=gl.getUniformLocation(p,name);
+ return !!loc&&Math.abs(gl.getUniform(p,loc)-want)<0.01;
+},{name:'u_look',want:2},{timeout:15000});
 const prism=await page.evaluate(()=>{
  const gl=document.querySelector('#fluid-canvas').getContext('webgl2');
  const program=gl.getParameter(gl.CURRENT_PROGRAM);
@@ -50,7 +55,12 @@ await page.locator('[data-visual-tab="theme"]').click();
 await page.locator('[data-theme="ACID"]').click();
 await page.locator('[data-visual-tab="experience"]').click();
 await page.locator('[data-experience="gnarly-exp-vector-drift-2000"]').click();
-await page.waitForTimeout(150);
+await page.waitForFunction(({name,want})=>{
+ const gl=document.querySelector('#fluid-canvas').getContext('webgl2');
+ if(!gl)return false;const p=gl.getParameter(gl.CURRENT_PROGRAM);
+ if(!p)return false;const loc=gl.getUniformLocation(p,name);
+ return !!loc&&Math.abs(gl.getUniform(p,loc)-want)<0.01;
+},{name:'u_look',want:10},{timeout:15000});
 const vector=await page.evaluate(()=>{
  const gl=document.querySelector('#fluid-canvas').getContext('webgl2');
  const program=gl.getParameter(gl.CURRENT_PROGRAM);
@@ -58,7 +68,12 @@ const vector=await page.evaluate(()=>{
 });
 assert.equal(vector,10,'Vector Drift must use the native cylindrical tunnel shader');
 await page.locator('[data-experience="chrome-night"]').click();
-await page.waitForTimeout(150);
+await page.waitForFunction(({name,want})=>{
+ const gl=document.querySelector('#fluid-canvas').getContext('webgl2');
+ if(!gl)return false;const p=gl.getParameter(gl.CURRENT_PROGRAM);
+ if(!p)return false;const loc=gl.getUniformLocation(p,name);
+ return !!loc&&Math.abs(gl.getUniform(p,loc)-want)<0.01;
+},{name:'u_material',want:1},{timeout:15000});
 const chrome=await page.evaluate(()=>{
  const gl=document.querySelector('#fluid-canvas').getContext('webgl2');
  const program=gl.getParameter(gl.CURRENT_PROGRAM);
