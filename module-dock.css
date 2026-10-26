@@ -113,3 +113,32 @@
 .app-shell[data-lyric-treatment="minimal"] .floating-lyrics,
 .app-shell[data-lyric-treatment="minimal"] .lyrics-box .lyric-line.active{text-shadow:0 2px 7px #000b}
 @media(prefers-reduced-motion:reduce){.lyric-font-option{transition:none!important}}
+
+/* GNARLY Aa · curated typography studio. Lightweight CSS only; no shader nodes. */
+.lyric-style-panel{max-width:760px}
+.lyric-type-preview{padding:15px;border:1px solid color-mix(in srgb,var(--acid) 28%,rgba(255,255,255,.13));border-radius:18px;background:linear-gradient(155deg,rgba(40,47,45,.3),rgba(10,16,19,.55));margin:12px 0 16px;text-align:center;min-width:0}
+.lyric-type-preview small{font-size:10px;letter-spacing:.13em;color:var(--acid);font-weight:850}
+.lyric-type-preview>div{font-family:var(--gnarly-lyric-font,sans-serif);font-size:clamp(21px,5vw,37px);font-weight:var(--gnarly-lyric-weight,700);line-height:1.22;margin:16px 0;color:#f4fff9;overflow-wrap:anywhere;text-wrap:balance;text-shadow:0 3px 14px rgba(0,0,0,.6);transition:font-weight .1s}
+.lyric-type-preview>span{color:#cad5d0;font-size:11px}
+.lyric-font-scope,.lyric-font-filters,.lyric-font-actions{display:flex;flex-wrap:wrap;gap:6px;margin:9px 0 12px}
+.lyric-font-scope button,.lyric-font-filters button,.lyric-font-actions button{border:1px solid rgba(255,255,255,.19);background:rgba(255,255,255,.07);color:#f4f6f6;border-radius:999px;min-height:38px;padding:9px 12px;font-size:11px;font-weight:780;touch-action:manipulation}
+.lyric-font-scope button[aria-pressed="true"],.lyric-font-filters button[aria-pressed="true"]{color:#101a10;background:var(--acid);border-color:var(--acid)}
+.lyric-font-scope button:disabled{opacity:.36}
+.lyric-font-actions button{min-height:33px;border-color:color-mix(in srgb,var(--acid) 22%,rgba(255,255,255,.16))}
+.lyric-font-scope-description{font-size:11px;line-height:1.5;color:#c3cdc8;margin:2px 0 9px}
+.lyric-font-search{display:block;width:100%;min-height:43px;border:1px solid rgba(255,255,255,.23);border-radius:12px;background:rgba(16,22,23,.65);color:#fff;padding:10px 13px;font-size:13px;outline-offset:3px}
+.lyric-font-search:focus-visible{outline:2px solid var(--acid)}
+.lyric-font-filters{margin:12px 0 13px}
+.lyric-font-filters button{min-height:32px;padding:7px 10px}
+.lyric-font-option{min-width:0;position:relative;gap:9px;min-height:83px;padding:11px 9px}
+.lyric-font-option[hidden]{display:none!important}
+.lyric-font-specimen{min-width:0;flex:0 0 48px;font-size:clamp(21px,5.5vw,30px);letter-spacing:-.04em;font-weight:700;white-space:nowrap}
+.lyric-font-detail strong{font-size:12px;line-height:1.16;overflow-wrap:anywhere}
+.lyric-font-detail small{font-size:10px}
+.lyric-font-empty{padding:16px;color:#c7d2ce;text-align:center;font-size:12px}
+.app-shell .floating-lyrics,.app-shell .lyrics-box .lyric-line{font-kerning:normal;text-rendering:optimizeLegibility;overflow-wrap:anywhere;text-wrap:balance}
+.app-shell .floating-lyrics{max-width:min(93vw,900px)}
+.app-shell .lyrics-box .lyric-line{line-height:1.32}
+/* Explicit long lyrics remain in the same scroll container; no animations triggered per word. */
+@media(max-width:380px){.lyric-font-option{gap:5px;padding:9px 7px;min-height:77px}.lyric-font-specimen{flex-basis:33px;font-size:22px}.lyric-font-detail strong{font-size:11px}.lyric-font-scope button{flex:1 1 auto}}
+@media(prefers-reduced-motion:reduce){.lyric-type-preview>div{transition:none}}
