@@ -1,0 +1,30 @@
+/* GNARLY Stage 72 — independent retractable windows below Omnibox. */
+.module-dock{width:100%;max-width:720px;align-self:center;display:flex;flex-direction:column;gap:11px;margin:clamp(18px,3dvh,28px) auto 26px;isolation:isolate}
+.module-dock[hidden],.module-drawer[hidden],.module-body[hidden]{display:none!important}
+.module-drawer{--module-tint:var(--acid);overflow:hidden;flex:none;min-width:0;border-radius:21px;border:1px solid rgba(255,255,255,.17);background:linear-gradient(150deg,rgba(44,32,42,.58),rgba(13,17,17,.68));-webkit-backdrop-filter:blur(14px) saturate(135%);backdrop-filter:blur(14px) saturate(135%);box-shadow:inset 0 1px #ffffff1b,0 4px 19px #0003}
+.module-drawer[data-module="export"]{--module-tint:#d1b7ff}
+.module-drawer.is-open{border-color:color-mix(in srgb,var(--module-tint) 30%,rgba(255,255,255,.14));background:linear-gradient(145deg,rgba(54,37,51,.72),rgba(14,18,18,.83));box-shadow:0 11px 35px #0006,inset 0 1px #ffffff16}
+.module-handle{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;min-height:58px;padding:12px clamp(13px,3vw,18px);color:#f9f6fb;background:transparent;text-align:left;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.module-handle-label{display:flex;align-items:center;gap:11px;min-width:0}
+.module-glyph{display:grid;place-items:center;flex:none;width:31px;height:31px;border-radius:10px;color:var(--module-tint);font-size:20px;background:color-mix(in srgb,var(--module-tint) 11%,transparent);border:1px solid color-mix(in srgb,var(--module-tint) 27%,transparent)}
+.module-handle-label strong{display:block;color:var(--module-tint);font-size:11px;letter-spacing:.16em;font-weight:900}
+.module-handle-label small{display:block;color:rgba(245,246,244,.65);font-size:11px;margin-top:3px}
+.module-chevron{flex:none;opacity:.9;transition:transform .22s ease}
+.module-drawer.is-open .module-chevron{transform:rotate(180deg);color:var(--module-tint)}
+.module-body{border-top:1px solid rgba(255,255,255,.13);padding:clamp(14px,3vw,21px);overflow-x:hidden;max-height:none;overscroll-behavior:contain}
+.module-body .music-panel{padding-bottom:0}
+.module-body .music-panel-kicker{display:none}
+.module-body .music-segment:last-child{margin-bottom:8px}
+.module-body .dj-panel{padding-bottom:0}
+.module-body .dj-stage{box-shadow:inset 0 1px #ffffff1a,0 7px 25px #0005}
+.module-body .export-formats{margin-top:4px}
+.module-body .module-export-intro{color:#c9bfcc;font-size:12px;line-height:1.5;margin:0 0 17px}
+.module-body .section-head{margin-top:17px}
+.app-shell .main .module-dock{margin-top:clamp(17px,2.5dvh,28px)}
+.app-shell .topbar #music-toggle-button{color:var(--acid)}
+.app-shell .topbar #music-toggle-button[aria-expanded="true"],.app-shell .topbar #share-button[aria-expanded="true"]{color:var(--acid);background:color-mix(in srgb,var(--acid) 13%,transparent)}
+.app-shell #performance-button[aria-expanded="true"]{background:color-mix(in srgb,var(--acid) 18%,#091b0c);box-shadow:0 0 16px color-mix(in srgb,var(--acid) 20%,transparent)}
+@media(min-width:900px){.module-dock{max-width:660px}}
+@media(max-width:650px){.module-dock{gap:9px}.module-body{padding:13px}.module-handle{min-height:54px}}
+@media(max-width:360px){.module-handle-label small{font-size:10px}.module-handle-label strong{font-size:10px}.module-handle{padding:11px}}
+@media(prefers-reduced-motion:reduce){.module-chevron{transition:none}}
