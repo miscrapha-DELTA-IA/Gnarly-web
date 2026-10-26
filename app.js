@@ -41,7 +41,7 @@ const state={
   pitch:getSetting('pitch','yes')!=='no',musicTab:'speedPitch',omniboxTab:getSetting('omniboxTab','search'),micRecorder:null,micStream:null,micChunks:[],exportStyle:'Clássica',
   favorites:parseJSON(getSetting('favorites','[]'),[]),preset:getSetting('preset','ORIGINAL'),
   audioState:'idle', playbackError:'',
-  lyrics:[],plainLyrics:[],lyricsSource:null,lyricsSynced:false,lyricsLoading:false,lyricsAIWorking:false,lyricsStatus:'As letras aparecem automaticamente quando disponíveis.',lyricsAbort:null,sheet:null,backgroundURL:null,backgroundMode:getSetting('backgroundMode','visual'),photoZoom:Number(getSetting('photoZoom','1')),photoX:Number(getSetting('photoX','0')),photoY:Number(getSetting('photoY','0')),photoAdjust:false,artworkHue:.58,searchTimer:null,lastLyric:-2,searchLoading:false,searchError:'',searchTerm:omnibox.query,history:omnibox.history,searchGeneration:0
+  lyrics:[],plainLyrics:[],lyricsSource:null,lyricsSynced:false,lyricsInstrumental:false,lyricsLoading:false,lyricsAIWorking:false,lyricsStatus:'As letras aparecem automaticamente quando disponíveis.',lyricsAbort:null,sheet:null,backgroundURL:null,backgroundMode:getSetting('backgroundMode','visual'),photoZoom:Number(getSetting('photoZoom','1')),photoX:Number(getSetting('photoX','0')),photoY:Number(getSetting('photoY','0')),photoAdjust:false,artworkHue:.58,searchTimer:null,lastLyric:-2,searchLoading:false,searchError:'',searchTerm:omnibox.query,history:omnibox.history,searchGeneration:0
 };
 const MODULE_NAMES=['controls','export','performance'];
 const expandedModules=Object.fromEntries(MODULE_NAMES.map(name=>[name,getSetting('module.'+name,'closed')==='open']));
@@ -246,7 +246,7 @@ let lyricsAIAutoSession=false;
 const lyricsAIOnce=new Set();
 async function loadAutoLyrics(track){
  state.lyricsAbort?.abort();const ac=new AbortController();state.lyricsAbort=ac;
- state.lyrics=[];state.plainLyrics=[];state.lyricsSource=null;state.lyricsSynced=false;
+ state.lyrics=[];state.plainLyrics=[];state.lyricsSource=null;state.lyricsSynced=false;state.lyricsInstrumental=false;
  state.lyricsLoading=true;state.lastLyric=-2;
  state.lyricsStatus='Procurando letra no banco de dados…';syncLyrics();
  if(state.sheet==='karaoke')renderSheet();
@@ -254,7 +254,7 @@ async function loadAutoLyrics(track){
   const found=await autoLyrics(track,{signal:ac.signal});
   if(ac.signal.aborted||state.current!==track)return;
   state.lyrics=found.lines||[];state.plainLyrics=found.plainLines||[];
-  state.lyricsSource=found.source;state.lyricsSynced=!!found.synced;
+  state.lyricsSource=found.source;state.lyricsSynced=!!found.synced;state.lyricsInstrumental=!!found.instrumental;
   state.lyricsStatus=found.status;state.lastLyric=-2;
  }catch{
   if(ac.signal.aborted||state.current!==track)return;
@@ -262,7 +262,7 @@ async function loadAutoLyrics(track){
  }finally{
   if(state.lyricsAbort===ac&&!ac.signal.aborted&&state.current===track){
    state.lyricsLoading=false;syncLyrics();if(state.sheet==='karaoke')renderSheet();
-   if(lyricsAIAutoSession&&track.source==='local'&&track.file&&!state.lyrics.length&&!state.plainLyrics.length&&!state.lyricsAIWorking&&!lyricsAIOnce.has(track.id)&&!state.lyricsStatus.includes('limitou')){
+   if(lyricsAIAutoSession&&track.source==='local'&&track.file&&!state.lyrics.length&&!state.plainLyrics.length&&!state.lyricsAIWorking&&!lyricsAIOnce.has(track.id)&&!state.lyricsStatus.includes('limitou')&&!state.lyricsInstrumental){
     lyricsAIOnce.add(track.id);void transcribeOwnLyrics(track.file);
    }
   }
