@@ -2,6 +2,7 @@ import {KaraokeMicrophone} from '../lib/karaoke-microphone.js';
 import {KaraokeLiveScore} from '../lib/karaoke-live-score.js';
 import {applyLyricStyle,allLyricStyles} from '../lib/lyric-style.js';
 import {renderLyricArtwork} from '../lib/karaoke-art-direction.js';
+import {artworkBudget,resolveArtwork} from '../lib/artwork-quality.js';
 const esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 export function karaokeStageMarkup(){
  return `<section class="karaoke-stage" id="karaoke-stage" role="dialog" aria-modal="true" aria-labelledby="karaoke-stage-heading" hidden>
@@ -11,6 +12,7 @@ export function karaokeStageMarkup(){
    <img id="karaoke-stage-art" src="./assets/gnarly-icon.png" alt="" class="karaoke-stage-art">
    <div class="karaoke-stage-song"><h2 id="karaoke-stage-heading">GNARLY · Karaokê</h2><p id="karaoke-stage-artist">Selecione uma música</p></div>
    <button type="button" class="karaoke-stage-transport" id="karaoke-stage-play" aria-label="Reproduzir música">▶</button>
+   <button type="button" class="karaoke-stage-fullscreen" id="karaoke-stage-fullscreen" aria-label="Ativar tela cheia" aria-pressed="false" title="Tela cheia"><span data-fullscreen-glyph aria-hidden="true">⛶</span></button>
    <button type="button" class="karaoke-stage-close" id="karaoke-stage-close" aria-label="Recolher karaokê">✕</button>
   </header>
   <nav class="karaoke-stage-actions" aria-label="Controles de karaokê">
@@ -44,7 +46,7 @@ export class KaraokeStage {
   this.mic=new KaraokeMicrophone();this.scorer=new KaraokeLiveScore();
   this.opened=false;this.follow=true;this.trackId=null;this.lineRef=null;this.currentIndex=-999;
   this.reducedMotion=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches||false;
-  this.trigger=null;
+  this.trigger=null;this.artworkSource='';this.artworkRequest=0;
   this.mic.onChange=()=>{if(this.opened)this.updateScore()};
   this.mic.onRecording=blob=>{if(blob.size){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;
    a.download='gnarly-karaoke-voz-'+new Date().toISOString().slice(0,19).replaceAll(':','-')+(blob.type.includes('mp4')?'.m4a':'.webm');
@@ -85,7 +87,16 @@ export class KaraokeStage {
   this.query('karaoke-stage-heading').textContent=track?.title||'GNARLY · Karaokê';
   this.query('karaoke-stage-artist').textContent=track?.artist||'Selecione uma música';
   const art=track?.artwork||'./assets/gnarly-icon.png';
-  if(this.query('karaoke-stage-art').getAttribute('src')!==art){this.query('karaoke-stage-art').src=art;this.query('karaoke-stage-wallpaper').src=art}
+  if(this.artworkSource!==art){
+   this.artworkSource=art;const revision=++this.artworkRequest;
+   this.query('karaoke-stage-art').src=art;this.query('karaoke-stage-wallpaper').src=art;
+   const opts={viewportWidth:window.innerWidth,viewportHeight:window.innerHeight,dpr:window.devicePixelRatio||1,
+    saveData:!!navigator.connection?.saveData,deviceMemory:Number(navigator.deviceMemory)||8};
+   void resolveArtwork(art,{pixels:artworkBudget({role:'stage',...opts}),minDimension:340}).then(url=>{
+    if(this.artworkRequest!==revision||this.artworkSource!==art||!this.opened)return;
+    this.query('karaoke-stage-art').src=url;this.query('karaoke-stage-wallpaper').src=url;
+   });
+  }
   if(force||this.lineRef!==lines){
    this.lineRef=lines;this.currentIndex=-999;
    const holder=this.query('karaoke-reader-lines');holder.replaceChildren();

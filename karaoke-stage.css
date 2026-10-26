@@ -71,3 +71,9 @@ html.karaoke-stage-open,html.karaoke-stage-open body{overflow:hidden;overscroll-
 .karaoke-stage .karaoke-stage-art-root.app-shell{all:unset;display:block;width:100%;min-height:100%;font-family:inherit;color:inherit}
 .karaoke-stage .karaoke-stage-art-root .gnarly-typeart{font-size:inherit;max-width:100%;justify-content:center}
 .karaoke-stage .karaoke-reader-line.is-live .gnarly-typeart{font-size:inherit}
+
+/* More detail from actual HD artwork; 55px blur excessively erased cover texture. */
+.karaoke-stage-wallpaper{inset:-4%}
+.karaoke-stage-wallpaper img{filter:blur(clamp(11px,2vw,24px)) saturate(1.3);opacity:.55;transform:scale(1.04);image-rendering:auto}
+.karaoke-stage-fullscreen{flex:0 0 42px;height:42px;border-radius:50%;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.12);color:#fff;font-size:23px;font-weight:700;touch-action:manipulation}
+.karaoke-stage-fullscreen[aria-pressed="true"]{color:var(--acid);border-color:var(--acid)}
