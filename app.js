@@ -2,7 +2,7 @@ import {FluidVisual,PALETTES} from './lib/visual-engine.js';
 import {WebAudioEngine} from './lib/audio-engine.js';
 import {parseLRC,lyricIndex} from './lib/lrc.js';
 import {searchCatalog,searchNativeBackend,resolveTrackMetadata} from './lib/catalog.js';
-import {applyMetadata,enrichSearchCredits,isGenericArtist,inferredCredit} from './lib/metadata-intelligence.js';
+import {applyMetadata,enrichSearchCredits,isGenericArtist,inferredCredit,displayArtist,reconcileCatalogCredits} from './lib/metadata-intelligence.js';
 import {OmniboxSession,classifyIntent,rank} from './lib/omnibox.js';
 import {MUSIC_PRESETS,musicalPreset} from './lib/music-presets.js';
 import {autoLyrics} from './lib/lyrics-auto.js';
@@ -149,7 +149,7 @@ function reportAudioStatus(text){
 function updatePlayer(){
  const track=state.current;
  $('#track-title').textContent=track?.title||'Sua música. Seu universo.';
- $('#track-artist').textContent=track?.artist||'Selecione uma música para começar';
+ $('#track-artist').textContent=track?displayArtist(track):'Selecione uma música para começar';
  $('#cover-image').src=track?.artwork||icon;
  $('#cover-image').onerror=()=>{$('#cover-image').onerror=null;$('#cover-image').src=icon};
  updatePlayerSurfaceArtwork();
@@ -163,7 +163,7 @@ function updatePlayer(){
  $('#duration-label').textContent=track?.source==='preview'?'PRÉVIA · 0:30':fmt(Number.isFinite(audio.duration)&&audio.duration>0?audio.duration:track?.duration||0);
  updatePresetButtons();
  updateBadges(); updateProgress();
- if('mediaSession' in navigator && typeof MediaMetadata!=='undefined'){try{navigator.mediaSession.metadata=track?new MediaMetadata({title:track.title,artist:track.artist,album:track.album||'GNARLY WEB',artwork:[{src:track.artwork||new URL(icon,location.href).href,sizes:'256x256'}]}):null}catch{}}
+ if('mediaSession' in navigator && typeof MediaMetadata!=='undefined'){try{navigator.mediaSession.metadata=track?new MediaMetadata({title:track.title,artist:displayArtist(track),album:track.album||'GNARLY WEB',artwork:[{src:track.artwork||new URL(icon,location.href).href,sizes:'256x256'}]}):null}catch{}}
 }
 function updateProgress(){const d=audio.duration||0,t=audio.currentTime||0,p=d?Math.min(1000,1000*t/d):0;const slider=$('#seek-slider');slider.value=String(p);slider.style.setProperty('--progress',`${p/10}%`);$('#elapsed-label').textContent=fmt(t);if(state.current?.source!=='preview')$('#duration-label').textContent=fmt(d||state.current?.duration||0)}
 // Internal artwork uses a separate layer, never the app's backgroundMode.
@@ -328,6 +328,7 @@ async function enrichSelectedTrack(track,knownDuration=0){
 }
 function selectTrack(track,autoplay=true){
  if(!track)return;
+ if(isGenericArtist(track.artist))track.artist=displayArtist(track);
  audioDelivery.select(track);recoveryOperation=null;state.userPaused=false;
  state.demucsAbort?.abort();metadataAbort?.abort();lyricsAIController?.abort();state.lyricsAIWorking=false;pads.resetSong();stems.clear();state.stemModel='';state.stemStatus='Escolha quatro Stems ou solicite separação automática.';
  closeYouTubePlayer();audio.pause();state.playing=false;state.current=track;state.artworkHue=.58;state.playbackError='';state.audioState='idle';
@@ -446,7 +447,7 @@ function applyPanelVisibility(){
  syncModuleState();
 }
 function omniboxTabs(){return `<div class="omnibox-tabs" role="tablist" aria-label="Omnibox">${[['search','Busca'],['library','Mix · Offline'],['queue','Fila'],['karaoke','Karaokê']].map(([id,label])=>`<button role="tab" data-omnibox-tab="${id}" aria-selected="${state.sheet===id}" class="${state.sheet===id?'active':''}">${label}</button>`).join('')}</div>`}
-function mediaList(tracks,context){if(!tracks.length)return `<p class="section-note">Nenhuma música por aqui ainda.</p>`;return `<div class="media-list">${tracks.map((tr,i)=>`<div class="media-item"><img src="${safe(tr.artwork||icon)}" alt="" loading="lazy" /><div class="media-text"><strong>${safe(tr.title)}</strong><small>${safe(tr.artist)} · ${tr.source==='preview'?'Prévia · 30 s':tr.source==='youtube'?'GNARLY · áudio via backend':'Áudio completo · local'}</small></div><button data-action="play" data-context="${context}" data-index="${i}" aria-label="Reproduzir ${safe(tr.title)}">${svg('play')}</button><button data-action="enqueue" data-context="${context}" data-index="${i}" aria-label="Adicionar ${safe(tr.title)} à fila">${svg('plus')}</button></div>`).join('')}</div>`}
+function mediaList(tracks,context){if(!tracks.length)return `<p class="section-note">Nenhuma música por aqui ainda.</p>`;return `<div class="media-list">${tracks.map((tr,i)=>`<div class="media-item"><img src="${safe(tr.artwork||icon)}" alt="" loading="lazy" /><div class="media-text"><strong>${safe(tr.title)}</strong><small>${safe(displayArtist(tr))} · ${tr.source='preview'?'Prévia · 30 s':tr.source==='youtube'?'GNARLY · áudio via backend':'Áudio completo · local'}</small></div><button data-action="play" data-context="${context}" data-index="${i}" aria-label="Reproduzir ${safe(tr.title)}">${svg('play')}</button><button data-action="enqueue" data-context="${context}" data-index="${i}" aria-label="Adicionar ${safe(tr.title)} à fila">${svg('plus')}</button></div>`).join('')}</div>`}
 const visualTile=(name)=>`<button class="visual-choice ${state.theme===name?'active':''}" data-theme="${safe(name)}"><i class="swatch" style="--swatch-a:${PALETTES[name]?.[0]||'#000'};--swatch-b:${PALETTES[name]?.[1]||'#444'};--swatch-c:${PALETTES[name]?.[2]||'#aaa'}"></i><strong>${safe(name)}</strong></button>`;
 const experienceTile=(v)=>`<button class="visual-choice ${state.experience===v.id?'active':''}" data-experience="${v.id}"><strong>${safe(v.name)}</strong><small>${safe(v.detail)}</small></button>`;
 const btn=(caption,command,other='')=>`<button class="action-button ${other}" data-command="${command}">${caption}</button>`;
@@ -602,12 +603,28 @@ for(const host of [$('#sheet-content'),$('#module-dock')]){host.addEventListener
 let searchCounter=0;
 function displaySearch(results,info=''){if(state.sheet!=='search')return;const resultsEl=$('#search-results'),status=$('#search-state');if(resultsEl)resultsEl.innerHTML=mediaList(results,'search');if(status)status.textContent=info}
 async function runSearch(raw){const query=String(raw||'').trim();state.searchTerm=query;omnibox.setQuery(query);const intent=classifyIntent(query);const count=++searchCounter;
- if(intent.kind==='direct'){const id=intent.videoId,track={id:'youtube:'+id,videoId:id,title:id,artist:'YouTube',artwork:'https://i.ytimg.com/vi/'+id+'/hqdefault.jpg',source:'youtube',duration:0};state.searchResults=[track];selectTrack(track,false);displaySearch([track],'Link reconhecido · pronto para reprodução no GNARLY');return}
+ if(intent.kind==='direct'){const id=intent.videoId,track={id:'youtube:'+id,videoId:id,title:id,artist:'Artista não identificado',artwork:'https://i.ytimg.com/vi/'+id+'/hqdefault.jpg',source:'youtube',duration:0};state.searchResults=[track];selectTrack(track,false);displaySearch([track],'Link reconhecido · pronto para reprodução no GNARLY');return}
  if(intent.kind==='empty'){state.searchResults=state.history.slice(0,4);displaySearch(state.searchResults,'Suas músicas recentes');return}
  if(query.length<2){state.searchResults=[];displaySearch([],'Digite pelo menos 2 caracteres');return}
  const cached=omnibox.fromCache(query);if(cached){state.searchResults=cached.results;displaySearch(state.searchResults,cached.stale?'Resultados anteriores · atualizando…':'Resultados em cache');if(!cached.stale)return}
  displaySearch(state.searchResults,'Buscando no catálogo do app…');
- try{const native=searchNativeBackend(query).then(songs=>{if(count===searchCounter&&songs.length){const early=rank(query,songs,omnibox.history);state.searchResults=early;displaySearch(early,'Catálogo GNARLY disponível · complementando créditos…');}return songs;});
+ try{const native=searchNativeBackend(query).then(songs=>{
+  if(count===searchCounter&&songs.length){
+   // Repair old favorites/history/queue/current only when native search confirms
+   // the SAME 11-character video ID, without changing source or playback URL.
+   const repaired=reconcileCatalogCredits(songs,[omnibox.history,state.favorites,state.queue,[state.current]]);
+   if(repaired){
+    omnibox.save('history',omnibox.history);
+    setSetting('favorites',JSON.stringify(state.favorites.filter(x=>x.source!=='local').slice(-100)));
+    state.history=omnibox.history;
+    updatePlayer();
+   }
+   const early=rank(query,songs,omnibox.history);
+   state.searchResults=early;
+   displaySearch(early,'Catálogo GNARLY disponível · complementando créditos…');
+  }
+  return songs;
+ });
  const previewsTask=searchCatalog(query);
  const outcome=await Promise.allSettled([native,previewsTask]);if(count!==searchCounter)return;
  const songs=outcome[0].status==='fulfilled'?outcome[0].value:[],previews=outcome[1].status==='fulfilled'?outcome[1].value:[];

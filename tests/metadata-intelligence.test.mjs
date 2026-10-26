@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {isGenericArtist,inferredCredit,matchApple,matchMusicBrainz,applyMetadata,enrichSearchCredits} from '../lib/metadata-intelligence.js';
+import {isGenericArtist,inferredCredit,matchApple,matchMusicBrainz,applyMetadata,enrichSearchCredits,displayArtist,reconcileCatalogCredits} from '../lib/metadata-intelligence.js';
 import {onRequestGet} from '../functions/api/metadata.js';
 import {OmniboxSession} from '../lib/omnibox.js';
 
@@ -104,4 +104,52 @@ test('metadata integration never overwrites audio graph or identity',()=>{
  assert.match(app,/metadataAbort\?\.abort\(\)/);
  assert.match(app,/void loadAutoLyrics\(track\)/);
  assert.doesNotMatch(app,/enrichLocalTrack\(/);
+});
+
+test('provider labels never appear as an artist, including legacy favorites',()=>{
+ for(const artist of ['YouTube Music','YT Music','Youtube - Topic','YouTube','Artista não identificado','']){
+  assert.equal(displayArtist({artist}),'Artista não identificado',artist);
+ }
+ assert.equal(displayArtist({artist:'AURORA'}),'AURORA');
+});
+test('same-video catalog results repair old history, favorite, queue and current without mutating source or ID',()=>{
+ const original=song('Northern Lights','YouTube Music',197);
+ const history=[{...original,plays:5,artist:'YouTube Music'}];
+ const favorites=[{...original,artist:'YouTube Music'}];
+ const queue=[{...original,artist:'YouTube Music'}];
+ const current={...original,artist:'YouTube Music'};
+ const source={...original,artist:'AURORA',album:'Sky'};
+ const changed=reconcileCatalogCredits([source],[history,favorites,queue,[current]]);
+ assert.equal(changed,4);
+ for(const item of [history[0],favorites[0],queue[0],current]){
+  assert.equal(item.artist,'AURORA');
+  assert.equal(item.videoId,'abcdefghijk');
+  assert.equal(item.source,'youtube');
+  assert.equal(item.id,'youtube:abcdefghijk');
+  assert.equal(item.duration,197);
+ }
+ assert.equal(history[0].plays,5);
+});
+test('same title with a different videoID NEVER steals artist credits',()=>{
+ const old=song('Northern Lights','YouTube Music');
+ const other={...old,id:'youtube:bbbbbbbbbbb',videoId:'bbbbbbbbbbb',artist:'AURORA'};
+ assert.equal(reconcileCatalogCredits([other],[[old]]),0);
+ assert.equal(displayArtist(old),'Artista não identificado');
+});
+test('legacy Omnibox history is sanitized without losing play count',()=>{
+ const store=new Map([['gnarly.omnibox.history',JSON.stringify([{...song('Old Track'),plays:7,lastPlayed:1234}])]]);
+ const storage={getItem:k=>store.get(k),setItem:(k,v)=>store.set(k,v)};
+ const session=new OmniboxSession(storage);
+ assert.equal(session.history[0].artist,'Artista não identificado');
+ assert.equal(session.history[0].plays,7);
+ assert.equal(JSON.parse(store.get('gnarly.omnibox.history'))[0].artist,'Artista não identificado');
+ session.record({...session.history[0],artist:'AURORA'});
+ assert.equal(session.history[0].artist,'AURORA');
+});
+test('player, saved search list and Media Session use the same protected label',()=>{
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ assert.match(app,/\$\('#track-artist'\)\.textContent=track\?displayArtist\(track\)/);
+ assert.match(app,/safe\(displayArtist\(tr\)\)/);
+ assert.match(app,/artist:displayArtist\(track\)/);
+ assert.match(app,/reconcileCatalogCredits\(songs,/);
 });
