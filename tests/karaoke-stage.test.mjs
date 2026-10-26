@@ -48,7 +48,7 @@ test('opening at the middle of a song skips old verses and not score backwards',
 });
 test('microphone is never requested by construction; permission only on start',async()=>{
  let requests=0;
- const stream={active:true,getTracks:()=>[{stop(){}}]};
+ const stream={active:true,getTracks:()=>[{stop(){},addEventListener(){}}]};
  class FakeAnalyser{fftSize=4096;getFloatTimeDomainData(x){x.fill(0)}}
  class FakeContext{
   state='running';sampleRate=44100;
