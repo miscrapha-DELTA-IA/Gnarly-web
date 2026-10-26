@@ -58,9 +58,9 @@ test('Missing maxres never replaces a valid SD image with a tiny placeholder',as
   ]);
   assert.match(first,/sddefault\.jpg$/);
   assert.equal(first,second);
-  assert.equal(loads,2,'in-flight requests are deduplicated');
+  assert.equal(loads,3,'all 3 unique candidates are inspected once for both concurrent callers');
   assert.equal(await resolveArtwork(url,{pixels:1800,minDimension:480}),first);
-  assert.equal(loads,2,'bounded cache prevents duplicate fetches');
+  assert.equal(loads,3,'bounded cache prevents duplicate fetches');
  }finally{globalThis.Image=oldImage;clearArtworkQualityCache()}
 });
 test('Fullscreen switches to browser API, syncs aria state, and exits',async()=>{
@@ -141,4 +141,42 @@ test('metadata service requests original album master art and Worker routes meta
  assert.match(service,/\+'\/front'/);
  assert.doesNotMatch(service,/\/front-500/);
  assert.match(worker,/'\/api\/metadata': \{method:'GET', handler:metadata\}/);
+});
+
+test('candidate selection maximizes actual sharpness instead of accepting the first passable filename',async()=>{
+ clearArtworkQualityCache();
+ const Old=globalThis.Image;
+ class ActualPixels{
+  naturalWidth=0;naturalHeight=0;
+  set src(url){
+   if(url.includes('maxresdefault')){this.naturalWidth=1280;this.naturalHeight=720}
+   else if(url.includes('sddefault')){this.naturalWidth=1600;this.naturalHeight=1200}
+   else{this.naturalWidth=480;this.naturalHeight=360}
+   queueMicrotask(()=>this.onload?.());
+  }
+ }
+ globalThis.Image=ActualPixels;
+ try{
+  const raw='https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg';
+  const best=await resolveArtworkAsset(raw,{pixels:1600,minDimension:480,displayWidth:390,displayHeight:844,dpr:2});
+  assert.match(best.url,/sddefault\.jpg$/,'real 1600x1200 is better for cropped portrait than nominal 1280x720 maxres');
+  assert.equal(best.width,1600);assert.equal(best.height,1200);
+  assert.equal(best.quality,'medium');
+ }finally{globalThis.Image=Old;clearArtworkQualityCache()}
+});
+test('Apple artwork never downgrades and YouTube Music supports square-size URLs',()=>{
+ const apple='https://is1-ssl.mzstatic.com/image/thumb/demo/2000x2000bb.jpg';
+ assert.equal(artworkCandidates(apple,{pixels:300})[0],apple);
+ const appleCropped='https://is1-ssl.mzstatic.com/image/thumb/demo/100x100bb-60.jpg';
+ assert.match(artworkCandidates(appleCropped,{pixels:1800})[0],/1800x1800bb-60\.jpg$/);
+ const google='https://lh3.googleusercontent.com/example=s120-c';
+ assert.match(artworkCandidates(google,{pixels:1600})[0],/=w1600-h1600-l90-rj$/);
+});
+test('search rows lazily inspect real decoded thumbnails rather than trust the first guessed URL',()=>{
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ assert.match(app,/const thumbnailObserver=typeof IntersectionObserver/);
+ assert.match(app,/async function upgradeThumbnail\(image\)/);
+ assert.match(app,/image\.dataset\.artQuality=asset\.quality/);
+ assert.match(app,/upgradeMediaArtwork\(resultsEl\)/);
+ assert.match(app,/function renderSheet\(\)[^\n]*upgradeMediaArtwork\(\)/);
 });
