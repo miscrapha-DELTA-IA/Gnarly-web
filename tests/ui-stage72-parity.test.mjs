@@ -87,3 +87,18 @@ test('Player density and material adjust independently of visibility and Zen',()
  assert.equal(store.size,'minimal');
  assert.equal(store.material,'frosted');
 });
+
+test('Gnarly retractable window contract keeps Omnibox before three distinct optional surfaces',()=>{
+ for(const id of ['controls','export','performance'])assert.match(html,new RegExp('id="module-'+id+'-body" hidden'));
+ assert.ok(html.indexOf('id="module-dock"')>html.indexOf('id="omnibox-shell"'));
+ assert.doesNotMatch(html,/id="create-button"|id="edit-button"/);
+ assert.match(html,/id="music-toggle-button"/);
+ assert.match(app,/expandedModules/);
+ assert.match(app,/function syncModuleState/);
+ assert.match(app,/function renderModule/);
+ assert.match(app,/data-module-toggle/);
+ const storage={getItem:()=>null,setItem:()=>{}},display=createDisplayStore(storage);
+ assert.match(renderDisplayPanel(display),/Performance \/ DJ/);
+ display.set('performance',false);
+ assert.equal(display.isVisible('performance'),false);
+});
