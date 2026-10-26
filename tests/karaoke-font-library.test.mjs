@@ -90,7 +90,7 @@ test('Only karaoke presentation code changed; player, LRC timestamps and queue a
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  const styles=readFileSync(new URL('../module-dock.css',import.meta.url),'utf8');
  assert.match(app,/lyricFonts\.selected\(track\)\.style/);
- assert.match(app,/loadLyricTypeface\(style\.id\)/);
+ assert.match(app,/loadLyricTypeface\(designFont\(style\.id\)\)/);
  assert.match(app,/if\(target\.dataset\.lyricStyle\)\{applyChosenLyricFont/);
  assert.match(app,/lyricGroup/);
  assert.match(styles,/text-wrap:balance/);
