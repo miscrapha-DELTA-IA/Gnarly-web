@@ -24,6 +24,10 @@ test('Música owns presets and two tabs, realistic four-stem sliders and reactio
  assert.match(front,/Nightcore/);
  assert.match(front,/Manter o tom original/);
  assert.match(front,/RITMO VISUAL/);
+ assert.match(front,/MIXAGEM · ÁUDIO E RITMO/);
+ assert.doesNotMatch(html,/id="reaction-button"/);
+ assert.match(html,/id="player-surface-label"/);
+ assert.doesNotMatch(renderMusicPanel({...state,showControls:false}),/RITMO VISUAL/);
  assert.match(front,/aria-selected="true"/);
  assert.match(front,/50%/);
  const stems=renderMusicPanel({...state,tab:'stems',stemLevels:{vocal:.6,drums:1,bass:1,other:1},stemStatus:'GPU real',stemsReady:true});
@@ -67,7 +71,7 @@ test('Player density and material adjust independently of visibility and Zen',()
  assert.equal(store.material,'clear');
  assert.match(renderDisplayPanel(store),/PLAYER · TAMANHO/);
  assert.doesNotMatch(renderDisplayPanel(store),/VIDRO · TRANSPARÊNCIA/);
- assert.match(renderDisplayPanel(store),/aba lateral do player/);
+ assert.match(renderDisplayPanel(store),/botão de aparência junto ao tempo/);
  store.setSize('minimal');store.setMaterial('frosted');
  store.set('player',false);store.setZen(true);
  store=createDisplayStore(storage);

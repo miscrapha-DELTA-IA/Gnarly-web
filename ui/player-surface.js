@@ -9,6 +9,9 @@ const OPTIONS=Object.freeze([
 export function normalizePlayerSurfaceMode(value){
   return PLAYER_SURFACE_MODES.includes(value)?value:'turbulent';
 }
+export function playerSurfaceShortLabel(value){
+  return {turbulent:'TURBULENT',frosted:'FOSCO',sharp:'NÍTIDO',moving:'MOVIMENTO'}[normalizePlayerSurfaceMode(value)];
+}
 export function renderPlayerSurfaceMenu(selected){
   const mode=normalizePlayerSurfaceMode(selected);
   return OPTIONS.map(([id,label,glyph])=>

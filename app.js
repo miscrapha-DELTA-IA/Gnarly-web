@@ -11,7 +11,7 @@ import {StemMixer,STEM_KINDS,STEM_LABELS,STEM_PRESETS} from './lib/stem-mixer.js
 import {demucsStatus,prepareDemucsAudio,separateWithBestModel} from './lib/demucs-cloud.js';
 import {renderMusicPanel,mixerValue} from './ui/music-panel.js';
 import {createDisplayStore,renderDisplayPanel} from './ui/display-panel.js';
-import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,preferHighResolutionArtwork} from './ui/player-surface.js';
+import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel,preferHighResolutionArtwork} from './ui/player-surface.js';
 
 const $=(selector)=>document.querySelector(selector);
 const app=$('#app-shell'), audio=$('#player-audio'), visual=new FluidVisual($('#fluid-canvas'));
@@ -48,7 +48,6 @@ function titleForFile(file){const name=file.name.replace(/\.[^.]+$/,'');const pa
 function updateBadges(){
  document.documentElement.style.setProperty('--acid', ({'ACID':'#46ff12','CYBER NIGHT':'#35d5ff','CRIMSON':'#ff425d','CHROME':'#e6f2ef','SMOKE':'#d5c2ec','XEROX SERPENTINE':'#d5ec46','PRISM CARMINE':'#ff56ab','GNARLY':'#45ff8a'})[state.theme]||'#46ff12');
  $('.build-badge').textContent=`WEB · ${state.theme}`;
- $('#reaction-label').textContent=state.reaction;
  visual.setTheme(state.theme);visual.setExperience(state.experience);visual.setReaction(state.reaction);
  const fave=state.current&&state.favorites.some(x=>x.id===state.current.id);
  $('#favorite-button').classList.toggle('is-favorite',!!fave);
@@ -140,6 +139,7 @@ function applyPlayerSurfaceMode(next,{persist=true}={}){
  const mode=normalizePlayerSurfaceMode(next);
  state.playerSurfaceMode=mode;
  app.dataset.playerSurfaceMode=mode;
+ $('#player-surface-label').textContent=playerSurfaceShortLabel(mode);
  if(persist)setSetting('playerSurfaceMode',mode);
  updatePlayerSurfaceArtwork();
 }
@@ -357,7 +357,6 @@ $('#search-toggle').addEventListener('click',()=>state.sheet==='display'?closeSh
 $('#omnibox-toggle').addEventListener('click',()=>OMNIBOX_TABS.includes(state.sheet)?closeSheet():openSheet(OMNIBOX_TABS.includes(state.omniboxTab)?state.omniboxTab:'search'));
 $('#more-button').addEventListener('click',()=>openSheet('more'));
 $('#edit-button').addEventListener('click',()=>openSheet('theme'));
-$('#reaction-button').addEventListener('click',()=>{const modes=['DESLIGADO','FLUIDO','REATIVO'];state.reaction=modes[(modes.indexOf(state.reaction)+1)%modes.length];visual.setReaction(state.reaction);setSetting('reaction',state.reaction);updateBadges();toast(`Ritmo visual: ${state.reaction}`)});
 $('#share-button').addEventListener('click',()=>openSheet('export'));
 async function toggleMicRecording(){
  if(state.micRecorder&&state.micRecorder.state==='recording'){state.micRecorder.stop();return}

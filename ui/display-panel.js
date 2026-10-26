@@ -38,6 +38,6 @@ export function renderDisplayPanel(display){
  <h3>PLAYER · TAMANHO</h3><div class="display-segmented" role="group" aria-label="Tamanho do player">
  ${[['compact','Compacto'],['standard','Clássico'],['minimal','Mínimo']].map(([id,title])=>`<button type="button" data-player-size="${id}" aria-pressed="${display.size===id}" class="${display.size===id?'active':''}">${title}</button>`).join('')}
  </div>
- <p class="display-player-hint">Use a aba lateral do player para escolher Fosco, Nítido, Em movimento ou Turbulent Displacement. O tamanho é independente do visual e da música.</p>
+ <p class="display-player-hint">Toque no botão de aparência junto ao tempo da faixa para escolher Fosco, Nítido, Em movimento ou Turbulent Displacement. O tamanho é independente do visual e da música.</p>
  </section><h3>BUSCA</h3>${toggle('search','Busca','⌕')}<div class="display-group-head"><h3>ÁUDIO · PRESETS E CONTROLES</h3><button data-layout-group="all">Tudo</button><button data-layout-group="none">Nada</button></div>${toggle('presets','Presets','☷')}${toggle('controls','Controles','☷')}<h3>OUTRAS JANELAS</h3>${toggle('header','Cabeçalho e atalhos','▤')}${toggle('player','Player','♫')}${toggle('export','Exportar','⇧')}<button class="display-hide-button" data-command="hide-display-panels">Ocultar janelas desta tela</button><p class="display-footer">A reprodução continua enquanto as janelas são ocultadas. O botão do olho fica acessível para restaurá-las.</p></div>`;
 }
