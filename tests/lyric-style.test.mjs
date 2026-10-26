@@ -38,7 +38,7 @@ test('Aa panel safely offers all registered presets and selected aria state',()=
  const html=renderLyricStylePanel('neon');
  assert.match(html,/data-lyric-style="neon"/);
  assert.match(html,/aria-pressed="true"/);
- assert.match(html,/Fontes e estilos adicionais/);
+ assert.match(html,/40 COMPOSIÇÕES GNARLY/);
  assert.equal(html.includes('<script'),false);
 });
 test('palette, lightning and Aa are independent accessible controls',()=>{
