@@ -9,7 +9,7 @@ import {autoLyrics,cachedAutoLyrics,prefetchAutoLyrics} from './lib/lyrics-auto.
 import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
 import {trackAudioURL,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
 import {AudioDeliveryRecovery,inspectPlaybackLimit,playbackLimitMessage} from './lib/audio-delivery.js';
-import {createMediaSessionController} from './lib/media-session-controller.js';
+import {createMediaSessionController,configureBrowserAudioSession} from './lib/media-session-controller.js';
 import {appendUnique,commitPlaying,moveTrack,removeTrack,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
 import {ListeningMemory,MEMORY_KEY,recommendTracks,retainManualQueue,markAutoTracks,sameRecording,discoverySuggestions} from './lib/listening-intelligence.js';
 import {renderSmartQueuePanel} from './ui/smart-queue-panel.js';
@@ -688,6 +688,10 @@ async function play(){
   state.audioState='loading';reportAudioStatus('Conectando ao backend GNARLY · preparando áudio…');
  }
  try{
+  // Safari/WebKit: request the native playback category *before* building
+  // the Web Audio graph. Keep duplex while an explicitly authorized mic runs.
+  configureBrowserAudioSession({navigatorObject:navigator,
+   recording:!!(karaokeStage.mic.active||state.micStream)});
   // Both calls start synchronously within the user's click gesture (Safari).
   const unlock=engine.resume(),start=audio.play();
   await Promise.all([unlock,start]);
