@@ -165,3 +165,11 @@ body.gnarly-immersive{min-height:100dvh}
 
 /* One-tap GNARLY layer cycling, hold for the full manual selector. */
 #theme-button,#experience-button,#lyric-style-button{touch-action:manipulation;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
+
+/* Listening Intelligence — understated memory indicators in the queue drawer */
+.smart-taste-insight{display:flex;align-items:center;flex-wrap:wrap;gap:7px 12px;
+ padding:10px 12px;margin:9px 0 12px;border-radius:13px;border:1px solid rgba(255,255,255,.12);
+ background:rgba(255,255,255,.045);font-size:11px;line-height:1.55;color:rgba(236,244,247,.82)}
+.smart-taste-clear{margin-left:auto;border:1px solid rgba(255,255,255,.23);border-radius:999px;
+ padding:6px 11px;background:rgba(255,255,255,.075);color:inherit;font:inherit;font-weight:700;cursor:pointer}
+.smart-taste-clear:hover,.smart-taste-clear:focus-visible{border-color:var(--acid,#46ff12);color:var(--acid,#46ff12)}

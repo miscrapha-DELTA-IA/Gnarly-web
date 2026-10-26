@@ -53,3 +53,15 @@ jobs:
           test ! -e dist/netlify
           test ! -e dist/functions
           test ! -e dist/tests
+
+      - name: Install browser for Karaoke Smart Queue integration
+        if: github.event_name == 'pull_request' && github.base_ref == 'feat/gnarly-listening-memory-distinct-smart-queues'
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Verify expanded Karaoke in desktop and mobile
+        if: github.event_name == 'pull_request' && github.base_ref == 'feat/gnarly-listening-memory-distinct-smart-queues'
+        run: |
+          python3 -m http.server 8765 --bind 127.0.0.1 >/tmp/gnarly-karaoke.log 2>&1 &
+          echo $! > /tmp/gnarly-karaoke.pid
+          node tests/karaoke-stage-layout.browser.mjs

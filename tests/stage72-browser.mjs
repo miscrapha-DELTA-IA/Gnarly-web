@@ -428,6 +428,21 @@ await karaokePage.locator('#karaoke-expand-button').waitFor({state:'attached'});
 await karaokePage.locator('#floating-lyrics').evaluate(el=>{el.hidden=false});
 await karaokePage.locator('#karaoke-expand-button').click();
 assert.equal(await karaokePage.locator('#karaoke-stage').isVisible(),true);
+// Regression: no header/play/pause clipping after expanding stage while
+// the body is scrolled or browser fullscreen is active.
+const stageGeometry=await karaokePage.evaluate(()=>{
+ const rect=selector=>{const {top,bottom,left,right}=document.querySelector(selector).getBoundingClientRect();return {top,bottom,left,right}};
+ return {header:rect('.karaoke-stage-header'),play:rect('#karaoke-stage-play'),close:rect('#karaoke-stage-close'),reader:rect('#karaoke-reader'),footer:rect('.karaoke-stage-footer'),height:innerHeight};
+});
+assert.ok(stageGeometry.header.top>=0&&stageGeometry.header.bottom<stageGeometry.height/3,
+ 'Karaoke header must remain fully visible: '+JSON.stringify(stageGeometry));
+for(const id of ['play','close','footer'])assert.ok(stageGeometry[id].top>=0&&stageGeometry[id].bottom<=stageGeometry.height,
+ 'Karaoke '+id+' must remain within the viewport: '+JSON.stringify(stageGeometry));
+assert.ok(stageGeometry.reader.bottom>stageGeometry.reader.top+50,'Karaoke lyric reader must have positive height');
+await karaokePage.locator('#karaoke-stage-fullscreen').click();
+assert.equal(await karaokePage.locator('#karaoke-stage-fullscreen').getAttribute('aria-pressed'),'true');
+await karaokePage.locator('#karaoke-stage-fullscreen').click();
+assert.equal(await karaokePage.locator('#karaoke-stage-fullscreen').getAttribute('aria-pressed'),'false');
 assert.equal(await karaokePage.locator('#karaoke-voice-toggle').getAttribute('aria-pressed'),'false');
 assert.equal(await karaokePage.locator('#karaoke-voice-record').isDisabled(),true);
 assert.equal(await karaokePage.locator('audio').count(),1,'Expanded karaoke must reuse the one and only audio element');
@@ -437,6 +452,27 @@ await karaokePage.locator('[data-stage-font="neon"]').click();
 assert.equal(await karaokePage.locator('#karaoke-stage').getAttribute('data-lyric-style'),'neon');
 assert.equal(await karaokePage.locator('#karaoke-stage').isVisible(),true);
 await karaokePage.locator('#karaoke-follow-live').click();
+// Microphone permission errors must be displayed INSIDE the expanded stage,
+// rather than behind its overlay in GNARLY's global toast layer.
+await karaokePage.evaluate(()=>{
+ if(navigator.mediaDevices)Object.defineProperty(navigator.mediaDevices,'getUserMedia',{configurable:true,value:()=>Promise.reject(new DOMException('Denied','NotAllowedError'))});
+});
+await karaokePage.locator('#karaoke-voice-toggle').click();
+await karaokePage.waitForFunction(()=>!document.getElementById('karaoke-stage-feedback').hidden);
+assert.match(await karaokePage.locator('#karaoke-stage-feedback').innerText(),/microfone|permissão/i);
+// Follow must ONLY scroll the lyric reader; never the whole document.
+const isolatedScroll=await karaokePage.evaluate(async()=>{
+ const reader=document.getElementById('karaoke-reader'),holder=document.getElementById('karaoke-reader-lines');
+ const before=window.scrollY;reader.style.height='200px';reader.style.flex='0 0 200px';
+ const anchor=document.createElement('div');anchor.style.height='1600px';holder.append(anchor);
+ const line=document.createElement('div');line.style.height='70px';line.textContent='Verso distante';holder.append(line);
+ const {KaraokeStage}=await import('./ui/karaoke-stage.js');
+ const prototype=Object.create(KaraokeStage.prototype);prototype.root=document.getElementById('karaoke-stage');prototype.reducedMotion=true;
+ prototype.centerActiveLine(line);
+ return {documentBefore:before,documentAfter:window.scrollY,readerTop:reader.scrollTop};
+});
+assert.equal(isolatedScroll.documentAfter,isolatedScroll.documentBefore,'Autofollow must never scroll outer page');
+assert.ok(isolatedScroll.readerTop>300,'Autofollow must scroll its own reader only: '+JSON.stringify(isolatedScroll));
 await karaokePage.screenshot({path:'karaoke-expanded-web-mobile.png',fullPage:false});
 await karaokePage.locator('#karaoke-stage-close').click();
 assert.equal(await karaokePage.locator('#karaoke-stage').isVisible(),false);
@@ -468,5 +504,27 @@ await quick.locator('#lyric-style-button').dispatchEvent('pointerup',{button:0,p
 await quick.locator('#close-sheet').click();
 assert.deepEqual(quickErrors,[]);
 await quick.close();
+
+// Smart Queue / Omnibox: all four tabs share one taste memory without leaking
+// their suggestions or requiring the playback engine to start without a track.
+const tastePage=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+const tasteErrors=[];tastePage.on('pageerror',error=>tasteErrors.push(error.message));
+await tastePage.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
+await tastePage.locator('#omnibox-toggle').click();
+await tastePage.locator('[data-omnibox-tab="queue"]').click();
+assert.equal(await tastePage.locator('.smart-queue-panel').count(),1);
+assert.match(await tastePage.locator('.smart-queue-explain').innerText(),/Cada modo tem sua própria lógica/);
+assert.equal(await tastePage.locator('.smart-taste-clear').count(),1);
+for(const mode of ['artist','album','mix','playlist']){
+ await tastePage.locator('[data-smart-mode="'+mode+'"]').click();
+ assert.equal(await tastePage.locator('[data-smart-mode="'+mode+'"]').getAttribute('aria-pressed'),'true');
+ assert.equal(await tastePage.locator('[data-smart-mode="'+mode+'"]').count(),1);
+}
+await tastePage.locator('.smart-taste-clear').click();
+assert.match(await tastePage.locator('.smart-taste-insight').innerText(),/0 sinais locais/);
+await tastePage.locator('[data-omnibox-tab="search"]').click();
+assert.match(await tastePage.locator('.section-head').first().innerText(),/para você/i);
+assert.deepEqual(tasteErrors,[],'Queue mode/taste reset and Omnibox must not throw');
+await tastePage.close();
 
 await browser.close();
