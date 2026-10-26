@@ -527,4 +527,38 @@ assert.match(await tastePage.locator('.section-head').first().innerText(),/para 
 assert.deepEqual(tasteErrors,[],'Queue mode/taste reset and Omnibox must not throw');
 await tastePage.close();
 
+// GNARLY 2: manual material/color lock, independent material and experience
+// must be accessible without altering the single active player or the last Aa font.
+const visualPage=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+const visualErrors=[];visualPage.on('pageerror',e=>visualErrors.push(e.message));
+await visualPage.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
+await visualPage.locator('#theme-button').click({button:'right'});
+assert.equal(await visualPage.locator('[data-theme="NEON PULSE COLORS"]').count(),1);
+assert.equal(await visualPage.locator('[data-theme="SUBCULTURAL ARCHIVE COLORS"]').count(),1);
+await visualPage.locator('[data-theme="GNARLY 2"]').click();
+assert.match(await visualPage.locator('.build-badge').innerText(),/GNARLY 2/);
+assert.equal(await visualPage.locator('[data-gnarly2-lock="colors"]').count(),1);
+await visualPage.locator('[data-gnarly2-lock="colors"]').click();
+assert.equal(await visualPage.locator('[data-gnarly2-lock="colors"]').getAttribute('aria-pressed'),'true');
+await visualPage.locator('[data-theme="NEON PULSE COLORS"]').click();
+assert.match(await visualPage.locator('.build-badge').innerText(),/GNARLY 2/);
+assert.equal(await visualPage.evaluate(()=>localStorage.getItem('gnarly.web.previousTheme')),'NEON PULSE COLORS');
+await visualPage.locator('[data-gnarly2-material="PRISM CARMINE"]').click();
+assert.equal(await visualPage.locator('[data-gnarly2-lock="material"]').getAttribute('aria-pressed'),'true');
+await visualPage.locator('#experience-button').click({button:'right'});
+await visualPage.locator('[data-experience="gnarly-exp-vector-drift-2000"]').click();
+assert.equal(await visualPage.evaluate(()=>localStorage.getItem('gnarly.web.experience')),'gnarly-exp-vector-drift-2000');
+assert.match(await visualPage.locator('.build-badge').innerText(),/GNARLY 2/);
+await visualPage.locator('#theme-button').click({button:'right'});
+await visualPage.locator('[data-command="restore-theme"]').click();
+assert.match(await visualPage.locator('.build-badge').innerText(),/NEON PULSE COLORS/);
+await visualPage.locator('[data-material-layer="XEROX SERPENTINE"]').click();
+assert.equal(await visualPage.evaluate(()=>localStorage.getItem('gnarly.web.materialLayer')),'XEROX SERPENTINE');
+assert.match(await visualPage.locator('.build-badge').innerText(),/NEON PULSE COLORS/);
+await visualPage.locator('[data-material-layer="none"]').click();
+assert.equal(await visualPage.evaluate(()=>localStorage.getItem('gnarly.web.materialLayer')),'none');
+assert.equal(await visualPage.locator('#player-audio').count(),1);
+assert.deepEqual(visualErrors,[],'New visual layers and GNARLY 2 do not throw browser runtime errors');
+await visualPage.close();
+
 await browser.close();
