@@ -176,7 +176,10 @@ function applyBackground(){
   photo.style.backgroundImage=`url("${state.backgroundURL}")`;
   photo.style.transform=`translate3d(${state.photoX}%,${state.photoY}%,0) scale(${state.photoZoom})`;
  }else{photo.style.backgroundImage='';photo.style.transform=''}
- if(coverPhoto)app.style.backgroundImage=`linear-gradient(#0002,#0007),url("${preferHighResolutionArtwork(cover,2000).replaceAll('"','%22')}")`;
+ if(coverPhoto){
+  const original=safeSurfaceArtwork(cover),large=safeSurfaceArtwork(preferHighResolutionArtwork(original,2000));
+  app.style.backgroundImage=`linear-gradient(#0002,#0007),url("${large.replaceAll('"','%22')}"),url("${original.replaceAll('"','%22')}")`;
+ }
  else app.style.backgroundImage='';
  visual.setPaused(ownPhoto||coverPhoto);
 }
