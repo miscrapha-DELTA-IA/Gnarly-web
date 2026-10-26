@@ -196,4 +196,47 @@ assert.ok(await page.locator('[data-export-format="image"]').count()>0);
 await page.screenshot({path:'stage72-ui-mobile.png',fullPage:true});
 assert.deepEqual(errs,[]);
 console.log('Stage72 mobile UI and panels validated; screenshot saved.');
+
+// Desktop should paint the entire browser viewport at physically appropriate
+// resolution, not a centered iPhone-sized canvas stretched to a PC window.
+const desktop=await browser.newPage({viewport:{width:1440,height:900},isMobile:false,hasTouch:false,deviceScaleFactor:2});
+const desktopErrors=[];desktop.on('pageerror',e=>desktopErrors.push(e.message));
+await desktop.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
+await desktop.waitForSelector('#player-section');
+await desktop.waitForTimeout(500);
+async function inspectDesktop(expectedWidth,expectedHeight){
+ return desktop.evaluate(([width,height])=>{
+  const shell=document.querySelector('#app-shell'),canvas=document.querySelector('#fluid-canvas'),player=document.querySelector('#player-section');
+  const root=shell.getBoundingClientRect(),box=canvas.getBoundingClientRect(),panel=player.getBoundingClientRect();
+  const gl=canvas.getContext('webgl2');
+  const maxTexture=gl?.getParameter(gl.MAX_RENDERBUFFER_SIZE)||0;
+  return {root:{x:root.x,width:root.width,height:root.height},canvas:{x:box.x,width:box.width,height:box.height,backingWidth:canvas.width,backingHeight:canvas.height},
+   player:{x:panel.x,width:panel.width,right:panel.right},gpu:!!gl,maxTexture,
+   desktop:matchMedia('(min-width:900px) and (pointer:fine)').matches,
+   viewport:{width,height},scrollWidth:document.documentElement.scrollWidth};
+ },[expectedWidth,expectedHeight]);
+}
+const desk1=await inspectDesktop(1440,900);
+assert.ok(desk1.desktop,'Desktop media query should detect a full-size browser with fine pointer');
+assert.ok(Math.abs(desk1.root.width-1440)<2&&Math.abs(desk1.root.height-900)<2,'PC shell should occupy 1440 × 900: '+JSON.stringify(desk1));
+assert.ok(Math.abs(desk1.canvas.width-1440)<2&&Math.abs(desk1.canvas.height-900)<2,'PC GPU canvas should cover viewport');
+assert.ok(desk1.gpu,'Desktop background must retain WebGL2');
+assert.ok(desk1.canvas.backingWidth>=2700&&desk1.canvas.backingHeight>=1600,'Retina 1440px desktop must not render a blurry 2.1MP texture: '+JSON.stringify(desk1));
+assert.ok(desk1.player.x>=0&&desk1.player.right<=1440,'Desktop player should fit inside viewport');
+assert.ok(desk1.scrollWidth<=1441,'PC layout should not cause horizontal page scrolling');
+await desktop.setViewportSize({width:1920,height:1080});
+await desktop.waitForFunction(()=>{const c=document.querySelector('#fluid-canvas');return Math.abs(c.getBoundingClientRect().width-1920)<2&&c.width>=1800;},null,{timeout:12000});
+const desk2=await inspectDesktop(1920,1080);
+assert.ok(Math.abs(desk2.root.width-1920)<2&&Math.abs(desk2.root.height-1080)<2,'Canvas must resize to fill 1920 × 1080');
+assert.ok(desk2.canvas.backingWidth>=1800&&desk2.canvas.backingHeight>=1000,'Full HD frame must retain crisp backing');
+assert.ok(desk2.player.x>=0&&desk2.player.right<=1920,'Desktop content should fit screen');
+await desktop.screenshot({path:'stage78-ui-desktop.png',fullPage:false});
+await desktop.close();
+assert.deepEqual(desktopErrors,[],'No uncaught desktop rendering exceptions');
+
+const tablet=await browser.newPage({viewport:{width:768,height:1024},isMobile:true,hasTouch:true,deviceScaleFactor:2});
+await tablet.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
+const tabletViewport=await tablet.locator('#app-shell').boundingBox();
+assert.ok(tabletViewport.width<=768,'Mobile/tablet must retain its normal layout');
+await tablet.close();
 await browser.close();
