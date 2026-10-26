@@ -737,7 +737,7 @@ async function maybeFillSmartQueue({force=false}={}){
  }
 }
 function renderQueuePanel(){
- return renderSmartQueuePanel({mode:smartMode,queueCount:state.queue.length,playlistNames:playlistStore.names(),selectedPlaylist,playlistCount:playlistStore.tracks(selectedPlaylist).length,status:smartStatus,anchor:state.current})+
+ return renderSmartQueuePanel({mode:smartMode,queueCount:state.queue.length,playlistNames:playlistStore.names(),selectedPlaylist,playlistCount:playlistStore.tracks(selectedPlaylist).length,status:smartStatus,anchor:state.current,taste:listeningMemory.summary()})+
  '<div class="smart-playlist-heading"><span>Playlist · '+safe(selectedPlaylist)+'</span></div>'+
  mediaList(playlistStore.tracks(selectedPlaylist),'playlist')+
  '<div class="row-end"><p class="section-note">A seguir · arraste a ordem com ↑ ↓</p>'+btn('Limpar fila','clear-queue','alt')+'</div>'+
@@ -771,7 +771,17 @@ function renderVisualLayer(layer){
   '<div class="button-row">'+btn('Concluído','apply-theme')+btn('Ritmo fluido','reset-reaction-only','alt')+'</div>';
 }
 function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet){
- case 'search':content.innerHTML=`<form id="search-form" class="search-bar"><input id="search-term" type="search" autocomplete="off" placeholder="Buscar música ou colar link" aria-label="Omnibox GNARLY" value="${safe(state.searchTerm)}"/><button type="submit">Buscar</button></form><p class="section-note">Omnibox Stage 72: histórico imediato e busca no catálogo musical ao confirmar. Resultados musicais priorizados, fila, histórico e reprodução pelo backend GNARLY. A reprodução pode falhar em faixas indisponíveis ou sem autorização.</p><div id="search-state" class="status-text">${safe(state.searchError||'Digite uma busca e pressione Buscar')}</div><div id="search-results">${mediaList(state.searchResults,'search')}</div>${state.history.length?`<div class="section-head">Ouvidas recentemente</div>${mediaList(state.history.slice(0,4),'history')}`:''}`;break;
+ case 'search':{
+  const suggestions=discoverySuggestions({history:state.history,favorites:state.favorites,
+   queue:[...state.queue,state.current].filter(Boolean),memory:listeningMemory});
+  const initial=!state.searchTerm;
+  const display=initial?(suggestions.length?suggestions:state.history.slice(0,4)):state.searchResults;
+  // Search is relevance-first. Only the empty Omnibox discovery surface uses taste.
+  state.searchResults=initial?display:state.searchResults;
+  const separateRecent=state.searchTerm?state.history.filter(x=>!display.some(y=>sameRecording(x,y))).slice(0,4):[];
+  content.innerHTML=`<form id="search-form" class="search-bar"><input id="search-term" type="search" autocomplete="off" placeholder="Buscar música ou colar link" aria-label="Omnibox GNARLY" value="${safe(state.searchTerm)}"/><button type="submit">Buscar</button></form><p class="section-note">Busque qualquer música livremente. Sem busca ativa, a Omnibox oferece descobertas do seu histórico, sem repetir a fila atual. Nada é enviado para analisar seus hábitos.</p><div class="section-head">${initial?'Para você · memória musical':'Resultados da busca'}</div><div id="search-state" class="status-text">${safe(initial?(suggestions.length?'Afinidades da sua biblioteca · sem repetir a fila':'Músicas recentes · continue descobrindo'):(state.searchError||'Busque no catálogo do GNARLY'))}</div><div id="search-results">${mediaList(display,'search')}</div>${separateRecent.length?`<div class="section-head">Ouvidas recentemente</div>${mediaList(separateRecent,'history')}`:''}`;
+  break;
+ }
  case 'library':content.innerHTML=`<div class="card-help">Sua <strong>biblioteca local</strong> toca arquivos do dispositivo, sem servidor e sem conta. Os arquivos importados permanecem apenas nesta sessão.</div>${btn('＋ Adicionar músicas','import')}<div class="section-head">Mix · ${state.tracks.length} músicas</div>${mediaList(state.tracks,'library')}<div class="section-head">Favoritas · ${state.favorites.length}</div>${mediaList(state.favorites,'favorites')}`;break;
  case 'favorites':content.innerHTML=`<div class="section-head">Favoritos</div>${mediaList(state.favorites,'favorites')}`;break;
  case 'queue':content.innerHTML=renderQueuePanel();break;
@@ -851,6 +861,7 @@ function applyChosenLyricFont(id,scope=lyricScope){
 function resolveTracks(context){if(context==='playlist')return playlistStore.tracks(selectedPlaylist);return ({search:state.searchResults,library:state.tracks,queue:state.queue,favorites:state.favorites,history:state.history})[context]||[]}
 function handleCommand(command){switch(command){
  case 'smart-refresh':lastSmartSeed='';state.queue=retainManualQueue(state.queue);void maybeFillSmartQueue({force:true});break;
+ case 'taste-reset':listeningMemory.clear();recommendationsByMode.clear();toast('Aprendizado local reiniciado. Suas playlists e favoritos foram preservados.');renderActiveSurfaces();break;
  case 'playlist-add-current':if(!state.current){toast('Escolha uma faixa primeiro.');break}if(playlistStore.add(selectedPlaylist,state.current)){toast('Salvo em '+selectedPlaylist);if(state.sheet==='queue')renderSheet()}else toast('Faixa já salva ou não persistível.');break;
  case 'playlist-create':{const name=window.prompt('Nome da nova playlist (até 45 caracteres):');if(name===null)break;if(!playlistStore.create(name)){toast('Nome repetido ou limite de playlists atingido.');break}selectedPlaylist=name.trim().slice(0,45);setSetting('smartPlaylist',selectedPlaylist);if(state.sheet==='queue')renderSheet();break}
  case 'playlist-load':{const items=playlistStore.tracks(selectedPlaylist);const before=state.queue.length;state.queue=appendUnique(state.queue,items,state.current?.id);updatePlayer();if(state.sheet==='queue')renderSheet();toast((state.queue.length-before)+' adicionadas · '+selectedPlaylist);break}
@@ -1016,7 +1027,7 @@ let searchCounter=0;
 function displaySearch(results,info=''){if(state.sheet!=='search')return;const resultsEl=$('#search-results'),status=$('#search-state');if(resultsEl)resultsEl.innerHTML=mediaList(results,'search');if(status)status.textContent=info}
 async function runSearch(raw){const query=String(raw||'').trim();state.searchTerm=query;omnibox.setQuery(query);const intent=classifyIntent(query);const count=++searchCounter;
  if(intent.kind==='direct'){const id=intent.videoId,track={id:'youtube:'+id,videoId:id,title:id,artist:'Artista não identificado',artwork:'https://i.ytimg.com/vi/'+id+'/hqdefault.jpg',source:'youtube',duration:0};state.searchResults=[track];selectTrack(track,false);displaySearch([track],'Link reconhecido · pronto para reprodução no GNARLY');return}
- if(intent.kind==='empty'){state.searchResults=state.history.slice(0,4);displaySearch(state.searchResults,'Suas músicas recentes');return}
+ if(intent.kind==='empty'){const suggestions=discoverySuggestions({history:state.history,favorites:state.favorites,queue:[...state.queue,state.current].filter(Boolean),memory:listeningMemory});state.searchResults=suggestions.length?suggestions:state.history.slice(0,4);displaySearch(state.searchResults,suggestions.length?'Para você · afinidades sem repetir a fila':'Suas músicas recentes');return}
  if(query.length<2){state.searchResults=[];displaySearch([],'Digite pelo menos 2 caracteres');return}
  const cached=omnibox.fromCache(query);if(cached){state.searchResults=cached.results;displaySearch(state.searchResults,cached.stale?'Resultados anteriores · atualizando…':'Resultados em cache');if(!cached.stale)return}
  displaySearch(state.searchResults,'Buscando no catálogo do app…');
