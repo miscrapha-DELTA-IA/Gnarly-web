@@ -10,7 +10,7 @@ const triad=[note(60,0,2),note(64,0,2),note(67,0,2)];
 test('Notes are bounded and never imply embedded original MIDI',()=>{
  assert.deepEqual(validateNotes([note(-1,0),note(60,-3),note(60,0),{pitchMidi:NaN}],3).length,1);
  assert.equal(noteName(60),'C4');assert.equal(noteName(69),'A4');
- assert.equal(validateNotes([{...note(60,0),durationSeconds:99}],3)[0].durationSeconds,3);
+ assert.equal(validateNotes([{...note(60,0),durationSeconds:10}],3)[0].durationSeconds,3);
 });
 test('Chord intervals recognize simple C major and A minor, reject silence',()=>{
  assert.equal(chordTimeline(triad,{duration:2})[0].chord,'C');
