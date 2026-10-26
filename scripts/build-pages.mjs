@@ -4,7 +4,7 @@ import {resolve,join} from 'node:path';
 import {buildSync} from 'esbuild';
 const root=resolve(import.meta.dirname,'..'),out=join(root,'dist');
 rmSync(out,{recursive:true,force:true});mkdirSync(out,{recursive:true});
-for(const file of ['index.html','styles.css','performance.css','module-dock.css','app.js','manifest.webmanifest','logo.svg','_headers']){
+for(const file of ['index.html','styles.css','performance.css','module-dock.css', 'karaoke-art.css','app.js','manifest.webmanifest','logo.svg','_headers']){
  const p=join(root,file);if(!existsSync(p))throw Error('Missing static file: '+file);
  copyFileSync(p,join(out,file));
 }
