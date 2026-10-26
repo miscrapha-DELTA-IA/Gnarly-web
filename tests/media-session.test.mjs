@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {createMediaSessionController,mediaPosition} from '../lib/media-session-controller.js';
+import {createMediaSessionController,mediaPosition,configureBrowserAudioSession} from '../lib/media-session-controller.js';
 
 function setup(){
  const registered=new Map(),positionCalls=[],metadataCalls=[];
@@ -111,4 +111,26 @@ test('GNARLY web uses single HTML audio, not parallel playback, for all remote a
  assert.doesNotMatch(app,/for\(const \[action,fn\] of \[\['play'/);
  assert.match(html,/<audio id="player-audio"/);
  assert.match(source,/createMediaElementSource\(this\.audio\)/);
+});
+
+test('WebKit playback audio category is feature-detected and duplex for mic capture',()=>{
+ const navigatorObject={audioSession:{type:'auto'}};
+ assert.equal(configureBrowserAudioSession({navigatorObject}),true);
+ assert.equal(navigatorObject.audioSession.type,'playback');
+ assert.equal(configureBrowserAudioSession({navigatorObject,recording:true}),true);
+ assert.equal(navigatorObject.audioSession.type,'play-and-record');
+ assert.equal(configureBrowserAudioSession({navigatorObject:{}}),false);
+});
+test('the karaoke microphone restores playback policy instead of leaving music in recording mode',()=>{
+ const microphone=readFileSync(new URL('../lib/karaoke-microphone.js',import.meta.url),'utf8');
+ assert.match(microphone,/recording:true/);
+ assert.match(microphone,/configureBrowserAudioSession\(\{navigatorObject:this\.navigatorObject\}\)/);
+});
+test('headphone transport does not change the existing native playback source when backgrounded',()=>{
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ assert.match(app,/configureBrowserAudioSession\(\{navigatorObject:navigator/);
+ assert.match(app,/recording:!!\(karaokeStage\.mic\.active\|\|state\.micStream\)/);
+ assert.match(app,/nexttrack:\(\)=>\{if\(state\.queue\.length\)next\(\)\}/);
+ assert.match(app,/previoustrack:\(\)=>\{if\(state\.current\)previous\(\)\}/);
+ assert.doesNotMatch(app,/visibilitychange[^\n]*pause\(\)/);
 });
