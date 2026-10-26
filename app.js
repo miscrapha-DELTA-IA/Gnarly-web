@@ -29,6 +29,7 @@ import {renderMusicPanel,mixerValue} from './ui/music-panel.js';
 import {createDisplayStore,renderDisplayPanel} from './ui/display-panel.js';
 import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel} from './ui/player-surface.js';
 import {artworkBudget,artworkCandidates,resolveArtworkAsset} from './lib/artwork-quality.js';
+import {requestVerifiedAlbumArtwork} from './lib/album-artwork-client.js';
 import {createFullscreenController} from './lib/fullscreen-controller.js';
 import {karaokeStageMarkup,KaraokeStage} from './ui/karaoke-stage.js';
 
@@ -505,6 +506,37 @@ function syncLyrics(){
  if(state.sheet==='karaoke')renderSheet();
 }
 function refreshLyricArtwork(){state.lastLyric=-2;syncLyrics()}
+// The official album cover is a separate resource from a YouTube video still.
+async function verifiedAlbumAsset(track,role='background'){
+ const official=await requestVerifiedAlbumArtwork(track);
+ if(!official)return null;
+ const viewport=artworkViewport(role);
+ const asset=await resolveArtworkAsset(official.url,{
+  ...viewport,pixels:Math.max(1600,viewport.pixels),minDimension:700
+ });
+ if(asset.width<800||asset.height<800)return null;
+ return {...official,asset};
+}
+function applyOfficialArtwork(track,official){
+ if(!track||!official?.asset)return;
+ const selected=state.current?.id===track.id?state.current:null;
+ for(const item of [track,selected])if(item){
+  item.artwork=official.asset.url;item.artworkProvider=official.provider;
+ }
+ for(const collection of [state.history,state.favorites,state.queue,state.searchResults]){
+  if(!Array.isArray(collection))continue;
+  for(const item of collection)if(item?.id===track.id){
+   item.artwork=official.asset.url;item.artworkProvider=official.provider;
+  }
+ }
+ omnibox.updateMetadata(track);
+ if(selected){updatePlayer();void loadArtworkHue(selected);karaokeStage.refresh();}
+}
+async function enrichOfficialAlbumArt(track){
+ if(!track||state.current!==track)return;
+ const official=await verifiedAlbumAsset(track,'background');
+ if(state.current===track&&official)applyOfficialArtwork(track,official);
+}
 let metadataAbort=null;
 async function enrichSelectedTrack(track,knownDuration=0){
  if(!track||!['youtube','local'].includes(track.source)||state.current!==track)return;
@@ -529,7 +561,7 @@ async function enrichSelectedTrack(track,knownDuration=0){
   for(const favorite of state.favorites)if(favorite.id===track.id){
    for(const key of ['title','artist','album','artwork'])favorite[key]=track[key];
   }
-  updatePlayer();void loadArtworkHue(track);
+  updatePlayer();void loadArtworkHue(track);void enrichOfficialAlbumArt(track);
   if(isGenericArtist(before)&&!isGenericArtist(track.artist))void loadAutoLyrics(track);
   if(state.sheet==='search')displaySearch(state.searchResults);
  }catch(error){if(error?.name!=='AbortError')console.debug('Metadata enrichment unavailable');}
@@ -549,7 +581,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false}={}){
    // Deferred until Play: avoids wasting a Render extraction on every tapped row.
    audio.removeAttribute('src');audio.preload='none';audio.load();
  }else{audio.preload='metadata';audio.src=track.url;audio.load();}
- reportAudioStatus('');state.lastLyric=-2;updatePlayer();void loadArtworkHue(track);void loadAutoLyrics(track);prefetchNextLyrics();
+ reportAudioStatus('');state.lastLyric=-2;updatePlayer();void loadArtworkHue(track);void enrichOfficialAlbumArt(track);void loadAutoLyrics(track);prefetchNextLyrics();
  karaokeStage.refresh(true);
  if(track.source==='youtube')void enrichSelectedTrack(track);omnibox.record(track);state.history=omnibox.history;
  if(isModuleOpen('performance'))void pads.prepareSong(track);
@@ -715,7 +747,7 @@ function mediaList(tracks,context){
    :context==='playlist'
    ? '<button data-action="enqueue"'+attrs+' aria-label="Enfileirar '+label+'">'+svg('plus')+'</button><button data-action="playlist-remove"'+attrs+' aria-label="Remover '+label+' da playlist">×</button>'
    : '<button data-action="enqueue"'+attrs+' aria-label="Enfileirar '+label+'">'+svg('plus')+'</button><button data-action="playlist-add"'+attrs+' aria-label="Salvar '+label+' na playlist">♫+</button>';
-  return '<div class="media-item"><img src="'+safe(artworkCandidates(tr.artwork||icon,{pixels:artPixels('thumb')})[0]||icon)+'" data-original-art="'+safe(tr.artwork||icon)+'" alt="" loading="lazy" decoding="async" /><div class="media-text"><strong>'+label+'</strong><small>'+safe(displayArtist(tr))+' · '+source+'</small></div>'+play+actions+'</div>';
+  return '<div class="media-item"><img src="'+safe(artworkCandidates(tr.artwork||icon,{pixels:artPixels('thumb')})[0]||icon)+'" data-original-art="'+safe(tr.artwork||icon)+'" data-art-context="'+safe(context)+'" data-art-index="'+i+'" alt="" loading="lazy" decoding="async" /><div class="media-text"><strong>'+label+'</strong><small>'+safe(displayArtist(tr))+' · '+source+'</small></div>'+play+actions+'</div>';
  }).join('')+'</div>';
 }
 // Only probe rows that can come into view. The old thumbnail path loaded the
@@ -729,21 +761,32 @@ async function upgradeThumbnail(image){
  thumbnailObserver?.unobserve(image);
  const source=image.dataset.originalArt;
  if(!source||source===icon)return;
- const rect=image.getBoundingClientRect();
+ const rect=image.getBoundingClientRect(),dimensions={
+  displayWidth:Math.max(72,Math.round(rect.width)),displayHeight:Math.max(72,Math.round(rect.height)),
+  dpr:window.devicePixelRatio||1
+ };
  const asset=await resolveArtworkAsset(source,{
-  pixels:artPixels('thumb'),displayWidth:Math.max(72,Math.round(rect.width)),
-  displayHeight:Math.max(72,Math.round(rect.height)),dpr:window.devicePixelRatio||1,
-  minDimension:160
+  ...dimensions,pixels:artPixels('thumb'),minDimension:160
  });
  if(!image.isConnected||image.dataset.originalArt!==source)return;
  image.dataset.artQuality=asset.quality;
- if(!asset.url||image.src===asset.url)return;
- const prepared=new Image();prepared.decoding='async';prepared.src=asset.url;
- try{if(prepared.decode)await prepared.decode();else await new Promise((resolve,reject)=>{
-  prepared.onload=resolve;prepared.onerror=reject;
-  if(prepared.complete&&prepared.naturalWidth)resolve();
- })}catch{return}
- if(image.isConnected&&image.dataset.originalArt===source)image.src=asset.url;
+ if(asset.url&&image.src!==asset.url){
+  const prepared=new Image();prepared.decoding='async';prepared.src=asset.url;
+  try{if(prepared.decode)await prepared.decode();else await new Promise((resolve,reject)=>{
+   prepared.onload=resolve;prepared.onerror=reject;
+   if(prepared.complete&&prepared.naturalWidth)resolve();
+  });if(image.isConnected&&image.dataset.originalArt===source)image.src=asset.url;}catch{}
+ }
+ // Only visible rows query an alternate source, maximum 2 at a time.
+ const context=image.dataset.artContext,index=Number(image.dataset.artIndex);
+ const track=Number.isInteger(index)&&context?resolveTracks(context)[index]:null;
+ if(!track||!image.isConnected||image.dataset.originalArt!==source)return;
+ const official=await verifiedAlbumAsset(track,'cover');
+ if(!official||!image.isConnected||image.dataset.originalArt!==source)return;
+ applyOfficialArtwork(track,official);
+ image.dataset.originalArt=official.asset.url;
+ image.dataset.artQuality=official.asset.quality;
+ if(image.src!==official.asset.url)image.src=official.asset.url;
 }
 function upgradeMediaArtwork(container=$('#sheet-content')){
  container?.querySelectorAll('img[data-original-art]').forEach(image=>{
