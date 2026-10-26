@@ -103,7 +103,8 @@ const karaokeStage=new KaraokeStage({
   synced:state.lyricsSynced,status:state.lyricsStatus,style:state.lyricStyle}),
  onNotify:message=>toast(message),
  onMicConflict:()=>state.micRecorder?.state==='recording',
- onPlayPause:()=>{if(state.playing)pause();else void play()},
+ onPlayPause:()=>{if(!audio.paused&&!audio.ended)pause();else void play()},
+ onFullscreen:()=>{void fullscreen.toggle()},
  onStyle:id=>{
   if(!id){karaokeStage.close();openSheet('lyric-style');return}
   const style=resolveLyricStyle(id);
@@ -940,7 +941,7 @@ $('#search-toggle').addEventListener('click',()=>state.sheet==='display'?closeSh
 $('#omnibox-toggle').addEventListener('click',()=>OMNIBOX_TABS.includes(state.sheet)?closeSheet():openSheet(OMNIBOX_TABS.includes(state.omniboxTab)?state.omniboxTab:'search'));
 $('#more-button').addEventListener('click',()=>openSheet('more'));
 $('#fullscreen-button').addEventListener('click',()=>{void fullscreen.toggle()});
-$('#karaoke-stage').addEventListener('click',e=>{if(e.target.closest('#karaoke-stage-fullscreen'))void fullscreen.toggle()});
+// Fullscreen within karaoke is handled by KaraokeStage.click, alongside pause/mic/Aa.
 $('#sheet-content').addEventListener('error',e=>{
  const image=e.target;if(image?.tagName!=='IMG'||!image.matches('[data-original-art]'))return;
  const original=image.dataset.originalArt,previous=image.getAttribute('src');
