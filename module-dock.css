@@ -57,3 +57,59 @@
 #sheet-content .media-item>button[data-action="remove"],
 #sheet-content .media-item>button[data-action="playlist-remove"]{font-size:16px}
 @media(max-width:390px){.smart-queue-panel{padding:10px}.smart-chip{padding:6px 8px}.smart-queue-explain{font-size:11px}#sheet-content .media-item>button[data-action]{min-width:26px}}
+
+/* Quick visual architecture: painter = L1 theme, bolt = L2 experience,
+   Aa = independent karaoke typography. Eight topbar controls fit 320px. */
+.app-shell .topbar{gap:clamp(1px,.7vw,7px);padding-inline:clamp(7px,2.5vw,24px)}
+.app-shell .topbar>.icon-button{flex:0 1 clamp(32px,8.15vw,44px);width:clamp(32px,8.15vw,44px);height:44px;min-width:0}
+.app-shell .topbar>.icon-button .icon{width:clamp(19px,5.3vw,23px);height:clamp(19px,5.3vw,23px)}
+.app-shell .topbar>.palette{color:var(--acid);background:color-mix(in srgb,var(--acid) 9%,rgba(12,18,17,.55))}
+.app-shell .topbar>.lyric-typography-button{color:#f5f4fa}
+.app-shell .topbar>.lyric-typography-button span{font-size:19px;font-weight:780;letter-spacing:-.1em;line-height:1;font-family:Georgia,serif;padding-right:2px}
+.app-shell .topbar>.palette[aria-expanded="true"],
+.app-shell .topbar>.bolt[aria-expanded="true"],
+.app-shell .topbar>.lyric-typography-button[aria-expanded="true"]{color:var(--acid);border-color:color-mix(in srgb,var(--acid) 45%,transparent);background:color-mix(in srgb,var(--acid) 13%,rgba(12,18,17,.5))}
+@media(max-width:359px){
+ .app-shell .topbar{gap:1px;padding-inline:7px}
+ .app-shell .topbar>.icon-button{flex-basis:32px;width:32px;height:42px}
+ .app-shell .topbar>.lyric-typography-button span{font-size:17px}
+}
+/* Font-selection UI. Future datasets provide descriptors, never arbitrary CSS. */
+.lyric-style-panel{max-width:760px;margin-inline:auto}
+.lyric-font-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:13px 0 17px}
+.lyric-font-option{display:flex;align-items:center;gap:10px;padding:13px 10px;min-height:78px;color:#fff;text-align:left;border:1px solid rgba(255,255,255,.16);border-radius:15px;background:rgba(255,255,255,.065)}
+.lyric-font-option[aria-pressed="true"]{border-color:var(--acid);background:color-mix(in srgb,var(--acid) 12%,rgba(5,13,9,.7));box-shadow:inset 0 0 16px color-mix(in srgb,var(--acid) 7%,transparent)}
+.lyric-font-specimen{font-size:25px;flex:0 0 39px;text-align:center;letter-spacing:-.07em}
+.lyric-font-option[data-preview-font="system"] .lyric-font-specimen{font-family:-apple-system,BlinkMacSystemFont,sans-serif}
+.lyric-font-option[data-preview-font="editorial"] .lyric-font-specimen{font-family:Georgia,serif;font-style:italic}
+.lyric-font-option[data-preview-font="rounded"] .lyric-font-specimen{font-family:ui-rounded,"Trebuchet MS",sans-serif;font-weight:900}
+.lyric-font-option[data-preview-font="mono"] .lyric-font-specimen{font-family:ui-monospace,Menlo,monospace;letter-spacing:-.11em}
+.lyric-font-option[data-preview-font="display"] .lyric-font-specimen{font-family:Impact,"Arial Narrow",sans-serif;text-transform:uppercase}
+.lyric-font-detail{display:flex;flex-direction:column;min-width:0;gap:3px}
+.lyric-font-detail strong{font-size:12px;line-height:1.1}
+.lyric-font-detail small{font-size:10px;color:#bccbc1;line-height:1.25}
+.lyric-font-selection{color:var(--acid);font-size:16px;font-weight:800;margin-left:auto}
+.lyric-font-future{border-top:1px solid rgba(255,255,255,.12);padding-top:13px;line-height:1.5}
+@media(max-width:359px){.lyric-font-grid{gap:7px}.lyric-font-option{padding:10px 7px;gap:6px}.lyric-font-specimen{font-size:21px;flex-basis:29px}}
+/* Single typography contract shared between the HUD and the Karaoke sheet. */
+.app-shell .floating-lyrics,.app-shell .lyrics-box .lyric-line{
+ font-family:var(--gnarly-lyric-font,-apple-system,BlinkMacSystemFont,sans-serif);
+ font-weight:var(--gnarly-lyric-weight,700);
+ letter-spacing:var(--gnarly-lyric-spacing,0em);
+ text-transform:var(--gnarly-lyric-transform,none);
+ overflow-wrap:anywhere;
+}
+.app-shell .floating-lyrics{font-size:calc(20px * var(--gnarly-lyric-scale,1))}
+.app-shell .lyrics-box .lyric-line{font-size:calc(18px * var(--gnarly-lyric-scale,1))}
+.app-shell .lyrics-box .lyric-line.active{font-size:calc(23px * var(--gnarly-lyric-scale,1));font-weight:var(--gnarly-lyric-weight,800)}
+.app-shell[data-lyric-treatment="neon"] .floating-lyrics,
+.app-shell[data-lyric-treatment="neon"] .lyrics-box .lyric-line.active{text-shadow:0 0 9px color-mix(in srgb,var(--acid) 80%,white),0 0 25px color-mix(in srgb,var(--acid) 48%,transparent)}
+.app-shell[data-lyric-treatment="editorial"] .floating-lyrics,
+.app-shell[data-lyric-treatment="editorial"] .lyrics-box .lyric-line.active{font-style:italic;text-shadow:0 3px 15px #000e}
+.app-shell[data-lyric-treatment="mono"] .floating-lyrics,
+.app-shell[data-lyric-treatment="mono"] .lyrics-box .lyric-line.active{text-shadow:2px 2px 0 #000e}
+.app-shell[data-lyric-treatment="kinetic"] .floating-lyrics,
+.app-shell[data-lyric-treatment="kinetic"] .lyrics-box .lyric-line.active{text-shadow:1px 2px 0 #000,3px 4px 0 #000b,0 0 15px color-mix(in srgb,var(--acid) 38%,transparent)}
+.app-shell[data-lyric-treatment="minimal"] .floating-lyrics,
+.app-shell[data-lyric-treatment="minimal"] .lyrics-box .lyric-line.active{text-shadow:0 2px 7px #000b}
+@media(prefers-reduced-motion:reduce){.lyric-font-option{transition:none!important}}
