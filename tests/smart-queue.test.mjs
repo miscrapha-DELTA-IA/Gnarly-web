@@ -48,3 +48,14 @@ test('wakeup can happen once without awaiting or downloading media',async()=>{
  assert.equal(calls[0].options.mode,'no-cors');
  assert.doesNotMatch(calls[0].url,/download/);
 });
+
+test('player integration keeps source identity and queue transitions transactional',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const code=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ assert.doesNotMatch(code,/tr\.source\s*=\s*['"]preview['"]/,'Rendering must not overwrite the selected audio source');
+ assert.match(code,/audio\.addEventListener\('playing',[\s\S]*?commitPlaying\(state\.queue,pendingQueueId\)/);
+ assert.match(code,/const nextTrack=state\.queue\[0\]/,'Next should stage, not shift before playback');
+ assert.match(code,/function renderQueuePanel\(\)/);
+ assert.match(code,/audioWarmup\.start\(\)/);
+ assert.match(code,/handlePanelClick/);
+});
