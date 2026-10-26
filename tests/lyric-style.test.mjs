@@ -5,7 +5,7 @@ import {allLyricStyles,resolveLyricStyle,applyLyricStyle,registerLyricStyle,DEFA
 import {renderLyricStylePanel} from '../ui/lyric-style-panel.js';
 test('six system presets plus 34 curated, lazily-loaded Google Fonts are offered',()=>{
  assert.deepEqual(allLyricStyles().slice(0,6).map(x=>x.id),['original','neon','editorial','mono','kinetic','minimal']);
- assert.equal(allLyricStyles().length,40);
+ assert.equal(allLyricStyles().length,80);
  assert.equal(DEFAULT_LYRIC_STYLE,'original');
  for(const style of allLyricStyles())assert.ok(Object.hasOwn(LYRIC_FONT_FAMILIES,style.family));
  assert.equal(resolveLyricStyle('invalid').id,'original');
