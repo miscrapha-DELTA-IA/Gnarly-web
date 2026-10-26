@@ -149,7 +149,10 @@ assert.equal(new Set(palettes).size,1,'Changing experience must preserve Crimson
 const currentTheme=await page.locator('.build-badge').innerText();
 await openCreativeLayer('#lyric-style-button');
 assert.equal(await page.locator('#sheet-title').innerText(),'Aa · Estilo de legenda');
-await page.locator('[data-lyric-style="editorial"]').click();
+assert.equal(await page.locator('button[data-lyric-style="art-magazine-cutout"]').isVisible(),true);
+assert.equal(await page.locator('button[data-lyric-style="font-inter"]').isVisible(),false);
+await page.locator('[data-font-group="all"]').click();
+await page.locator('button[data-lyric-style="editorial"]').click();
 assert.equal(await page.locator('#app-shell').getAttribute('data-lyric-style'),'editorial');
 assert.equal(await page.locator('.build-badge').innerText(),currentTheme);
 assert.equal(await page.locator('button[data-lyric-style="editorial"]').getAttribute('aria-pressed'),'true');
