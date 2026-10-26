@@ -2,7 +2,7 @@
 
 ## Base (não reverter outras abas)
 
-Created from GNARLY Web main `3d0a409e2ff6459d750ea28cb927b9a82ccd3a91` (the latest main read at the start of work), with its existing Aa typeface datasets, manual scope, Smart Queue, WebGL themes, DJ/MIDI, audio backend, lyric loaders and streaming recovery intact. Before merging, compare main again.
+Created from GNARLY Web main `3d0a409e2ff6459d750ea28cb927b9a82ccd3a91` and merged with the newer Aa Creative Editions main `d7113ffeecdda5a91a1ae3f59ae82ce4b5955848`, with its existing Aa typeface datasets, manual scope, Smart Queue, WebGL themes, DJ/MIDI, audio backend, lyric loaders and streaming recovery intact. Before merging, compare main again.
 
 ## Native code studied
 
@@ -18,7 +18,7 @@ These concepts are ported to the browser; SwiftUI and AVAudioEngine aren't copie
 1. The previous floating lyric remains above the player, now with a tiny microphone symbol at its right edge. Tapping expands a fullscreen, frosted singing stage; it does **not** request microphone access.
 2. Stage reuses **the exact existing HTMLAudioElement** and `state.current`, `state.lyrics`, `state.plainLyrics`, `state.lyricsSynced`, `state.lyricStyle`. A single source of playback truth.
 3. Cover, title, artist, player Play/Pause on the existing HTMLAudioElement, microphone opt-in, live voice-only recording, caption font menu (14 quick presets plus complete Aa catalog), score panel and combo, synchronized active LRC lines, manual scroll, `Voltar à letra ao vivo`, caption-source status, return-to-compact button.
-4. The selected karaoke font is retained through the existing artist/song/global preference service. Scores reset on a new track; audio remains unchanged when opening or closing.
+4. The selected karaoke font or Creative Edition is retained through the existing artist/song/global preference service; only the expanded reader's active line gets deterministic Creative Edition DOM treatment. Scores reset on a new track; audio remains unchanged when opening or closing.
 
 ## Microphone permissions and recording
 
