@@ -81,6 +81,51 @@ const chrome=await page.evaluate(()=>{
 });
 assert.equal(chrome.kind,1,'Chrome Night uses a separate procedural Metal material, not CreativeUniverse');
 assert.equal(chrome.material[0],2);
+
+/* Visual identity regression: one theme, four material geometries.
+ * Read the actual GPU output, not just UI labels or fragment source text.
+ */
+await page.locator('[data-visual-tab="theme"]').click();
+await page.locator('[data-theme="CRIMSON"]').click();
+await page.locator('[data-visual-tab="experience"]').click();
+const materials=[
+ ['gnarly-texture-organic-web',1],
+ ['gnarly-texture-fractured-cells',2],
+ ['gnarly-texture-plasma-lava',3],
+ ['gnarly-texture-topographic-moire',4]
+];
+const signatures=[],palettes=[];
+for(const [id,family] of materials){
+ await page.locator('[data-experience="'+id+'"]').click();
+ await page.waitForFunction(want=>{
+  const gl=document.querySelector('#fluid-canvas').getContext('webgl2');
+  if(!gl)return false;const p=gl.getParameter(gl.CURRENT_PROGRAM);
+  if(!p)return false;const loc=gl.getUniformLocation(p,'u_family');
+  return !!loc&&Math.abs(gl.getUniform(p,loc)-want)<.01;
+ },family,{timeout:15000});
+ const sample=await page.evaluate(()=>{
+  const canvas=document.querySelector('#fluid-canvas'),gl=canvas.getContext('webgl2');
+  const p=gl.getParameter(gl.CURRENT_PROGRAM);
+  const palette=['dark','body','glow'].map(name=>Array.from(gl.getUniform(p,gl.getUniformLocation(p,'u_'+name))).map(x=>Math.round(x*1000)/1000));
+  gl.drawArrays(gl.TRIANGLES,0,3);
+  const width=Math.min(128,canvas.width),height=Math.min(128,canvas.height);
+  const rgba=new Uint8Array(width*height*4);
+  gl.readPixels(Math.floor((canvas.width-width)/2),Math.floor((canvas.height-height)/2),width,height,gl.RGBA,gl.UNSIGNED_BYTE,rgba);
+  let hash=2166136261,black=0,bright=0;
+  for(let i=0;i<rgba.length;i+=4){
+   const v=rgba[i]+rgba[i+1]+rgba[i+2];
+   black+=v<75?1:0;bright+=v>180?1:0;
+   hash=Math.imul(hash^v,16777619)>>>0;
+  }
+  return {palette,hash,black,bright,error:gl.getError()};
+ });
+ assert.equal(sample.error,0,id+' GPU draw must have no error');
+ signatures.push(sample.hash);
+ palettes.push(JSON.stringify(sample.palette));
+}
+assert.equal(new Set(signatures).size,4,'Four textures must produce four different actual GPU pixel patterns: '+signatures.join(','));
+assert.equal(new Set(palettes).size,1,'Changing experience must preserve Crimson palette colors');
+
 await page.locator('#close-sheet').click();
 assert.equal(await page.locator('#reaction-button').count(),0);
 assert.equal(await page.locator('.progress-foot #player-surface-button').count(),1);
