@@ -7,6 +7,7 @@ import {OmniboxSession,classifyIntent,rank} from './lib/omnibox.js';
 import {MUSIC_PRESETS,musicalPreset} from './lib/music-presets.js';
 import {autoLyrics} from './lib/lyrics-auto.js';
 import {trackAudioURL,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
+import {AudioDeliveryRecovery} from './lib/audio-delivery.js';
 import {CLASSIC_THEMES,MATERIAL_THEMES,GNARLY_MODES,EXPERIENCES,REACTIONS,ROLE_EXPLANATION,resolveVisual,restoredThemeAfterGnarly} from './lib/visual-selection.js';
 import {StemMixer,STEM_KINDS,STEM_LABELS,STEM_PRESETS} from './lib/stem-mixer.js';
 import {PerformancePads,PAD_KEYS} from './lib/performance-pads.js';
@@ -22,6 +23,8 @@ const app=$('#app-shell'), background=$('#gnarly-background'), audio=$('#player-
 const engine=new WebAudioEngine(audio);
 const stems=new StemMixer(engine,audio);
 const pads=new PerformancePads(engine);
+const audioDelivery=new AudioDeliveryRecovery();
+let recoveryOperation=null;
 const icon='/assets/gnarly-icon.png';
 let omniboxStorage=null;try{omniboxStorage=window.localStorage}catch{}
 const omnibox=new OmniboxSession(omniboxStorage);
@@ -40,7 +43,7 @@ const state={
   speed:Number(getSetting('speed','1')),reverb:Number(getSetting('reverb','0')),bass:Number(getSetting('bass','0')),
   pitch:getSetting('pitch','yes')!=='no',musicTab:'speedPitch',omniboxTab:getSetting('omniboxTab','search'),micRecorder:null,micStream:null,micChunks:[],exportStyle:'Clássica',
   favorites:parseJSON(getSetting('favorites','[]'),[]),preset:getSetting('preset','ORIGINAL'),
-  audioState:'idle', playbackError:'',
+  audioState:'idle', playbackError:'',userPaused:false,
   lyrics:[],lyricsStatus:'As letras aparecem automaticamente quando disponíveis.',lyricsAbort:null,sheet:null,backgroundURL:null,backgroundMode:getSetting('backgroundMode','visual'),photoZoom:Number(getSetting('photoZoom','1')),photoX:Number(getSetting('photoX','0')),photoY:Number(getSetting('photoY','0')),photoAdjust:false,artworkHue:.58,searchTimer:null,lastLyric:-2,searchLoading:false,searchError:'',searchTerm:omnibox.query,history:omnibox.history,searchGeneration:0
 };
 const MODULE_NAMES=['controls','export','performance'];
@@ -127,10 +130,12 @@ function updateBadges(){
 }
 // Same media source as Stage72's AudioDownloadManager: Render /download.
 // Do not start an external player or load a file picker as an implicit fallback.
-function prepareNativeAudio(track){
- const url=trackAudioURL(track);
+function prepareNativeAudio(track,attempt=0){
+ const url=trackAudioURL(track,{attempt});
  if(!url)return false;
- if(audio.src!==url){audio.preload='none';audio.src=url;}
+ // Only start the native extraction when the user requests Play; once started,
+ // let the media element buffer ahead instead of forcing metadata-only mode.
+ if(audio.src!==url){audio.preload='auto';audio.src=url;}
  return true;
 }
 function reportAudioError(text){
@@ -271,6 +276,7 @@ async function enrichSelectedTrack(track,knownDuration=0){
 }
 function selectTrack(track,autoplay=true){
  if(!track)return;
+ audioDelivery.select(track);recoveryOperation=null;state.userPaused=false;
  state.demucsAbort?.abort();metadataAbort?.abort();pads.resetSong();stems.clear();state.stemModel='';state.stemStatus='Escolha quatro Stems ou solicite separação automática.';
  closeYouTubePlayer();audio.pause();state.playing=false;state.current=track;state.artworkHue=.58;state.playbackError='';state.audioState='idle';
  if(track.source==='youtube'){
@@ -282,25 +288,58 @@ function selectTrack(track,autoplay=true){
  if(isModuleOpen('performance'))void pads.prepareSong(track);
  if(autoplay)void play();if(state.sheet&&['library','queue','search'].includes(state.sheet))renderSheet();
 }
+async function recoverNativeAudio(track,initialError=null){
+ if(!track||track.source!=='youtube'||state.current!==track||state.userPaused)return false;
+ if(recoveryOperation)return recoveryOperation;
+ const operation=(async()=>{
+  const recovered=await audioDelivery.retry({
+   track,error:initialError,mediaError:audio.error,
+   isCurrent:()=>state.current===track&&!state.userPaused,
+   onRetry:(attempt,total)=>{state.audioState='recovering';reportAudioStatus(`Restabelecendo áudio · tentativa ${attempt}/${total}…`);},
+   restart:async attempt=>{
+    if(state.current!==track||state.userPaused||!prepareNativeAudio(track,attempt))return false;
+    // Loading the same ID with a fresh request is a transport retry, not a
+    // fallback to a different recording or a bypass of backend access rules.
+    const position=Number(audio.currentTime)||0;
+    audio.load();
+    const unlock=engine.resume(),start=audio.play();
+    await Promise.all([unlock,start]);
+    if(position>3&&Number.isFinite(audio.duration)&&audio.duration>position)audio.currentTime=position;
+    return true;
+   }
+  });
+  if(state.current!==track||state.userPaused)return false;
+  if(recovered){state.audioState='playing';state.playbackError='';reportAudioStatus('');return true;}
+  state.playing=false;updatePlayer();reportAudioError(playbackFailureMessage(initialError,audio.error));
+  return false;
+ })();
+ recoveryOperation=operation;
+ try{return await operation}finally{if(recoveryOperation===operation)recoveryOperation=null;}
+}
 async function play(){
  if(!state.current){openSheet('search');toast('Escolha uma música na Busca ou adicione seu áudio pelo botão +.');return;}
- if(state.current.source==='youtube'){
-  if(!prepareNativeAudio(state.current)){reportAudioError('ID de música inválido. Escolha outro resultado.');return;}
+ if(recoveryOperation)return recoveryOperation;
+ const track=state.current;
+ if(state.audioState==='error')audioDelivery.select(track); // Manual retry starts a new bounded session.
+ state.userPaused=false;
+ if(track.source==='youtube'){
+  if(!prepareNativeAudio(track,audioDelivery.attempt)){reportAudioError('ID de música inválido. Escolha outro resultado.');return;}
   state.audioState='loading';reportAudioStatus('Conectando ao backend GNARLY · preparando áudio…');
  }
  try{
   // Both calls start synchronously within the user's click gesture (Safari).
   const unlock=engine.resume(),start=audio.play();
-  await Promise.all([unlock,start]);state.playing=true;state.audioState='playing';state.playbackError='';reportAudioStatus('');updatePlayer();
+  await Promise.all([unlock,start]);
+  if(state.current!==track||state.userPaused)return;
+  state.playing=true;state.audioState='playing';state.playbackError='';reportAudioStatus('');updatePlayer();
  }catch(e){
-  state.playing=false;updatePlayer();
-  reportAudioError(state.current?.source==='youtube'
-   ?playbackFailureMessage(e,audio.error)
-   :'Falha ao reproduzir este arquivo de áudio.');
+  if(state.current!==track||state.userPaused)return;
+  if(track.source==='youtube'){await recoverNativeAudio(track,e);}
+  else{state.playing=false;updatePlayer();reportAudioError('Falha ao reproduzir este arquivo de áudio.');}
   console.warn('GNARLY WEB audio play:',e);
  }
 }
-function pause(){audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
+function pause(){state.userPaused=true;audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
 function next(){const nextTrack=state.queue.shift();if(nextTrack)selectTrack(nextTrack);else{pause();audio.currentTime=0;toast('Fim da fila')}updatePlayer()}
 function previous(){if(audio.currentTime>3){audio.currentTime=0;return}const idx=state.tracks.findIndex(x=>x.id===state.current?.id);if(idx>0)selectTrack(state.tracks[idx-1]);else audio.currentTime=0}
 function addToQueue(track){if(!track)return;state.queue.push(track);updatePlayer();toast(`Adicionado à fila: ${track.title}`)}
@@ -506,7 +545,9 @@ async function runSearch(raw){const query=String(raw||'').trim();state.searchTer
  if(query.length<2){state.searchResults=[];displaySearch([],'Digite pelo menos 2 caracteres');return}
  const cached=omnibox.fromCache(query);if(cached){state.searchResults=cached.results;displaySearch(state.searchResults,cached.stale?'Resultados anteriores · atualizando…':'Resultados em cache');if(!cached.stale)return}
  displaySearch(state.searchResults,'Buscando no catálogo do app…');
- try{const outcome=await Promise.allSettled([searchNativeBackend(query),searchCatalog(query)]);if(count!==searchCounter)return;
+ try{const native=searchNativeBackend(query).then(songs=>{if(count===searchCounter&&songs.length){const early=rank(query,songs,omnibox.history);state.searchResults=early;displaySearch(early,'Catálogo GNARLY disponível · complementando créditos…');}return songs;});
+ const previewsTask=searchCatalog(query);
+ const outcome=await Promise.allSettled([native,previewsTask]);if(count!==searchCounter)return;
  const songs=outcome[0].status==='fulfilled'?outcome[0].value:[],previews=outcome[1].status==='fulfilled'?outcome[1].value:[];
  // Already retrieved iTunes data refines only exact recording/version matches.
  // There is no change to source, URL, ID, transport or duration.
@@ -514,7 +555,7 @@ async function runSearch(raw){const query=String(raw||'').trim();state.searchTer
  const hits=rank(query,selectMusicResults(songs,previews),omnibox.history);state.searchResults=hits;omnibox.cacheResults(query,hits);displaySearch(hits,`${songs.length} músicas no catálogo GNARLY · ${previews.length} prévias autorizadas`+(songs.length===0?' · servidor musical indisponível ou sem resultados':''));
  }catch(error){if(count!==searchCounter)return;displaySearch(state.searchResults,'Falha de rede. Resultados locais mantidos.');console.warn('Omnibox',error)}
 }
-audio.addEventListener('play',()=>{if(stems.ready)void stems.play();state.playing=true;updatePlayer()});audio.addEventListener('pause',()=>{stems.pause();state.playing=false;updatePlayer()});audio.addEventListener('timeupdate',()=>{if(stems.ready)stems.sync();updateProgress();syncLyrics()});audio.addEventListener('loadedmetadata',()=>{updateProgress();if(state.current?.source==='local'&&Number.isFinite(audio.duration))void enrichSelectedTrack(state.current,audio.duration)});audio.addEventListener('seeked',()=>stems.seek());audio.addEventListener('ended',()=>{state.queue.length?next():pause()});audio.addEventListener('waiting',()=>{if(state.current?.source==='youtube')reportAudioStatus('Carregando áudio…')});audio.addEventListener('playing',()=>{state.audioState='playing';reportAudioStatus('')});audio.addEventListener('error',()=>{if(state.current){state.playing=false;updatePlayer();reportAudioError(state.current.source==='youtube'?playbackFailureMessage(null,audio.error):'Não foi possível carregar o áudio.');}});
+audio.addEventListener('play',()=>{if(stems.ready)void stems.play();state.playing=true;updatePlayer()});audio.addEventListener('pause',()=>{stems.pause();state.playing=false;updatePlayer()});audio.addEventListener('timeupdate',()=>{if(stems.ready)stems.sync();updateProgress();syncLyrics()});audio.addEventListener('loadedmetadata',()=>{updateProgress();if(state.current?.source==='local'&&Number.isFinite(audio.duration))void enrichSelectedTrack(state.current,audio.duration)});audio.addEventListener('seeked',()=>stems.seek());audio.addEventListener('ended',()=>{state.queue.length?next():pause()});audio.addEventListener('waiting',()=>{if(state.current?.source==='youtube')reportAudioStatus('Carregando áudio…')});audio.addEventListener('playing',()=>{state.audioState='playing';reportAudioStatus('')});audio.addEventListener('error',()=>{if(!state.current||state.userPaused)return;state.playing=false;updatePlayer();if(state.current.source==='youtube')void recoverNativeAudio(state.current);else reportAudioError('Não foi possível carregar o áudio.');});
 for(const [action,fn] of [['play',()=>void play()],['pause',pause],['previoustrack',previous],['nexttrack',next],['seekto',details=>{audio.currentTime=details.seekTime||0}]]){try{navigator.mediaSession?.setActionHandler(action,fn)}catch{/* not supported */}}
 window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select')||e.ctrlKey||e.altKey||e.metaKey)return;if(isModuleOpen('performance')&&!state.sheet){const pad=PAD_KEYS.indexOf(e.key.toLowerCase());if(pad>=0){e.preventDefault();if(!e.repeat)void pads.trigger(pad);return}}if(e.code==='Space'){e.preventDefault();state.playing?pause():void play()}if(e.code==='Escape'){if(!$('#player-surface-menu').hidden){e.preventDefault();closePlayerSurfaceMenu(true);return}closeSheet();closeYouTubePlayer()};if(e.key==='ArrowRight'&&state.current)audio.currentTime=Math.min(audio.duration||0,audio.currentTime+5);if(e.key==='ArrowLeft'&&state.current)audio.currentTime=Math.max(0,audio.currentTime-5)});
 window.addEventListener('dragover',e=>{if(e.dataTransfer?.types.includes('Files')){e.preventDefault();app.classList.add('dragover')}});window.addEventListener('dragleave',e=>{if(!e.relatedTarget)app.classList.remove('dragover')});window.addEventListener('drop',e=>{e.preventDefault();app.classList.remove('dragover');importAudio(e.dataTransfer?.files||[])});
