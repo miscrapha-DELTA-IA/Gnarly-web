@@ -944,13 +944,41 @@ $('#controls-button').addEventListener('click',()=>openSheet('controls'));
 // Shift+Enter: open the full curated library for a precise manual selection.
 const QUICK_THEMES=[...CLASSIC_THEMES,...NATIVE_COLOR_THEMES,...CREATIVE_COLOR_THEMES,...MATERIAL_THEMES,...GNARLY_MODES];
 const QUICK_EXPERIENCES=EXPERIENCES.map(x=>x.id);
+// While GNARLY 2 is active, selecting other colors/materials edits its anchor
+// rather than silently leaving the procedural universe.
+function selectVisualTheme(next){
+ if(!PALETTES[next])return;
+ if(state.theme==='GNARLY 2'&&!GNARLY_MODES.includes(next)){
+  if(MATERIAL_THEMES.includes(next)){
+   state.gnarly2Material=next;state.gnarly2LockMaterial=true;
+   setSetting('gnarly2Material',next);setSetting('gnarly2LockMaterial','yes');
+   toast('GNARLY 2 · material fixado: '+next);
+  }else{
+   state.previousTheme=next;setSetting('previousTheme',next);
+   toast('GNARLY 2 · nova paleta base: '+next);
+  }
+ }else{
+  if(!GNARLY_MODES.includes(state.theme)&&GNARLY_MODES.includes(next)){
+   state.previousTheme=state.theme;setSetting('previousTheme',state.previousTheme);
+  }
+  state.theme=next;setSetting('theme',next);
+ }
+ updateBadges();renderActiveSurfaces();
+}
+function configureGnarly2Lock(id){
+ const map={colors:['gnarly2LockColors','colors'],material:['gnarly2LockMaterial','material'],
+  experience:['gnarly2LockExperience','experience']};
+ const field=map[id]?.[0];if(!field)return;
+ state[field]=!state[field];setSetting(field,state[field]?'yes':'no');
+ updateBadges();renderActiveSurfaces();
+ toast('GNARLY 2 · '+id+' '+(state[field]?'fixado':'livre'));
+}
 const QUICK_LYRIC_STYLES=['original','art-magazine-cutout','art-xerox-ransom','art-glitch-zine','art-chrome-surge','studio-vogue-editorial','studio-concrete-poster','art-y2k-warp','studio-neon-serif','art-stereo-echo'];
 bindQuickCreative($('#theme-button'),{
  cycle:()=>{
-  const next=cycleValue(QUICK_THEMES,state.theme);
-  if(!GNARLY_MODES.includes(state.theme)&&GNARLY_MODES.includes(next)){state.previousTheme=state.theme;setSetting('previousTheme',next===state.theme?state.previousTheme:state.theme)}
-  state.theme=next;setSetting('theme',next);updateBadges();renderActiveSurfaces();
-  toast('🎨 Tema · '+next);
+  const next=cycleValue(QUICK_THEMES,state.theme==='GNARLY 2'?state.previousTheme:state.theme);
+  selectVisualTheme(next);
+  if(state.theme!=='GNARLY 2')toast('🎨 Tema · '+next);
  },
  expand:()=>openSheet('theme')
 });
@@ -1031,7 +1059,18 @@ function handlePanelClick(e){const target=e.target.closest('button,[data-lyric-t
  if(target.dataset.fontGroup){lyricGroup=target.dataset.fontGroup;updateLyricFontFilter();return}
  if(target.hasAttribute('data-lyric-reset')){const result=lyricFonts.clear(lyricScope,state.current);state.lyricStyle=result.style;applyLyricStyle(app,result.style);void loadLyricTypeface(designFont(result.style));refreshLyricArtwork();renderSheet();return}
  if(target.hasAttribute('data-lyric-next')){const styles=allLyricStyles();const index=styles.findIndex(x=>x.id===state.lyricStyle);applyChosenLyricFont(styles[(index+1)%styles.length].id);return}
- if(target.dataset.lyricStyle){applyChosenLyricFont(target.dataset.lyricStyle);return}if(target.dataset.experience){state.experience=target.dataset.experience;setSetting('experience',state.experience);updateBadges();renderActiveSurfaces();return}if(target.dataset.stemPreset){stems.applyPreset(target.dataset.stemPreset);renderActiveSurfaces();return}if(target.dataset.preset){applyPreset(target.dataset.preset);return}if(target.dataset.theme){if(!GNARLY_MODES.includes(state.theme)&&GNARLY_MODES.includes(target.dataset.theme)){state.previousTheme=state.theme;setSetting('previousTheme',state.theme)}state.theme=target.dataset.theme;setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();return}if(target.dataset.reaction){state.reaction=target.dataset.reaction;setSetting('reaction',state.reaction);updateBadges();renderActiveSurfaces();return}if(target.dataset.smartMode){setSmartMode(target.dataset.smartMode);return}
+ if(target.dataset.lyricStyle){applyChosenLyricFont(target.dataset.lyricStyle);return}if(target.dataset.experience){state.experience=target.dataset.experience;setSetting('experience',state.experience);updateBadges();renderActiveSurfaces();return}
+ if(target.dataset.gnarly2Lock){configureGnarly2Lock(target.dataset.gnarly2Lock);return}
+ if(target.dataset.gnarly2Material){
+  const value=target.dataset.gnarly2Material;
+  if(MATERIAL_THEMES.includes(value)){
+   state.gnarly2Material=value;state.gnarly2LockMaterial=true;
+   setSetting('gnarly2Material',value);setSetting('gnarly2LockMaterial','yes');
+   updateBadges();renderActiveSurfaces();toast('GNARLY 2 · material de referência: '+value);
+  }
+  return;
+ }
+ if(target.dataset.stemPreset){stems.applyPreset(target.dataset.stemPreset);renderActiveSurfaces();return}if(target.dataset.preset){applyPreset(target.dataset.preset);return}if(target.dataset.theme){selectVisualTheme(target.dataset.theme);return}if(target.dataset.reaction){state.reaction=target.dataset.reaction;setSetting('reaction',state.reaction);updateBadges();renderActiveSurfaces();return}if(target.dataset.smartMode){setSmartMode(target.dataset.smartMode);return}
  if(target.dataset.action){
   const context=target.dataset.context,list=resolveTracks(context),track=list[Number(target.dataset.index)];
   if(!track)return;
