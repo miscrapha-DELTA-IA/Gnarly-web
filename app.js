@@ -560,7 +560,11 @@ function prefetchNextLyrics(){
  if(nextTrack)void prefetchAutoLyrics(nextTrack).catch(()=>{});
 }
 function previous(){if(audio.currentTime>3){audio.currentTime=0;return}const idx=state.tracks.findIndex(x=>x.id===state.current?.id);if(idx>0)selectTrack(state.tracks[idx-1]);else audio.currentTime=0}
-function addToQueue(track,{quiet=false}={}){if(!track)return false;const before=state.queue.length;state.queue=appendUnique(state.queue,[track],state.current?.id);if(before===state.queue.length){if(!quiet)toast('Esta música já está na fila ou tocando.');return false}updatePlayer();prefetchNextLyrics();if(state.sheet==='queue')renderSheet();if(!quiet)toast('Adicionado à fila: '+track.title);return true}
+function addToQueue(track,{quiet=false}={}){
+ if(!track)return false;
+ const auto=state.queue.find(q=>q._gnarlyAutoMode&&sameRecording(q,track));
+ if(auto){delete auto._gnarlyAutoMode;if(!quiet)toast('Fixada manualmente na fila: '+track.title);updatePlayer();return true}
+ const before=state.queue.length;state.queue=appendUnique(state.queue,[track],state.current?.id);if(before===state.queue.length){if(!quiet)toast('Esta música já está na fila ou tocando.');return false}updatePlayer();prefetchNextLyrics();if(state.sheet==='queue')renderSheet();if(!quiet)toast('Adicionado à fila: '+track.title);return true}
 function importAudio(files){const valid=[...files].filter(x=>x.type.startsWith('audio/')||/\.(mp3|m4a|aac|wav|ogg|flac)$/i.test(x.name));if(!valid.length){toast('Escolha arquivos de áudio compatíveis.');return}for(const file of valid){const names=titleForFile(file);state.tracks.push({id:`local:${crypto.randomUUID?.()||Date.now()+Math.random()}`,title:names.title,artist:names.artist,album:'Biblioteca local',artwork:icon,url:URL.createObjectURL(file),file,source:'local',duration:0})}if(!state.current){selectTrack(state.tracks[0],true);state.queue=appendUnique(state.queue,state.tracks.slice(1),state.current?.id);updatePlayer()}else if(valid.length>1)toast(`${valid.length} músicas importadas`);if(state.sheet==='library')renderSheet()}
 function applyPreset(id){const v=musicalPreset(id);if(!v)return;state.preset=id;state.speed=v.speed;state.reverb=v.reverb;state.pitch=v.pitch;engine.setSpeed(v.speed,v.pitch);engine.setReverb(v.reverb);for(const key of ['speed','reverb','pitch','preset'])setSetting(key,key==='pitch'?(state.pitch?'yes':'no'):state[key]);updatePresetButtons();renderModule('controls');if(stems.ready)stems.sync();toast(id==='ORIGINAL'?'Som original restaurado':id+' ativado')}
 function updatePresetButtons(){document.querySelectorAll('[data-preset]').forEach(b=>{const selected=b.dataset.preset===state.preset;b.classList.toggle('active',selected);b.setAttribute('aria-pressed',String(selected))})}
@@ -669,39 +673,66 @@ async function startDemucs(){
 }
 
 function setSmartMode(mode){
- smartMode=effectiveMode(mode);setSetting('smartMode',smartMode);
+ const next=effectiveMode(mode),changed=next!==smartMode;
+ if(changed){
+  // Each virtual mode owns only its suggested tail, not another mode's old queue.
+  // Preserve explicitly enqueued/manual songs in their exact order.
+  state.queue=retainManualQueue(state.queue);
+ }
+ smartMode=next;setSetting('smartMode',smartMode);
  smartFillEpoch++;smartFillPending=false;lastSmartSeed='';
- smartStatus=smartMode==='off'?'Fila manual · ordem preservada.':'Modo '+smartMode+' ativo · músicas manuais preservadas.';
- if(smartMode==='playlist'){const items=playlistStore.tracks(selectedPlaylist);state.queue=appendUnique(state.queue,items.filter(t=>!state.history.slice(0,3).some(r=>r.id===t.id)),state.current?.id);}
- updatePlayer();if(state.sheet==='queue')renderSheet();if(smartMode!=='off')void maybeFillSmartQueue({force:true});
+ smartStatus=smartMode==='off'?'Fila manual · suas escolhas preservadas.':
+  'Modo '+smartMode+' · recomendações próprias, sem repetir o último mix.';
+ updatePlayer();if(state.sheet==='queue')renderSheet();
+ if(smartMode!=='off')void maybeFillSmartQueue({force:true});
 }
 async function maybeFillSmartQueue({force=false}={}){
  const mode=smartMode,anchor=state.current;
  if(mode==='off'||!anchor||(!force&&state.queue.length>=2))return;
- if(mode==='playlist'){
-  const items=playlistStore.tracks(selectedPlaylist).filter(x=>!state.history.slice(0,3).some(r=>r.id===x.id));
-  state.queue=appendUnique(state.queue,items,anchor.id);
-  updatePlayer();if(state.sheet==='queue')renderSheet();return;
- }
- const query=radioQuery(mode,anchor);
- if(!query){smartStatus='Artista ou álbum não confirmado para esta música.';if(state.sheet==='queue')renderSheet();return;}
- const seed=mode+'|'+anchor.id+'|'+query;
- if(smartFillPending||(!force&&seed===lastSmartSeed))return;
- const ticket=++smartFillEpoch;
- smartFillPending=true;lastSmartSeed=seed;smartStatus='Consultando catálogo GNARLY sem interromper a música…';
+ const ticket=++smartFillEpoch,revision=force?++smartRevision:smartRevision;
+ const seed=mode+'|'+anchor.id+'|'+selectedPlaylist+'|'+revision;
+ if(smartFillPending&&!force)return;
+ if(!force&&seed===lastSmartSeed)return;
+ smartFillPending=true;lastSmartSeed=seed;
+ smartStatus='Compondo '+(mode==='playlist'?'sua playlist':mode==='album'?'faixas deste álbum':mode==='artist'?'outras músicas do artista':'um mix do seu gosto')+'…';
  if(state.sheet==='queue')renderSheet();
  try{
+  if(mode==='playlist'){
+   const saved=playlistStore.tracks(selectedPlaylist);
+   if(ticket!==smartFillEpoch||mode!==smartMode||anchor!==state.current)return;
+   const eligible=saved.filter(t=>!state.queue.some(q=>sameRecording(q,t))&&!sameRecording(anchor,t));
+   const added=markAutoTracks(eligible,'playlist');
+   const count=state.queue.length;
+   state.queue=appendUnique(state.queue,added,anchor.id);
+   recommendationsByMode.set('playlist',added);
+   smartStatus=state.queue.length>count?'Playlist '+selectedPlaylist+' · '+(state.queue.length-count)+' músicas na ordem salva.':
+    'Playlist sem novas faixas; músicas manuais preservadas.';
+   updatePlayer();prefetchNextLyrics();return;
+  }
+  const query=radioQuery(mode,anchor);
+  if(!query){smartStatus='Não há artista/álbum confirmado para este modo. A fila manual foi preservada.';return}
   const cached=[...state.searchResults,...state.history,...state.favorites,...state.queue];
   const remote=await searchNativeBackend(query).catch(()=>[]);
+  // Mix is the ONLY mode allowed to suggest verified artists you previously liked.
+  // One extra bounded request; neither Album nor Artista leak into adjacent artists.
+  const related=mode==='mix'?listeningMemory.affinityArtists(anchor.artist,1)[0]:null;
+  const extra=related?await searchNativeBackend(related).catch(()=>[]):[];
   if(ticket!==smartFillEpoch||mode!==smartMode||anchor!==state.current)return;
-  const choices=chooseSmartTracks({mode,anchor,candidates:[...cached,...remote],existing:state.queue,recent:state.history,max:7});
+  listeningMemory.refresh();
+  const choices=recommendTracks({mode,anchor,candidates:[...remote,...extra,...cached],
+   existing:state.queue,history:state.history,memory:listeningMemory,max:7,revision});
   const count=state.queue.length;
-  state.queue=appendUnique(state.queue,choices,anchor.id);
+  const newTracks=markAutoTracks(choices,mode);
+  state.queue=appendUnique(state.queue,newTracks,anchor.id);
+  recommendationsByMode.set(mode,newTracks);
+  listeningMemory.expose(choices,mode);
   prefetchNextLyrics();
-  smartStatus=state.queue.length>count?'Adicionadas '+(state.queue.length-count)+' faixas verificadas.':'Sem novas faixas confirmadas. Sua fila foi preservada.';
+  smartStatus=state.queue.length>count?'Modo '+mode+' · '+(state.queue.length-count)+
+   ' sugestões distintas, ajustadas ao seu histórico.':
+   'Sem novas faixas verificadas para '+mode+'. Sua fila foi preservada.';
   updatePlayer();
  }finally{
-  if(ticket===smartFillEpoch){smartFillPending=false;if(state.sheet==='queue')renderSheet();}
+  if(ticket===smartFillEpoch){smartFillPending=false;if(state.sheet==='queue')renderSheet()}
  }
 }
 function renderQueuePanel(){
@@ -818,7 +849,7 @@ function applyChosenLyricFont(id,scope=lyricScope){
 
 function resolveTracks(context){if(context==='playlist')return playlistStore.tracks(selectedPlaylist);return ({search:state.searchResults,library:state.tracks,queue:state.queue,favorites:state.favorites,history:state.history})[context]||[]}
 function handleCommand(command){switch(command){
- case 'smart-refresh':lastSmartSeed='';void maybeFillSmartQueue({force:true});break;
+ case 'smart-refresh':lastSmartSeed='';state.queue=retainManualQueue(state.queue);void maybeFillSmartQueue({force:true});break;
  case 'playlist-add-current':if(!state.current){toast('Escolha uma faixa primeiro.');break}if(playlistStore.add(selectedPlaylist,state.current)){toast('Salvo em '+selectedPlaylist);if(state.sheet==='queue')renderSheet()}else toast('Faixa já salva ou não persistível.');break;
  case 'playlist-create':{const name=window.prompt('Nome da nova playlist (até 45 caracteres):');if(name===null)break;if(!playlistStore.create(name)){toast('Nome repetido ou limite de playlists atingido.');break}selectedPlaylist=name.trim().slice(0,45);setSetting('smartPlaylist',selectedPlaylist);if(state.sheet==='queue')renderSheet();break}
  case 'playlist-load':{const items=playlistStore.tracks(selectedPlaylist);const before=state.queue.length;state.queue=appendUnique(state.queue,items,state.current?.id);updatePlayer();if(state.sheet==='queue')renderSheet();toast((state.queue.length-before)+' adicionadas · '+selectedPlaylist);break}
@@ -978,7 +1009,7 @@ function handlePanelClick(e){const target=e.target.closest('button,[data-lyric-t
 
 function handlePanelInput(e){const el=e.target;if(el.id==='lyric-font-search'){updateLyricFontFilter();return}if(el.id==='lyrics-ai-autofallback'){lyricsAIAutoSession=el.checked;if(el.checked&&state.current?.source==='local'&&state.current.file&&!state.lyrics.length&&!state.plainLyrics.length&&!state.lyricsAIWorking&&!lyricsAIOnce.has(state.current.id)){lyricsAIOnce.add(state.current.id);void transcribeOwnLyrics(state.current.file)}return}if(el.hasAttribute('data-dj-bpm')){pads.setBpm(el.value);return}if(el.dataset.photoParameter){const key=el.dataset.photoParameter;const v=Number(el.value);if(['photoZoom','photoX','photoY'].includes(key)&&Number.isFinite(v)){state[key]=v;setSetting(key,v);applyBackground();if(key==='photoZoom')$('#photo-zoom-value').textContent=Math.round(v*100)+'%'}return}if(el.dataset.panelToggle){displayStore.set(el.dataset.panelToggle,el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.hasAttribute('data-zen-toggle')){displayStore.setZen(el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.id==='search-term'){state.searchTerm=el.value;const local=omnibox.setQuery(state.searchTerm);const kind=classifyIntent(state.searchTerm);state.searchResults=local;searchCounter++;displaySearch(local,kind.kind==='direct'?'Link do YouTube detectado · pressione Buscar':local.length?'Histórico local · pressione Buscar para atualizar':'Pressione Buscar para consultar o catálogo')}if(el.dataset.stemLevel){const kind=el.dataset.stemLevel;stems.setLevel(kind,el.value);const label=$(`#stem-${kind}-value`);if(label)label.textContent=`${Math.round(stems.levels[kind]*100)}%`;return}if(el.dataset.slider){const id=el.dataset.slider,v=Number(el.value);if(id==='speed'){state.speed=v;engine.setSpeed(v,state.pitch);state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='reverb'){state.reverb=v;engine.setReverb(v);state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='bass'){state.bass=v;engine.setBass(v)}setSetting(id,v);const out=$(`#${id}-value`);if(out)out.textContent=mixerValue(id,v)}if(el.id==='pitch-check'){state.pitch=el.checked;engine.setSpeed(state.speed,state.pitch);setSetting('pitch',state.pitch?'yes':'no');state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}}
 for(const host of [$('#sheet-content'),$('#module-dock')]){host.addEventListener('click',handlePanelClick);host.addEventListener('input',handlePanelInput)}
-$('#sheet-content').addEventListener('change',e=>{if(!e.target.hasAttribute('data-smart-playlist'))return;const name=e.target.value;if(!playlistStore.names().includes(name))return;selectedPlaylist=name;setSetting('smartPlaylist',name);if(smartMode==='playlist'){smartFillEpoch++;lastSmartSeed='';void maybeFillSmartQueue({force:true})}renderSheet()});
+$('#sheet-content').addEventListener('change',e=>{if(!e.target.hasAttribute('data-smart-playlist'))return;const name=e.target.value;if(!playlistStore.names().includes(name))return;selectedPlaylist=name;setSetting('smartPlaylist',name);if(smartMode==='playlist'){smartFillEpoch++;lastSmartSeed='';state.queue=retainManualQueue(state.queue);void maybeFillSmartQueue({force:true})}renderSheet()});
 // Stage72 Omnibox: local hits while typing, remote search on submit, fresh/stale cache.
 let searchCounter=0;
 function displaySearch(results,info=''){if(state.sheet!=='search')return;const resultsEl=$('#search-results'),status=$('#search-state');if(resultsEl)resultsEl.innerHTML=mediaList(results,'search');if(status)status.textContent=info}
