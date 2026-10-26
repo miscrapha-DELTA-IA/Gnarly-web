@@ -1,0 +1,224 @@
+/* GNARLY TYPE LAB / art-direction refinement v2.
+ * Intentionally typography, hierarchy and material — not a list of font names.
+ * CSS-only, active-line animations and native fallback for low-power devices.
+ * External families are already allowlisted and loaded on demand by Aa.
+ */
+.app-shell .gnarly-typeart{
+ -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+ font-optical-sizing:auto;font-kerning:normal;
+ text-wrap:balance;overflow-wrap:anywhere;max-width:100%;
+}
+.app-shell .gnarly-word{
+ font-synthesis:none;letter-spacing:-.035em;
+ box-decoration-break:clone;-webkit-box-decoration-break:clone;
+}
+.app-shell .lyric-line .gnarly-typeart,.karaoke-stage .gnarly-typeart{max-width:100%}
+.lyric-type-preview .gnarly-typeart,.lyric-design-specimen .gnarly-typeart{max-width:100%;overflow-wrap:anywhere}
+.lyric-design-specimen{isolation:isolate;contain:layout style}
+.lyric-font-option[data-design-mode]{border:1px solid rgba(228,235,230,.16);background:linear-gradient(155deg,rgba(44,52,54,.24),rgba(12,14,18,.54));box-shadow:inset 0 1px rgba(255,255,255,.06)}
+.lyric-font-option[data-design-mode][aria-pressed=true]{border-color:var(--acid);box-shadow:inset 0 0 0 1px var(--acid),0 0 18px rgba(81,255,42,.1)}
+.lyric-font-option[data-design-mode] .lyric-design-specimen{background:linear-gradient(160deg,#12181c,#22272d 65%,#15171e);border:1px solid rgba(255,255,255,.09);border-radius:10px;min-height:66px}
+.lyric-font-option[data-design-mode] .lyric-font-detail strong{font-size:12px;font-weight:800;letter-spacing:-.02em}
+.lyric-font-option[data-design-mode] .lyric-font-detail small{font-size:10px;opacity:.8}
+.lyric-type-preview{border-radius:20px;background:radial-gradient(ellipse at 70% 30%,#36404780,transparent 75%),linear-gradient(140deg,#11171d,#151a1c)}
+.lyric-type-preview #lyric-live-specimen{min-height:78px;display:flex;align-items:center;justify-content:center;padding:6px}
+.app-shell .gnarly-typeart--art .gnarly-word{transition:none}
+.app-shell .gnarly-typeart--art:not([data-lyric-art="art-magazine-cutout"]):not([data-lyric-art="art-xerox-ransom"]):not([data-lyric-art="art-ransom-spectrum"]):not([data-lyric-art="art-tape-collage"]) .gnarly-word{
+ font-family:var(--gnarly-lyric-font,Impact,sans-serif);
+}
+/* Magazine Cutout: physical print collage. Four purposeful real typographic
+ * roles, not four mismatched system fonts randomly assigned to all styles. */
+.app-shell [data-lyric-art="art-magazine-cutout"]{gap:.02em .1em;align-items:baseline}
+.app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-word{
+ border-radius:1px;clip-path:polygon(0% 2%,98% 0,100% 95%,2% 100%);
+ box-shadow:0 .065em 0 #0008,0 .12em .21em #0006;
+ letter-spacing:-.075em;line-height:1.12;padding:.07em .14em;
+ transform:rotate(calc(var(--word-tilt)*.55));
+ text-shadow:none;-webkit-text-stroke:0;
+}
+.app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-face-0{font-family:Impact,"Arial Narrow",sans-serif;font-style:normal;font-weight:900}
+.app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-face-1{font-family:"Instrument Serif",Georgia,serif;font-weight:400;font-style:italic;letter-spacing:-.035em}
+.app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-face-2{font-family:"Space Mono",ui-monospace,monospace;font-weight:700;font-size:.8em;letter-spacing:-.065em;text-transform:uppercase}
+.app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-face-3{font-family:"Bricolage Grotesque",Arial,sans-serif;font-weight:800;letter-spacing:-.04em}
+.app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-tone-0{background:#111217;color:#f9fbf6}
+.app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-tone-1{background:#f3efe7;color:#181714}
+.app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-tone-2{background:#c8fc28;color:#132013}
+.app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-tone-3{background:#f5a3c1;color:#19121c}
+.app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-word:nth-of-type(5n){border-bottom:.07em solid #d02f72}
+.app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-word:nth-of-type(7n){text-decoration:none;outline:1px solid rgba(255,255,255,.44);outline-offset:-2px}
+/* Xerox Ransom — newsprint grain and ripped stock, no generic RGB glow. */
+.app-shell [data-lyric-art="art-xerox-ransom"] .gnarly-word{
+ background:#f2eddf;color:#121517;font-family:Impact,"Archivo Black",sans-serif;
+ border:0;outline:1px solid #0d1012;letter-spacing:-.065em;
+ box-shadow:.08em .09em 0 #080b0c;transform:rotate(calc(var(--word-tilt)*.6));text-decoration:none;
+}
+.app-shell [data-lyric-art="art-xerox-ransom"] .gnarly-word:nth-of-type(3n){background:#141619;color:#f3efe7;font-family:Georgia,serif;font-style:italic;letter-spacing:0;text-decoration:none}
+/* Chrome Surge — one continuous metallized headline, with real highlight edges. */
+.app-shell [data-lyric-art="art-chrome-surge"]{align-items:center}
+.app-shell [data-lyric-art="art-chrome-surge"] .gnarly-word{
+ font-family:"Unbounded",Impact,sans-serif;font-size:.92em;
+ font-weight:900;transform:skewX(-4deg);
+ color:transparent;background:linear-gradient(180deg,#fbffff 0%,#a5b5c4 22%,#27323f 42%,#ebf6ff 52%,#8d9fa8 76%,#f9fcff 94%);
+ -webkit-background-clip:text;background-clip:text;-webkit-text-stroke:.012em #b4e6ef;
+ text-shadow:0 .075em rgba(0,0,0,.28);
+}
+/* Prism Split — thin graphic chromatic registration rather than chunky shadow. */
+.app-shell [data-lyric-art="art-prism-split"] .gnarly-word{
+ font-family:"Syne",Arial,sans-serif;font-weight:800;letter-spacing:-.06em;
+ color:#fff;text-shadow:-.055em 0 rgba(62,239,247,.92),.055em 0 rgba(249,79,152,.9);
+ -webkit-text-stroke:0;background:transparent;border:0;
+}
+/* Neon Stencil — disciplined ink/outlines. */
+.app-shell [data-lyric-art="art-neon-stencil"] .gnarly-word{
+ font-family:"Rajdhani",Impact,sans-serif;font-weight:900;
+ color:#101716;background:#d3ff42;border-radius:0;
+ clip-path:polygon(0 0,43% 0,43% 11%,53% 11%,53% 0,100% 0,100% 100%,0 100%);
+ letter-spacing:.015em;
+}
+/* Glitch Zine — print offsets with no layout jitter outside the active line. */
+.app-shell [data-lyric-art="art-glitch-zine"] .gnarly-word{
+ font-family:"Syne",Arial,sans-serif;letter-spacing:-.065em;
+ color:#f6faff;background:#11101d;text-shadow:-.048em 0 #ed3f89,.048em 0 #31cde0;
+}
+.app-shell [data-lyric-art="art-type-tornado"] .gnarly-word{
+ font-family:"Bebas Neue",Impact,sans-serif;font-size:1.07em;letter-spacing:.01em;
+ color:#f7f7f9;background:linear-gradient(135deg,#30175c,#a31e77);
+ border:1px solid #f4ecff4d;transform:rotate(calc(var(--word-tilt)*.55));
+}
+/* Liquid Type — translucency from gradients, not costly backdrop-filter/blur. */
+.app-shell [data-lyric-art="art-liquid-type"] .gnarly-word{
+ font-family:"Fraunces",Georgia,serif;font-weight:800;font-style:italic;
+ color:#f0ffff;background:linear-gradient(145deg,#3dffe64d,#b23ffc5c);
+ border:1px solid #b2f7ebc2;border-radius:.3em .12em .3em .08em;
+ text-shadow:0 1px #0d2b38;
+}
+.app-shell [data-lyric-art="art-paper-trail"] .gnarly-word{
+ font-family:"EB Garamond",Georgia,serif;font-weight:700;font-style:italic;
+ background:#f3ead9;color:#27201b;border:1px solid #aa9a7d;letter-spacing:-.025em;
+ box-shadow:.05em .05em #fff5,.12em .14em #15171b;
+}
+.app-shell [data-lyric-art="art-stereo-echo"] .gnarly-word{
+ font-family:"Unbounded",Arial,sans-serif;letter-spacing:-.065em;color:#fafffc;
+ text-shadow:-.052em .045em #30d5ef,.055em -.03em #f947ad,.12em .09em #080b0c;
+}
+/* Individual premium stage treatments: framed page compositions, not fonts only. */
+.app-shell [data-lyric-art^="studio-"]{
+ position:relative;display:inline-block;max-width:100%;
+ padding:.1em .19em;font-optical-sizing:auto;
+ text-wrap:balance;line-height:1.18;isolation:isolate;
+}
+.app-shell [data-lyric-art="studio-vogue-editorial"]{
+ font-family:"Playfair Display",Georgia,serif;font-weight:700;font-style:italic;
+ color:#f9eee4;letter-spacing:-.055em;border-bottom:.018em solid #e6be9d;
+}
+.app-shell [data-lyric-art="studio-swiss-grid"]{
+ font-family:"Inter",Arial,sans-serif;font-style:normal;letter-spacing:-.085em;
+ border-left:.13em solid #d5fd43;border-bottom:.015em solid rgba(255,255,255,.55);
+ text-align:left;padding-left:.35em;
+}
+.app-shell [data-lyric-art="studio-brutalist-index"]{
+ font-family:"Archivo Black",Impact,sans-serif;font-weight:900;
+ background:#c2ff39;color:#10140f;border-radius:0;
+ box-shadow:.09em .1em 0 #080a0c;
+ padding:.09em .19em;line-height:1.1;
+}
+.app-shell [data-lyric-art="studio-typographic-atlas"]{
+ font-family:"Space Grotesk",Arial,sans-serif;font-weight:700;
+ text-transform:uppercase;letter-spacing:.095em;font-size:.92em;
+ border:1px solid #cee6ebba;border-left:4px solid #cee6eb;
+ color:#eaf9fb;background:linear-gradient(110deg,#25445350,#10222cbd);
+ padding:.2em .36em;
+}
+.app-shell [data-lyric-art="studio-midnight-serif"]{
+ font-family:"Cormorant Garamond",Georgia,serif;font-size:1.2em;font-weight:700;
+ font-style:italic;color:#f9f4ff;text-shadow:0 .08em .19em #08040f;
+ letter-spacing:-.03em;border-bottom:.02em solid #8f83ae;
+}
+.app-shell [data-lyric-art="studio-monochrome-folio"]{
+ font-family:"Instrument Serif",Georgia,serif;font-size:1.18em;font-weight:400;
+ letter-spacing:-.04em;font-style:normal;color:#fff;
+ border-block:.023em solid #f9f9f3;padding:.12em .05em;
+}
+.app-shell [data-lyric-art="studio-acid-broadsheet"]{
+ font-family:"Syne",Arial,sans-serif;font-weight:900;text-transform:uppercase;
+ color:#090e0a;background:#d1fe50;padding:.07em .18em;
+ letter-spacing:-.065em;transform:skewX(-3deg);
+ box-shadow:.09em .11em #11161c;
+}
+.app-shell [data-lyric-art="studio-art-deco-cinema"]{
+ font-family:"Bebas Neue",Impact,sans-serif;font-weight:600;
+ letter-spacing:.14em;color:#f3d8a6;border-top:2px solid #b68f57;border-bottom:2px solid #b68f57;
+ text-shadow:0 .035em .1em #402915;
+}
+.app-shell [data-lyric-art="studio-cyanotype"]{
+ font-family:"IBM Plex Mono",monospace;font-weight:700;color:#dff8ff;
+ background:repeating-linear-gradient(0deg,#1c476b 0 1px,#123452 1px 16px);
+ border:1px solid #82bfd8;letter-spacing:.025em;text-shadow:none;
+}
+.app-shell [data-lyric-art="studio-hot-metal"]{
+ font-family:"EB Garamond",Georgia,serif;font-weight:900;color:#f4f2e8;
+ text-shadow:1px 1px #958c7c,2px 2px #433d33,3px 3px #111;
+ letter-spacing:-.055em;
+}
+.app-shell [data-lyric-art="studio-fashion-caption"]{
+ font-family:"DM Sans",Arial,sans-serif;text-transform:uppercase;
+ font-weight:600;letter-spacing:.22em;font-size:.87em;
+ border-bottom:1px solid #fff6;padding-bottom:.19em;
+}
+.app-shell [data-lyric-art="studio-analog-contact"]{
+ font-family:"Space Mono",monospace;font-weight:700;letter-spacing:-.02em;
+ background:#181818;color:#ffe8db;border:1px solid #bea393;
+ border-left:5px solid #d6b8a4;padding:.2em .3em;
+}
+.app-shell [data-lyric-art="studio-cyber-monogram"]{
+ font-family:"Orbitron",Arial,sans-serif;font-weight:900;
+ letter-spacing:.055em;text-transform:uppercase;color:#d1fff6;
+ -webkit-text-stroke:.01em #6adfed;text-shadow:0 0 .13em #26c5bd;
+ border-bottom:.07em solid #5ae7e2;
+}
+.app-shell [data-lyric-art="studio-archival-stamp"]{
+ font-family:"Oswald",Arial,sans-serif;letter-spacing:.04em;font-weight:600;
+ color:#e8ceae;border:2px solid #a88865;background:#30261d;
+ padding:.1em .28em;transform:rotate(-1deg);
+}
+.app-shell [data-lyric-art="studio-brutalist-italic"]{
+ font-family:"Unbounded",Arial,sans-serif;font-weight:900;
+ font-style:italic;letter-spacing:-.07em;
+ color:#fff;text-shadow:.055em .065em #e53379,.11em .13em #181721;
+}
+.app-shell [data-lyric-art="studio-liquid-chrome"]{
+ font-family:"Fraunces",Georgia,serif;font-weight:900;
+ color:transparent;background:linear-gradient(173deg,#fff 4%,#a9b7c2 28%,#2a3b48 44%,#fff 57%,#799cbb 79%,#fff 94%);
+ -webkit-background-clip:text;background-clip:text;-webkit-text-stroke:.015em #d8f3f4;
+ text-shadow:none;
+}
+.app-shell [data-lyric-art="studio-velvet-noir"]{
+ font-family:"Instrument Serif",Georgia,serif;font-size:1.21em;font-style:italic;
+ font-weight:400;background:rgba(18,8,15,.66);color:#f9e0e9;
+ border:1px solid #8d546b87;text-shadow:0 2px 5px #000b;
+}
+.app-shell [data-lyric-art="studio-ultra-minimal"]{
+ font-family:"Manrope",Arial,sans-serif;font-weight:650;
+ letter-spacing:-.065em;color:#fff;text-shadow:0 2px 8px #070b0cd1;
+ padding:.1em .03em;
+}
+.app-shell [data-lyric-art="studio-neon-serif"]{
+ font-family:"Lora",Georgia,serif;font-style:italic;font-weight:700;
+ color:#fff8fc;letter-spacing:-.025em;
+ text-shadow:0 0 .12em #e447bd,0 0 .24em #c72c91;
+}
+.app-shell [data-lyric-art="studio-concrete-poster"]{
+ font-family:"Anton",Impact,sans-serif;font-size:1.03em;
+ text-transform:uppercase;font-weight:800;color:#f0f3f1;
+ background:linear-gradient(145deg,#353b3d,#171d1c);
+ border:1px solid #d7dad2;padding:.08em .19em;
+ box-shadow:.09em .1em 0 rgba(0,0,0,.8);
+}
+@media(max-width:410px){
+ .lyric-font-option[data-design-mode] .lyric-design-specimen{min-height:52px}
+ .app-shell .gnarly-typeart--art .gnarly-word{padding-inline:.09em}
+ .app-shell [data-lyric-art^="studio-"]{max-width:95%}
+}
+@media(prefers-reduced-motion:reduce){
+ .app-shell .gnarly-typeart *,.lyric-font-option .gnarly-typeart *{animation:none!important;transition:none!important}
+}
