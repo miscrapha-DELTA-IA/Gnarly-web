@@ -21,6 +21,7 @@
   <link rel="stylesheet" href="./styles.css" />
   <link rel="stylesheet" href="./performance.css" />
   <link rel="stylesheet" href="./module-dock.css" />
+  <link rel="stylesheet" href="./karaoke-stage.css" />
   <title>GNARLY WEB — Stage 72</title>
 </head>
 <body>
@@ -53,7 +54,7 @@
         </div>
       </section>
 
-      <section class="floating-lyrics" id="floating-lyrics" aria-live="off" hidden><span id="floating-line">Carregue uma letra .lrc para cantar</span></section>
+      <section class="floating-lyrics" id="floating-lyrics" aria-live="off" hidden><span id="floating-line">Carregue uma letra .lrc para cantar</span><button type="button" class="karaoke-compact-expand" id="karaoke-expand-button" aria-haspopup="dialog" aria-controls="karaoke-stage" aria-label="Expandir karaokê e acompanhar sua voz" title="Abrir Karaokê ao vivo"><svg class="icon" aria-hidden="true"><use href="#i-mic" /></svg></button></section>
 
       <section class="player glass" id="player-section" aria-label="Reprodutor GNARLY">
         <div id="player-surface" class="player-surface" aria-hidden="true">
