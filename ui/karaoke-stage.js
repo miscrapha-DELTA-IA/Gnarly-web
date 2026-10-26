@@ -79,7 +79,7 @@ export class KaraokeStage {
  refresh(force=false){
   if(!this.opened)return;
   const data=this.getState(),track=data.track,lines=Array.isArray(data.lines)?data.lines:[],plain=Array.isArray(data.plain)?data.plain:[];
-  if(track?.id!==this.trackId){this.mic.stop();this.scorer.stop();this.trackId=track?.id??null;force=true}
+  if((track?.id??null)!==this.trackId){this.mic.stop();this.scorer.stop();this.trackId=track?.id??null;force=true}
   if(data.style&&this.root.dataset.lyricStyle!==data.style)applyLyricStyle(this.root,data.style);
   this.query('karaoke-stage-heading').textContent=track?.title||'GNARLY · Karaokê';
   this.query('karaoke-stage-artist').textContent=track?.artist||'Selecione uma música';
@@ -112,7 +112,7 @@ export class KaraokeStage {
  tick(force=false){
   if(!this.opened)return;
   const data=this.getState(),time=this.audio.currentTime||0,lines=data.synced?data.lines:[];
-  if(data.track?.id!==this.trackId||this.lineRef!==data.lines){this.refresh(true);return}
+  if((data.track?.id??null)!==this.trackId||this.lineRef!==data.lines){this.refresh(true);return}
   if(this.mic.active&&this.scorer.active)this.scorer.tick(time,!this.audio.paused&&!this.audio.ended,this.mic.frameNow());
   let index=-1;
   if(data.synced&&lines?.length){
