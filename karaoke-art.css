@@ -1,0 +1,128 @@
+/* GNARLY TYPOGRAPHY STUDIO · original CSS art direction; GPU-compositor-friendly.
+   The lyric LRC clock stays outside this layer. Animations run only on active lines. */
+.app-shell .gnarly-typeart{display:inline-flex;flex-wrap:wrap;justify-content:center;align-items:baseline;gap:.06em .15em;max-width:100%;line-height:1.36;vertical-align:baseline;isolation:isolate;overflow-wrap:anywhere;position:relative}
+.app-shell .gnarly-typeart--studio{display:inline;line-height:1.3}
+.app-shell .gnarly-word{display:inline-block;position:relative;padding:.015em .14em;margin:.045em .01em;max-width:100%;white-space:normal;transform:rotate(var(--word-tilt,0deg));transform-origin:center center;will-change:auto;vertical-align:baseline;line-height:1.25;isolation:isolate}
+.app-shell .gnarly-word-gap{display:inline-block;width:.12em;flex:0 0 .12em}
+.app-shell .gnarly-tone-0{--tile:#111216;--ink:#fff;--accent-tile:var(--acid,#baff20)}
+.app-shell .gnarly-tone-1{--tile:#f6f1e5;--ink:#101015;--accent-tile:var(--acid,#baff20)}
+.app-shell .gnarly-tone-2{--tile:var(--acid,#baff20);--ink:#101413;--accent-tile:#fff}
+.app-shell .gnarly-tone-3{--tile:#f49cd3;--ink:#151315;--accent-tile:#baff20}
+.app-shell .gnarly-face-0{font-family:Impact,"Arial Narrow",sans-serif;font-weight:900}
+.app-shell .gnarly-face-1{font-family:Georgia,Times,serif;font-weight:800}
+.app-shell .gnarly-face-2{font-family:ui-monospace,Menlo,monospace;font-weight:900;letter-spacing:-.06em}
+.app-shell .gnarly-face-3{font-family:var(--gnarly-lyric-font,system-ui);font-weight:900}
+.app-shell .floating-lyrics .gnarly-typeart,.app-shell .lyrics-box .lyric-line.active .gnarly-typeart{font-size:inherit;max-width:100%}
+.app-shell .lyrics-box .lyric-line:not(.active) .gnarly-typeart{opacity:.8}
+.app-shell .gnarly-typeart--preview{font-size:.76em;line-height:1.18}
+.lyric-design-specimen .gnarly-typeart{font-size:clamp(14px,3.6vw,19px);line-height:1.1;justify-content:center}
+.lyric-type-preview .gnarly-typeart{font-size:clamp(17px,4vw,28px);line-height:1.18}
+.lyric-font-option[data-design-mode] {min-height:126px;display:flex;flex-direction:column;align-items:stretch;justify-content:center;gap:7px;padding:12px}
+.lyric-font-option[data-design-mode] .lyric-design-specimen{min-height:49px;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:5px 6px;border-radius:10px;background:rgba(0,0,0,.28);min-width:0}
+.lyric-font-option[data-design-mode] .lyric-font-detail{width:100%;flex-direction:row;flex-wrap:wrap;gap:5px;justify-content:space-between;align-items:baseline}
+.lyric-font-option[data-design-mode] .lyric-font-detail strong{font-size:11px;line-height:1.2}
+.lyric-font-option[data-design-mode] .lyric-font-detail small{font-size:9px;flex-basis:100%}
+.lyric-font-option[data-design-mode] .lyric-font-selection{position:absolute;top:5px;right:9px}
+.lyric-design-tier{margin:10px 0 5px;color:var(--acid);font-size:11px;font-weight:850;letter-spacing:.14em}
+.app-shell .gnarly-typeart--art .gnarly-word{transition:background-color .2s,color .2s}
+@keyframes gnarly-tile-land {from{opacity:.25;transform:translate3d(0,.28em,0) rotate(calc(var(--word-tilt) - 5deg)) scale(.88)}to{opacity:1;transform:translate3d(0,0,0) rotate(var(--word-tilt)) scale(1)}}
+@keyframes gnarly-type-pulse {0%,100%{transform:translateY(0)}50%{transform:translateY(-.065em)}}
+@keyframes gnarly-type-shear {0%,100%{transform:skewX(0)}50%{transform:skewX(-7deg)}}
+@keyframes gnarly-type-jitter {0%,91%,95%,100%{transform:translateX(0)}92%{transform:translateX(.065em)}93%{transform:translateX(-.075em)}}
+@keyframes gnarly-type-bounce {0%{transform:translateY(.35em) scale(.85);opacity:0}65%{transform:translateY(-.065em) scale(1.08);opacity:1}100%{transform:translateY(0) scale(1);opacity:1}}
+@keyframes gnarly-type-flare {0%,100%{text-shadow:0 0 .06em currentColor}50%{text-shadow:0 0 .27em currentColor,0 0 .46em currentColor}}
+@keyframes gnarly-type-slide {from{opacity:.2;transform:translateX(-.4em)}to{opacity:1;transform:translateX(0)}}
+@keyframes gnarly-type-rise {from{opacity:0;transform:translateY(.5em) scaleY(.8)}to{opacity:1;transform:translateY(0) scaleY(1)}}
+@keyframes gnarly-type-wobble{0%,100%{border-radius:20% 14% 21% 13%}50%{border-radius:12% 23% 13% 25%}}
+@keyframes gnarly-type-scan {0%{background-position:0% 0%}100%{background-position:0% 160%}}
+@media(prefers-reduced-motion:reduce){.app-shell .gnarly-typeart *, .lyric-design-specimen *{animation:none!important;transition:none!important;transform:none!important;will-change:auto!important}}
+@media(max-width:390px){.lyric-font-option[data-design-mode]{min-height:105px;padding:8px}.lyric-font-option[data-design-mode] .lyric-design-specimen{min-height:38px}.app-shell .gnarly-word{padding:.01em .09em}}
+
+/* 01 · Magazine Cutout: stable mixed ink/paper/rotation per word, ported conceptually from iOS. */
+.app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-word{background:var(--tile);color:var(--ink);box-shadow:0 2px 0 #0009,1px 3px 5px #0007;clip-path:polygon(1% 2%,99% 0,100% 99%,0 100%);transform:rotate(var(--word-tilt));padding:.08em .19em}
+.app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-tone-2{background:var(--acid);color:#111}
+.app-shell [data-lyric-art="art-magazine-cutout"] .gnarly-word:nth-of-type(4n){text-decoration:underline wavy .07em;text-underline-offset:.13em}
+.app-shell .lyric-line.active [data-lyric-art="art-magazine-cutout"] .gnarly-word,.app-shell .floating-lyrics [data-lyric-art="art-magazine-cutout"] .gnarly-word{animation:gnarly-tile-land .38s both;animation-delay:calc(var(--word-order)*35ms)}
+/* 02 · Xerox Ransom */
+.app-shell [data-lyric-art="art-xerox-ransom"] .gnarly-word{font-family:Impact,Georgia,serif;background:var(--tile);color:var(--ink);border:2px dotted #0007;box-shadow:2px 3px 0 #f3eee3,4px 5px 0 #0009;clip-path:polygon(2% 0,100% 3%,98% 96%,0 100%)}
+.app-shell [data-lyric-art="art-xerox-ransom"] .gnarly-word:nth-of-type(3n){letter-spacing:.12em;filter:contrast(1.25);text-decoration:line-through .07em}
+.app-shell .lyric-line.active [data-lyric-art="art-xerox-ransom"] .gnarly-word,.app-shell .floating-lyrics [data-lyric-art="art-xerox-ransom"] .gnarly-word{animation:gnarly-type-jitter 3.5s infinite}
+/* 03 · Neon Stencil */
+.app-shell [data-lyric-art="art-neon-stencil"] .gnarly-word{font-family:Impact,Arial,sans-serif;text-transform:uppercase;letter-spacing:.065em;color:#0b1115;background:var(--acid);clip-path:polygon(0 0,46% 0,46% 12%,51% 12%,51% 0,100% 0,100% 100%,0 100%);box-shadow:inset 0 0 .12em #101018}
+.app-shell [data-lyric-art="art-neon-stencil"] .gnarly-word:nth-child(4n){background:#0d151b;color:#e8faff;text-shadow:0 0 8px var(--acid)}
+/* 04 · Chrome Surge */
+.app-shell [data-lyric-art="art-chrome-surge"] .gnarly-word{color:transparent;background:linear-gradient(170deg,#fff 8%,#7c838d 26%,#fff 40%,#353b4a 52%,#f9fbff 73%,#9aabb6);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:.025em #f2faff;text-shadow:.045em .09em #0008;transform:skewX(-6deg)}
+.app-shell .lyric-line.active [data-lyric-art="art-chrome-surge"] .gnarly-word,.app-shell .floating-lyrics [data-lyric-art="art-chrome-surge"] .gnarly-word{animation:gnarly-type-flare 3s ease-in-out infinite}
+/* 05 · Glitch Zine */
+.app-shell [data-lyric-art="art-glitch-zine"] .gnarly-word{color:#fff;background:#080b14;font-weight:900;text-shadow:-.07em 0 #ff347a,.07em 0 #4aeefa;box-shadow:inset 0 -.2em rgba(245,250,255,.08)}
+.app-shell [data-lyric-art="art-glitch-zine"] .gnarly-word:nth-child(4n){transform:translateY(.09em) rotate(var(--word-tilt))}
+.app-shell .lyric-line.active [data-lyric-art="art-glitch-zine"] .gnarly-word,.app-shell .floating-lyrics [data-lyric-art="art-glitch-zine"] .gnarly-word{animation:gnarly-type-jitter 2.1s steps(2) infinite}
+/* 06 · Type Tornado */
+.app-shell [data-lyric-art="art-type-tornado"] .gnarly-word{font-family:Impact,sans-serif;font-stretch:condensed;font-size:1.13em;letter-spacing:-.06em;color:#fff;-webkit-text-stroke:.02em #111;background:linear-gradient(125deg,#e92d7f,#5512bf);transform:rotate(calc(var(--word-tilt) * 2)) skewX(-6deg)}
+.app-shell .lyric-line.active [data-lyric-art="art-type-tornado"] .gnarly-word,.app-shell .floating-lyrics [data-lyric-art="art-type-tornado"] .gnarly-word{animation:gnarly-type-bounce .5s cubic-bezier(.2,.8,.25,1) both;animation-delay:calc(var(--word-order) * 45ms)}
+/* 07 · Prism Split */
+.app-shell [data-lyric-art="art-prism-split"] .gnarly-word{font-family:var(--gnarly-lyric-font);letter-spacing:.02em;color:#fff;text-shadow:-.065em 0 #f452a8,.065em 0 #4be4ff,0 -.045em #f5d5b7;-webkit-text-stroke:.02em #121a27}
+.app-shell [data-lyric-art="art-prism-split"] .gnarly-word:nth-child(3n){background:linear-gradient(110deg,#adfdff4b,#a974ff35);border-bottom:.13em solid #00e4ff}
+/* 08 · Digital Havoc */
+.app-shell [data-lyric-art="art-digital-havoc"] .gnarly-word{font-family:ui-monospace,Menlo,monospace;color:#7affd9;background:repeating-linear-gradient(0deg,#081316 0 2px,#10292c 2px 4px);border:1px solid #62eac9;letter-spacing:-.04em}
+.app-shell [data-lyric-art="art-digital-havoc"] .gnarly-word:nth-child(3n){background:#74ffbb;color:#031214}
+.app-shell .lyric-line.active [data-lyric-art="art-digital-havoc"] .gnarly-word,.app-shell .floating-lyrics [data-lyric-art="art-digital-havoc"] .gnarly-word{animation:gnarly-type-scan 1s linear infinite alternate}
+/* 09 · Spray Tag */
+.app-shell [data-lyric-art="art-spray-tag"] .gnarly-word{font-family:"Permanent Marker",cursive;font-style:italic;color:#fcffeb;text-shadow:.05em .07em #ec266d,-.08em -.02em #0c1318;transform:rotate(var(--word-tilt));text-decoration:underline .08em wavy var(--acid);text-underline-offset:.15em}
+.app-shell [data-lyric-art="art-spray-tag"] .gnarly-word:nth-child(3n){color:#fdff65;font-size:1.1em}
+/* 10 · Liquid Type */
+.app-shell [data-lyric-art="art-liquid-type"] .gnarly-word{color:#d4ffff;background:linear-gradient(145deg,#3de9e854,#d075fd59);border:1px solid #adf8f9aa;border-radius:22% 9% 18% 6%;text-shadow:0 0 .28em #65f9ff}
+.app-shell .lyric-line.active [data-lyric-art="art-liquid-type"] .gnarly-word,.app-shell .floating-lyrics [data-lyric-art="art-liquid-type"] .gnarly-word{animation:gnarly-type-wobble 3s ease-in-out infinite alternate}
+/* 11 · Tape Collage */
+.app-shell [data-lyric-art="art-tape-collage"] .gnarly-word{font-family:Arial,sans-serif;background:#ebd8ad;color:#1b2424;box-shadow:0 .06em 0 #16191b,0 .12em .16em #0006;border-top:.2em solid #e1d8b77a;transform:rotate(var(--word-tilt))}
+.app-shell [data-lyric-art="art-tape-collage"] .gnarly-word:nth-of-type(3n){background:#c9ebf5;letter-spacing:.09em;transform:rotate(calc(var(--word-tilt) * -1))}
+/* 12 · Ransom Spectrum */
+.app-shell [data-lyric-art="art-ransom-spectrum"] .gnarly-word{color:var(--ink);background:var(--tile);padding:.10em .25em;clip-path:polygon(0 4%,96% 0,100% 90%,7% 100%);box-shadow:0 0 .15em #0009}
+.app-shell [data-lyric-art="art-ransom-spectrum"] .gnarly-tone-3{background:#f49cd3;color:#1b0820}
+.app-shell .lyric-line.active [data-lyric-art="art-ransom-spectrum"] .gnarly-word,.app-shell .floating-lyrics [data-lyric-art="art-ransom-spectrum"] .gnarly-word{animation:gnarly-type-bounce .38s both;animation-delay:calc(var(--word-order)*50ms)}
+/* 13 · Electric Ticket */
+.app-shell [data-lyric-art="art-electric-ticket"] .gnarly-word{font-family:Impact,Arial,sans-serif;text-transform:uppercase;color:#101824;background:#ffef4c;border-left:.12em dashed #1d2630;border-right:.12em dashed #1d2630;box-shadow:inset 0 .055em #0006,inset 0 -.055em #0005}
+.app-shell [data-lyric-art="art-electric-ticket"] .gnarly-word:nth-child(4n){background:#fb6daa;color:#101121}
+/* 14 · Halftone Punch */
+.app-shell [data-lyric-art="art-halftone-punch"] .gnarly-word{font-family:Impact,sans-serif;color:#fff;background:radial-gradient(#0006 20%,transparent 25%) 0 0/5px 5px,#f12d6e;-webkit-text-stroke:.035em #111;box-shadow:.12em .11em #171923;transform:rotate(var(--word-tilt)) skewX(-6deg)}
+.app-shell .lyric-line.active [data-lyric-art="art-halftone-punch"] .gnarly-word,.app-shell .floating-lyrics [data-lyric-art="art-halftone-punch"] .gnarly-word{animation:gnarly-tile-land .36s both}
+/* 15 · Y2K Warp */
+.app-shell [data-lyric-art="art-y2k-warp"] .gnarly-word{color:#fff9fd;font-family:Arial,sans-serif;font-weight:900;letter-spacing:-.08em;font-style:italic;text-shadow:.045em .075em #aa20ff,.09em .125em #111,.14em .16em #ff5598;background:linear-gradient(120deg,#ffd2f952,#6d66ed68);border-radius:.3em}
+.app-shell .lyric-line.active [data-lyric-art="art-y2k-warp"] .gnarly-word,.app-shell .floating-lyrics [data-lyric-art="art-y2k-warp"] .gnarly-word{animation:gnarly-type-shear 1.4s ease-in-out infinite alternate}
+/* 16 · Barcode Beats */
+.app-shell [data-lyric-art="art-barcode-beats"] .gnarly-word{font-family:ui-monospace,monospace;background:repeating-linear-gradient(90deg,#0d1117 0 2px,#e5f9f0 2px 3px,#0d1117 3px 5px);color:#fff;text-shadow:0 0 .12em #111,0 1px #000;padding:.13em .2em;border-bottom:.15em solid #47f6ba}
+.app-shell [data-lyric-art="art-barcode-beats"] .gnarly-word:nth-child(3n){background:#ceff48;color:#101a16;text-shadow:none}
+/* 17 · Elastic Words */
+.app-shell [data-lyric-art="art-elastic-words"] .gnarly-word{font-family:Arial,sans-serif;font-weight:900;border-radius:2em;color:#0b1216;background:#baff45;padding:.08em .19em;letter-spacing:-.07em}
+.app-shell .lyric-line.active [data-lyric-art="art-elastic-words"] .gnarly-word,.app-shell .floating-lyrics [data-lyric-art="art-elastic-words"] .gnarly-word{animation:gnarly-type-bounce .58s cubic-bezier(.16,.9,.29,1.25) both;animation-delay:calc(var(--word-order)*35ms)}
+/* 18 · Kinetic Masthead */
+.app-shell [data-lyric-art="art-kinetic-masthead"] .gnarly-word{font-family:Impact,Arial,sans-serif;font-weight:900;font-stretch:condensed;color:#e8ecff;background:#18232d;border-bottom:.2em solid var(--acid);text-transform:uppercase;letter-spacing:.02em}
+.app-shell .lyric-line.active [data-lyric-art="art-kinetic-masthead"] .gnarly-word,.app-shell .floating-lyrics [data-lyric-art="art-kinetic-masthead"] .gnarly-word{animation:gnarly-type-slide .46s both;animation-delay:calc(var(--word-order)*35ms)}
+/* 19 · Paper Trail */
+.app-shell [data-lyric-art="art-paper-trail"] .gnarly-word{font-family:Georgia,serif;color:#222019;background:#e8ddc7;outline:1px solid #b6a994;box-shadow:.08em .08em #f4f0dc,.16em .16em #302f32;transform:rotate(var(--word-tilt));padding:.1em .18em}
+.app-shell [data-lyric-art="art-paper-trail"] .gnarly-word:nth-child(4n){color:#a23c46;background:#fcf5e6;text-decoration:underline}
+/* 20 · Stereo Echo */
+.app-shell [data-lyric-art="art-stereo-echo"] .gnarly-word{font-weight:900;letter-spacing:-.055em;color:#f7fffd;text-shadow:-.085em .08em #42d6ff,.085em -.07em #fc4b9c,.18em .12em #000;transform:rotate(var(--word-tilt))}
+.app-shell .lyric-line.active [data-lyric-art="art-stereo-echo"] .gnarly-word,.app-shell .floating-lyrics [data-lyric-art="art-stereo-echo"] .gnarly-word{animation:gnarly-type-pulse 1.6s ease-in-out infinite}
+
+/* PREMIUM STUDIO — 20 individually art-directed composition treatments. */
+.app-shell [data-lyric-art="studio-vogue-editorial"]{font-family:Georgia,serif;font-style:italic;font-weight:700;letter-spacing:-.065em;font-size:1.12em;color:#fff2e5;text-shadow:0 3px 12px #000b}
+.app-shell [data-lyric-art="studio-swiss-grid"]{font-family:Arial,sans-serif;font-weight:850;text-transform:uppercase;letter-spacing:-.055em;color:#fff;border-left:.19em solid var(--acid);padding-left:.26em;text-align:left}
+.app-shell [data-lyric-art="studio-brutalist-index"]{font-family:Impact,Arial,sans-serif;text-transform:uppercase;font-weight:900;letter-spacing:-.035em;color:#101313;background:#d8ff38;padding:.05em .2em;box-shadow:.13em .14em #08090a}
+.app-shell [data-lyric-art="studio-typographic-atlas"]{font-family:ui-monospace,monospace;letter-spacing:.07em;font-size:.85em;border:1px solid #cbdbdc8e;padding:.18em .35em;color:#e0fefa;background:linear-gradient(0deg,#11445466,#0b192566)}
+.app-shell [data-lyric-art="studio-midnight-serif"]{font-family:Georgia,serif;font-style:italic;letter-spacing:.012em;color:#eae7ff;font-size:1.1em;text-shadow:0 0 .2em #c5b9ff,0 .08em .1em #07060c}
+.app-shell [data-lyric-art="studio-monochrome-folio"]{font-family:Georgia,serif;font-weight:400;letter-spacing:-.04em;font-size:1.13em;color:#f8f8f4;border-block:.018em solid #f8f8f4;padding:.09em 0}
+.app-shell [data-lyric-art="studio-acid-broadsheet"]{font-family:Arial,sans-serif;font-weight:900;text-transform:uppercase;font-size:1.06em;line-height:1.14;letter-spacing:-.055em;background:#ceff54;color:#080e06;box-shadow:.11em .11em #111;padding:.1em .25em;transform:skewX(-4deg)}
+.app-shell [data-lyric-art="studio-art-deco-cinema"]{font-family:Impact,Arial,sans-serif;font-weight:700;letter-spacing:.17em;text-transform:uppercase;color:#f6d397;border-block:2px solid #c99858;padding:.12em .27em;text-shadow:0 1px .15em #92582d}
+.app-shell [data-lyric-art="studio-cyanotype"]{font-family:ui-monospace,monospace;font-size:.93em;letter-spacing:.05em;text-transform:uppercase;color:#d6faff;background:repeating-linear-gradient(0deg,#1f4268 0 1px,#163557 1px 18px);outline:1px solid #7cc9ee;padding:.11em .25em}
+.app-shell [data-lyric-art="studio-hot-metal"]{font-family:Georgia,serif;font-weight:900;color:#f5eee5;text-shadow:1px 1px #776c61,2px 2px #443d3a,4px 4px #080b0a;letter-spacing:-.035em}
+.app-shell [data-lyric-art="studio-fashion-caption"]{font-family:Arial,sans-serif;font-size:.9em;font-weight:500;text-transform:uppercase;letter-spacing:.21em;color:#fff;text-decoration:underline .035em;text-underline-offset:.24em}
+.app-shell [data-lyric-art="studio-analog-contact"]{font-family:ui-monospace,monospace;font-size:.9em;color:#faebdb;background:#131717;outline:1px solid #d2bcb0;border-left:.32em solid #e1c09b;padding:.15em .24em;letter-spacing:.055em}
+.app-shell [data-lyric-art="studio-cyber-monogram"]{font-family:Impact,Arial,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#c8ffff;-webkit-text-stroke:.022em #5adfff;text-shadow:0 0 .25em #38c2e5;border-bottom:2px solid #8be9f0}
+.app-shell [data-lyric-art="studio-archival-stamp"]{font-family:ui-monospace,monospace;font-size:.92em;text-transform:uppercase;font-weight:900;letter-spacing:.07em;border:2px double #d6bd96;color:#ead3b2;background:#372924;padding:.1em .24em;transform:rotate(-2deg)}
+.app-shell [data-lyric-art="studio-brutalist-italic"]{font-family:Impact,Arial,sans-serif;font-size:1.11em;font-weight:900;font-style:italic;letter-spacing:-.055em;text-transform:uppercase;color:#f8f8ff;text-shadow:.055em .095em #fd3b85,.11em .18em #14161c}
+.app-shell [data-lyric-art="studio-liquid-chrome"]{font-family:Georgia,serif;font-weight:900;color:transparent;background:linear-gradient(175deg,#fff 10%,#d1d9df 35%,#333846 52%,#fdfeff 69%,#7c9fb7 90%);-webkit-background-clip:text;background-clip:text;-webkit-text-stroke:.025em #ffffffb0;text-shadow:.05em .07em #10151a45}
+.app-shell [data-lyric-art="studio-velvet-noir"]{font-family:Georgia,serif;font-style:italic;font-weight:600;color:#f1e4e8;text-shadow:0 0 .2em #a22e5b,0 .075em .1em #000;background:#13091099;padding:.08em .2em}
+.app-shell [data-lyric-art="studio-ultra-minimal"]{font-family:Arial,sans-serif;letter-spacing:-.055em;font-weight:600;font-size:.99em;color:#fff;text-shadow:0 2px 10px #000e}
+.app-shell [data-lyric-art="studio-neon-serif"]{font-family:Georgia,serif;font-style:italic;font-weight:800;letter-spacing:.02em;color:#fcecf3;text-shadow:0 0 .14em #e742b9,0 0 .45em #e742b9,0 0 .7em #ff8bd6}
+.app-shell [data-lyric-art="studio-concrete-poster"]{font-family:Impact,Arial,sans-serif;font-size:1.07em;letter-spacing:.035em;text-transform:uppercase;color:#fff;background:linear-gradient(135deg,#34383a,#171a1b);outline:2px solid #d7d9d9;padding:.04em .15em;text-shadow:.05em .075em #070809}
