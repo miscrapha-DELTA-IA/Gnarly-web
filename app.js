@@ -8,7 +8,7 @@ import {MUSIC_PRESETS,musicalPreset} from './lib/music-presets.js';
 import {autoLyrics,cachedAutoLyrics,prefetchAutoLyrics} from './lib/lyrics-auto.js';
 import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
 import {trackAudioURL,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
-import {AudioDeliveryRecovery} from './lib/audio-delivery.js';
+import {AudioDeliveryRecovery,inspectPlaybackLimit,playbackLimitMessage} from './lib/audio-delivery.js';
 import {appendUnique,commitPlaying,moveTrack,removeTrack,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
 import {ListeningMemory,MEMORY_KEY,recommendTracks,retainManualQueue,markAutoTracks,sameRecording,discoverySuggestions} from './lib/listening-intelligence.js';
 import {renderSmartQueuePanel} from './ui/smart-queue-panel.js';
@@ -559,18 +559,26 @@ async function recoverNativeAudio(track,initialError=null){
  if(!track||track.source!=='youtube'||state.current!==track||state.userPaused)return false;
  if(recoveryOperation)return recoveryOperation;
  const operation=(async()=>{
+  // HTMLMediaElement hides HTTP status codes. Read-only backend diagnosis
+  // avoids repeatedly hammering a provider currently returning HTTP 429.
+  const current=()=>state.current===track&&!state.userPaused;
+  let rateLimit=await inspectPlaybackLimit();
+  if(!current())return false;
+  if(rateLimit){
+   state.playing=false;updatePlayer();
+   reportAudioError(playbackLimitMessage(rateLimit));return false;
+  }
   const recovered=await audioDelivery.retry({
    track,error:initialError,mediaError:audio.error,
-   isCurrent:()=>state.current===track&&!state.userPaused,
+   isCurrent:current,
    onRetry:(attempt,total)=>{state.audioState='recovering';reportAudioStatus(`Restabelecendo áudio · tentativa ${attempt}/${total}…`);},
    restart:async attempt=>{
-    if(state.current!==track||state.userPaused)return false;
+    if(!current())return false;
     const position=Number(audio.currentTime)||0;
     if(!prepareNativeAudio(track,attempt))return false;
-    // A new URL already starts resource selection: avoid a duplicate load().
-    // Restore the former position only when the same recording is still active.
+    // A new URL already starts resource selection: avoid duplicate load().
     const restore=()=>{
-     if(position>3&&state.current===track&&!state.userPaused&&Number.isFinite(audio.duration)&&audio.duration>position)
+     if(position>3&&current()&&Number.isFinite(audio.duration)&&audio.duration>position)
       audio.currentTime=position;
     };
     audio.addEventListener('loadedmetadata',restore,{once:true});
@@ -579,12 +587,26 @@ async function recoverNativeAudio(track,initialError=null){
      await Promise.all([unlock,start]);
      restore();
      return true;
+    }catch(failure){
+     // The upstream 429 can appear on the first retry: stop the *rest* of
+     // the burst immediately rather than spending the retry budget in seconds.
+     rateLimit=await inspectPlaybackLimit();
+     if(rateLimit){
+      const limited=new Error('Provider rate limited');
+      limited.name='UpstreamRateLimitedError';
+      throw limited;
+     }
+     throw failure;
     }finally{audio.removeEventListener('loadedmetadata',restore);}
    }
   });
-  if(state.current!==track||state.userPaused)return false;
+  if(!current())return false;
   if(recovered){state.audioState='playing';state.playbackError='';reportAudioStatus('');return true;}
-  state.playing=false;updatePlayer();reportAudioError(playbackFailureMessage(initialError,audio.error));
+  // A cooldown can begin while the bounded retry attempt is in progress.
+  if(!rateLimit)rateLimit=await inspectPlaybackLimit();
+  if(!current())return false;
+  state.playing=false;updatePlayer();
+  reportAudioError(rateLimit?playbackLimitMessage(rateLimit):playbackFailureMessage(initialError,audio.error));
   return false;
  })();
  recoveryOperation=operation;
