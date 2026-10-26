@@ -5,6 +5,21 @@ const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,
 const errs=[];page.on('pageerror',x=>errs.push(x.message));
 await page.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
 await page.waitForSelector('#omnibox-toggle');
+async function assertAppearanceControlFits(label){
+ const [seek,button,player]=await Promise.all([
+  page.locator('#seek-slider').boundingBox(),
+  page.locator('#player-surface-button').boundingBox(),
+  page.locator('#player-section').boundingBox()
+ ]);
+ assert.ok(seek&&button&&player,`${label}: progress control should be visible`);
+ assert.ok(button.y>=seek.y+seek.height-1,`${label}: button overlaps the seek slider`);
+ assert.ok(button.x>=player.x+4,`${label}: button escapes player on the left`);
+ assert.ok(button.x+button.width<=player.x+player.width-4,`${label}: button escapes player on the right`);
+ assert.ok(button.y+button.height<=player.y+player.height-4,`${label}: button escapes player at the bottom`);
+ assert.ok(button.height<=36,`${label}: button is oversized at ${button.height}px`);
+ assert.ok(button.width<=165,`${label}: button is too wide at ${button.width}px`);
+}
+await assertAppearanceControlFits('compact 390px');
 assert.equal(await page.locator('.player .preset-chip').count(),0);
 assert.equal(await page.locator('.omnibox-shell').count(),1);
 assert.equal(await page.locator('#player-section').count(),1);
@@ -35,6 +50,7 @@ await page.locator('[data-player-size="minimal"]').click();
 await page.waitForTimeout(450);
 const minimalWidth=await page.locator('#player-section').evaluate(el=>el.getBoundingClientRect().width);
 assert.ok(minimalWidth<initialWidth,`Minimal must be narrower than compact: ${minimalWidth} vs ${initialWidth}`);
+await assertAppearanceControlFits('minimal 390px');
 await page.locator('button[data-player-size="compact"]').click();
 await page.locator('[data-command="close-display"]').click();
 await page.locator('#player-surface-button').click();
@@ -66,6 +82,11 @@ await page.locator('[data-command="close-display"]').click();
 await page.locator('#background-button').click();
 assert.ok(await page.locator('[data-command="adjust-photo"]').count()>0);
 await page.locator('#close-sheet').click();
+await page.setViewportSize({width:320,height:640});
+await assertAppearanceControlFits('compact 320px');
+await page.setViewportSize({width:430,height:844});
+await assertAppearanceControlFits('compact 430px');
+await page.setViewportSize({width:390,height:844});
 await page.locator('#share-button').click();
 assert.ok(await page.locator('[data-export-format="image"]').count()>0);
 await page.screenshot({path:'stage72-ui-mobile.png',fullPage:true});

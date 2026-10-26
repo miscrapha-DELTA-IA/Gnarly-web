@@ -31,8 +31,11 @@ test('appearance button replaces the side handle beside the track time; artwork 
  assert.match(html,/class="player-surface-pill" id="player-surface-button"/);
  assert.doesNotMatch(html,/class="player-surface-handle"/);
  assert.doesNotMatch(html,/id="reaction-button"/);
- assert.match(css,/right:12px;bottom:57px/);
+ assert.match(css,/right:12px;bottom:65px/);
  assert.match(css,/\.progress-foot \.player-surface-pill/);
+ assert.match(css,/position:static;z-index:2/);
+ assert.match(css,/\.player \.progress-foot\{/);
+ assert.doesNotMatch(css,/position:absolute;right:14px;bottom:11px;z-index:2/);
  assert.equal(playerSurfaceShortLabel('frosted'),'FOSCO');
  assert.match(css,/width:200%;height:100%/);
  assert.match(css,/flex:0 0 50%/);
