@@ -14,3 +14,11 @@ test('material themes determine texture but not saved experience',()=>{
  const p=resolveVisual('XEROX SERPENTINE','gnarly-exp-vector-drift-2000','DESLIGADO');
  assert.equal(p.kind,2);assert.equal(p.experience,'gnarly-exp-vector-drift-2000');assert.equal(p.reaction,'DESLIGADO');
 });
+
+import {readFileSync} from 'node:fs';
+test('rendered materials have independent physical geometry rather than the same Cyber Night warp',()=>{
+ const shader=readFileSync(new URL('../lib/visual-engine.js',import.meta.url),'utf8');
+ for(const fingerprint of ['float valueNoise','float fbm4','Angular prisms','Chrome: oblique','Glass: large lens','Neon Pulse: independent','Organic: soft cellular','Independent isometric'])assert.ok(shader.includes(fingerprint),fingerprint);
+ assert.match(shader,/if\(k<1\.5\)/);
+ assert.match(shader,/else if\(k<9\.5\)/);
+});
