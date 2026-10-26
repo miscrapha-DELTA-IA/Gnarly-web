@@ -20,6 +20,7 @@ export function karaokeStageMarkup(){
    <button type="button" id="karaoke-voice-record" disabled aria-pressed="false">● Gravar voz</button>
    <button type="button" id="karaoke-caption-settings">Aa · Legenda</button>
   </nav>
+  <p class="karaoke-stage-feedback" id="karaoke-stage-feedback" role="status" aria-live="polite" hidden></p>
   <div class="karaoke-stage-font-menu" id="karaoke-stage-font-menu" aria-label="Escolher estilo da legenda" hidden></div>
   <section class="karaoke-score-card" aria-label="Pontuação do canto">
    <div><span class="karaoke-score-label" id="karaoke-score-label">MICROFONE INATIVO</span><strong class="karaoke-score-number" id="karaoke-score-number">0</strong></div>
@@ -40,13 +41,26 @@ export function karaokeStageMarkup(){
 }
 const SILENCE={rms:0,hz:null,confidence:0,voiced:false};
 export class KaraokeStage {
- constructor({root,audio,getState,onStyle,onNotify,onMicConflict,onPlayPause}){
+ constructor({root,audio,getState,onStyle,onNotify,onMicConflict,onPlayPause,onFullscreen}){
   this.root=root;this.audio=audio;this.getState=getState;this.onStyle=onStyle;
-  this.onNotify=onNotify||(()=>{});this.onMicConflict=onMicConflict||(()=>false);this.onPlayPause=onPlayPause||(()=>{});
+  this.externalNotify=onNotify||(()=>{});this.onFullscreen=onFullscreen||(()=>{});
+  this.onNotify=message=>{
+   // The global app toast is BEHIND the modal. Stage feedback must be visible
+   // so mic permission errors and recorder actions never feel like dead buttons.
+   const feedback=this.query('karaoke-stage-feedback');
+   if(this.opened&&feedback){
+    feedback.textContent=String(message||'');
+    feedback.hidden=!message;
+    clearTimeout(this.feedbackTimer);
+    this.feedbackTimer=setTimeout(()=>{if(this.opened)feedback.hidden=true},4500);
+   }else this.externalNotify(message);
+  };
+  this.onMicConflict=onMicConflict||(()=>false);this.onPlayPause=onPlayPause||(()=>{});
   this.mic=new KaraokeMicrophone();this.scorer=new KaraokeLiveScore();
   this.opened=false;this.follow=true;this.trackId=null;this.lineRef=null;this.currentIndex=-999;
   this.reducedMotion=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches||false;
-  this.trigger=null;this.artworkSource='';this.artworkRequest=0;
+  this.trigger=null;this.artworkSource='';this.artworkRequest=0;this.feedbackTimer=null;
+  this.savedDocumentScroll={x:0,y:0};
   this.mic.onChange=()=>{if(this.opened)this.updateScore()};
   this.mic.onRecording=blob=>{if(blob.size){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;
    a.download='gnarly-karaoke-voz-'+new Date().toISOString().slice(0,19).replaceAll(':','-')+(blob.type.includes('mp4')?'.m4a':'.webm');
@@ -63,6 +77,7 @@ export class KaraokeStage {
  open(trigger){
   if(this.opened)return;
   this.trigger=trigger||null;this.opened=true;this.follow=true;
+  this.savedDocumentScroll={x:window.scrollX||0,y:window.scrollY||0};
   this.root.hidden=false;this.query('karaoke-stage-font-menu').hidden=true;document.documentElement.classList.add('karaoke-stage-open');
   this.trackId=null;this.lineRef=null;this.currentIndex=-999;
   this.refresh(true);this.query('karaoke-stage-close').focus({preventScroll:true});
@@ -70,10 +85,11 @@ export class KaraokeStage {
  close(){
   if(!this.opened)return;
   this.opened=false;this.root.hidden=true;this.query('karaoke-stage-font-menu').hidden=true;document.documentElement.classList.remove('karaoke-stage-open');
+  clearTimeout(this.feedbackTimer);this.query('karaoke-stage-feedback').hidden=true;
   this.mic.stop();this.scorer.stop();this.updateScore();
   this.trigger?.focus?.({preventScroll:true});this.trigger=null;
  }
- destroy(){this.close();this.mic.stop()}
+ destroy(){this.close();clearTimeout(this.feedbackTimer);this.mic.stop()}
  resetForTrack(){
   this.mic.stop();this.scorer.stop();this.trackId=null;this.lineRef=null;this.currentIndex=-999;
   if(this.opened)this.refresh(true);
@@ -151,9 +167,22 @@ export class KaraokeStage {
     }
    });
    const active=holder.querySelector('.is-live');
-   if(active&&this.follow)active.scrollIntoView({block:'center',behavior:this.reducedMotion?'instant':'smooth'});
+   if(active&&this.follow)this.centerActiveLine(active);
   }
   this.updateScore();
+ }
+
+ /** Keep the document fixed while auto-following the active LRC line.
+  * scrollIntoView() also scrolls the page/ancestors on Chromium and Safari,
+  * pushing the modal header/play/pause outside the visible viewport.
+  */
+ centerActiveLine(line){
+  const reader=this.query('karaoke-reader');
+  if(!reader||!line)return;
+  const bounds=reader.getBoundingClientRect(),target=line.getBoundingClientRect();
+  const offset=(target.top-bounds.top)+(target.height-bounds.height)/2;
+  if(!Number.isFinite(offset)||Math.abs(offset)<1)return;
+  reader.scrollTo({top:Math.max(0,reader.scrollTop+offset),behavior:this.reducedMotion?'instant':'smooth'});
  }
  updateTransport(){
   const button=this.query('karaoke-stage-play'),playing=!this.audio.paused&&!this.audio.ended;
@@ -195,7 +224,10 @@ export class KaraokeStage {
   const target=e.target.closest('button');if(!target)return;
   switch(target.id){
    case 'karaoke-stage-close':this.close();break;
-   case 'karaoke-stage-play':this.onPlayPause();break;
+   case 'karaoke-stage-play':
+    // Playback belongs to the existing app audio graph, never a new player.
+    this.onPlayPause();this.updateTransport();break;
+   case 'karaoke-stage-fullscreen':this.onFullscreen();break;
    case 'karaoke-voice-toggle':void this.toggleMic();break;
    case 'karaoke-voice-record':
     if(this.mic.recording)this.mic.stopRecording();
