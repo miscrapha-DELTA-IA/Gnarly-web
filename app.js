@@ -11,6 +11,7 @@ import {StemMixer,STEM_KINDS,STEM_LABELS,STEM_PRESETS} from './lib/stem-mixer.js
 import {demucsStatus,prepareDemucsAudio,separateWithBestModel} from './lib/demucs-cloud.js';
 import {renderMusicPanel,mixerValue} from './ui/music-panel.js';
 import {createDisplayStore,renderDisplayPanel} from './ui/display-panel.js';
+import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu} from './ui/player-surface.js';
 
 const $=(selector)=>document.querySelector(selector);
 const app=$('#app-shell'), audio=$('#player-audio'), visual=new FluidVisual($('#fluid-canvas'));
@@ -27,6 +28,7 @@ const setSetting=(name,value)=>{try{localStorage.setItem('gnarly.web.'+name,Stri
 const parseJSON=(s,fallback)=>{try{return JSON.parse(s)}catch{return fallback}};
 const state={
   tracks:[],queue:[],current:null,playing:false,searchResults:[],searchTerm:'',
+  playerSurfaceMode:normalizePlayerSurfaceMode(getSetting('playerSurfaceMode','turbulent')),
   theme:getSetting('theme','ACID'),reaction:getSetting('reaction','FLUIDO'),experience:getSetting('experience','original'),previousTheme:getSetting('previousTheme','ACID'),visualTab:'theme',
   stemStatus:'Separação neural de quatro fontes por GPU gratuita quando disponível. Você também pode carregar quatro Stems.',
   demucsBusy:false,demucsAbort:null,demucsAvailable:false,demucsChecked:false,stemModel:'',
@@ -74,6 +76,7 @@ function updatePlayer(){
  $('#track-artist').textContent=track?.artist||'Selecione uma música para começar';
  $('#cover-image').src=track?.artwork||icon;
  $('#cover-image').onerror=()=>{$('#cover-image').onerror=null;$('#cover-image').src=icon};
+ updatePlayerSurfaceArtwork();
  $('#cover-play-overlay').textContent=track?'Fundo da capa':'Escolher música';
  $('#cover-button').setAttribute('aria-label',track?'Configurar fundo a partir da capa':'Abrir busca de músicas');
  applyBackground();
@@ -87,6 +90,49 @@ function updatePlayer(){
  if('mediaSession' in navigator && typeof MediaMetadata!=='undefined'){try{navigator.mediaSession.metadata=track?new MediaMetadata({title:track.title,artist:track.artist,album:track.album||'GNARLY WEB',artwork:[{src:track.artwork||new URL(icon,location.href).href,sizes:'256x256'}]}):null}catch{}}
 }
 function updateProgress(){const d=audio.duration||0,t=audio.currentTime||0,p=d?Math.min(1000,1000*t/d):0;const slider=$('#seek-slider');slider.value=String(p);slider.style.setProperty('--progress',`${p/10}%`);$('#elapsed-label').textContent=fmt(t);if(state.current?.source!=='preview')$('#duration-label').textContent=fmt(d||state.current?.duration||0)}
+// Internal artwork uses a separate layer, never the app's backgroundMode.
+// Repeating two identical tiles produces a cyclic lateral loop with no reset jump.
+let lastSurfaceArtwork='';
+function safeSurfaceArtwork(raw){
+ try{
+  const url=new URL(raw||icon,location.href);
+  if(['https:','http:','blob:'].includes(url.protocol))return url.href;
+ }catch{}
+ return new URL(icon,location.href).href;
+}
+function updatePlayerSurfaceArtwork(){
+ const url=safeSurfaceArtwork(state.current?.artwork);
+ if(lastSurfaceArtwork===url)return;
+ lastSurfaceArtwork=url;
+ const fallback=new URL(icon,location.href).href;
+ // Add the local logo underneath third-party artwork as a network-error fallback.
+ const images=`url(${JSON.stringify(url)}),url(${JSON.stringify(fallback)})`;
+ $('#player-surface-artwork').style.backgroundImage=images;
+ $('#player-surface-artwork-repeat').style.backgroundImage=images;
+}
+function closePlayerSurfaceMenu(restoreFocus=false){
+ const menu=$('#player-surface-menu');
+ const wasOpen=!menu.hidden;
+ menu.hidden=true;
+ $('#player-surface-button').setAttribute('aria-expanded','false');
+ if(restoreFocus&&wasOpen)$('#player-surface-button').focus();
+}
+function openPlayerSurfaceMenu(){
+ if(state.sheet)closeSheet();
+ const menu=$('#player-surface-menu');
+ menu.innerHTML=renderPlayerSurfaceMenu(state.playerSurfaceMode);
+ menu.hidden=false;
+ $('#player-surface-button').setAttribute('aria-expanded','true');
+ menu.querySelector('[aria-checked="true"]')?.focus();
+}
+function applyPlayerSurfaceMode(next,{persist=true}={}){
+ const mode=normalizePlayerSurfaceMode(next);
+ state.playerSurfaceMode=mode;
+ app.dataset.playerSurfaceMode=mode;
+ if(persist)setSetting('playerSurfaceMode',mode);
+ updatePlayerSurfaceArtwork();
+}
+
 function applyBackground(){
  const cover=state.current?.artwork,mode=state.backgroundMode,photo=$('#photo-background');
  const ownPhoto=mode==='custom'&&!!state.backgroundURL;
@@ -158,6 +204,7 @@ function closeYouTubePlayer(){const dialog=$('#youtube-player-dialog');if(!dialo
 function toggleFavorite(){if(!state.current){openSheet('library');return}const at=state.favorites.findIndex(x=>x.id===state.current.id);if(at>=0){state.favorites.splice(at,1);toast('Removido dos favoritos')}else{state.favorites.push(state.current);toast('Adicionado aos favoritos')}setSetting('favorites',JSON.stringify(state.favorites.filter(x=>x.source!=='local').slice(-100)));updatePlayer();if(state.sheet==='favorites')renderSheet()}
 const OMNIBOX_TABS=['search','library','queue','karaoke'];
 function openSheet(which){
+ closePlayerSurfaceMenu();
  if(which==='stems'){state.musicTab='stems';which='controls'}
  if(OMNIBOX_TABS.includes(which)){state.omniboxTab=which;setSetting('omniboxTab',which)}
  state.sheet=which;
@@ -180,6 +227,7 @@ function closeSheet(){
 function applyPanelVisibility(){
  const visible=key=>displayStore.isVisible(key);
  app.classList.toggle('zen-mode',displayStore.zen);
+ app.dataset.playerSurfaceMode=state.playerSurfaceMode;
  app.dataset.playerSize=displayStore.size;
  app.dataset.playerMaterial=displayStore.material;
  $('#brand-line').hidden=!visible('header');
@@ -262,7 +310,31 @@ $('#audio-import').addEventListener('change',e=>{importAudio(e.target.files||[])
 $('#lrc-import').addEventListener('change',async e=>{const file=e.target.files?.[0];if(!file)return;state.lyricsAbort?.abort();state.lyrics=parseLRC(await file.text());state.lyricsStatus='Letra sincronizada importada por você';state.lastLyric=-2;syncLyrics();toast(`${state.lyrics.length} linhas sincronizadas carregadas`);if(state.sheet==='karaoke')renderSheet();e.target.value=''});
 $('#stems-import').addEventListener('change',async e=>{const files=[...(e.target.files||[])];e.target.value='';if(!state.current)return toast('Escolha uma música primeiro');state.stemStatus='Carregando fontes Stems…';if(state.sheet==='stems')renderSheet();try{await stems.load(files);state.stemStatus='Quatro fontes reais conectadas ao mixer GNARLY.';toast('Stems prontos: voz, bateria, baixo e outros.')}catch(err){state.stemStatus=err.message;toast(err.message)}if(state.sheet==='stems')renderSheet()});
 $('#background-import').addEventListener('change',e=>{const file=e.target.files?.[0];if(!file||!file.type.startsWith('image/'))return;if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL);state.backgroundURL=URL.createObjectURL(file);state.photoAdjust=false;state.backgroundMode='custom';setSetting('backgroundMode','custom');applyBackground();if(state.sheet==='background')closeSheet();toast('Foto de fundo aplicada');e.target.value=''});
-$('#cover-button').addEventListener('click',()=>{if(!state.current)openSheet('search');else openSheet('background')});
+$('#cover-button').addEventListener('click',()=>{closePlayerSurfaceMenu();if(!state.current)openSheet('search');else openSheet('background')});
+$('#player-surface-button').addEventListener('click',()=>{
+ if($('#player-surface-menu').hidden)openPlayerSurfaceMenu();
+ else closePlayerSurfaceMenu(true);
+});
+$('#player-surface-menu').addEventListener('click',e=>{
+ const button=e.target.closest('[data-player-surface]');
+ if(!button)return;
+ applyPlayerSurfaceMode(button.dataset.playerSurface);
+ closePlayerSurfaceMenu(true);
+});
+$('#player-surface-menu').addEventListener('keydown',e=>{
+ if(e.key!=='ArrowDown'&&e.key!=='ArrowUp')return;
+ e.preventDefault();
+ const items=[...e.currentTarget.querySelectorAll('button')];
+ const ix=items.indexOf(document.activeElement),step=e.key==='ArrowDown'?1:-1;
+ items[(ix+step+items.length)%items.length]?.focus();
+});
+document.addEventListener('pointerdown',e=>{
+ const menu=$('#player-surface-menu');
+ if(!menu.hidden&&!menu.contains(e.target)&&!$('#player-surface-button').contains(e.target)){
+  closePlayerSurfaceMenu();
+ }
+});
+
 $('#add-button').addEventListener('click',()=>$('#audio-import').click());
 $('#library-button').addEventListener('click',()=>openSheet('library'));
 $('#favorite-button').addEventListener('click',toggleFavorite);
@@ -329,10 +401,10 @@ async function runSearch(raw){const query=String(raw||'').trim();state.searchTer
 }
 audio.addEventListener('play',()=>{if(stems.ready)void stems.play();state.playing=true;updatePlayer()});audio.addEventListener('pause',()=>{stems.pause();state.playing=false;updatePlayer()});audio.addEventListener('timeupdate',()=>{if(stems.ready)stems.sync();updateProgress();syncLyrics()});audio.addEventListener('loadedmetadata',updateProgress);audio.addEventListener('seeked',()=>stems.seek());audio.addEventListener('ended',()=>{state.queue.length?next():pause()});audio.addEventListener('waiting',()=>{if(state.current?.source==='youtube')reportAudioStatus('Carregando áudio…')});audio.addEventListener('playing',()=>{state.audioState='playing';reportAudioStatus('')});audio.addEventListener('error',()=>{if(state.current){state.playing=false;updatePlayer();reportAudioError(state.current.source==='youtube'?playbackFailureMessage(null,audio.error):'Não foi possível carregar o áudio.');}});
 for(const [action,fn] of [['play',()=>void play()],['pause',pause],['previoustrack',previous],['nexttrack',next],['seekto',details=>{audio.currentTime=details.seekTime||0}]]){try{navigator.mediaSession?.setActionHandler(action,fn)}catch{/* not supported */}}
-window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select')||e.ctrlKey||e.altKey||e.metaKey)return;if(e.code==='Space'){e.preventDefault();state.playing?pause():void play()}if(e.code==='Escape'){closeSheet();closeYouTubePlayer()};if(e.key==='ArrowRight'&&state.current)audio.currentTime=Math.min(audio.duration||0,audio.currentTime+5);if(e.key==='ArrowLeft'&&state.current)audio.currentTime=Math.max(0,audio.currentTime-5)});
+window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select')||e.ctrlKey||e.altKey||e.metaKey)return;if(e.code==='Space'){e.preventDefault();state.playing?pause():void play()}if(e.code==='Escape'){if(!$('#player-surface-menu').hidden){e.preventDefault();closePlayerSurfaceMenu(true);return}closeSheet();closeYouTubePlayer()};if(e.key==='ArrowRight'&&state.current)audio.currentTime=Math.min(audio.duration||0,audio.currentTime+5);if(e.key==='ArrowLeft'&&state.current)audio.currentTime=Math.max(0,audio.currentTime-5)});
 window.addEventListener('dragover',e=>{if(e.dataTransfer?.types.includes('Files')){e.preventDefault();app.classList.add('dragover')}});window.addEventListener('dragleave',e=>{if(!e.relatedTarget)app.classList.remove('dragover')});window.addEventListener('drop',e=>{e.preventDefault();app.classList.remove('dragover');importAudio(e.dataTransfer?.files||[])});
 window.addEventListener('beforeunload',()=>{state.micRecorder?.state==='recording'&&state.micRecorder.stop();state.micStream?.getTracks()?.forEach(x=>x.stop());state.demucsAbort?.abort();stems.clear();for(const item of state.tracks)if(item.source==='local')URL.revokeObjectURL(item.url);if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL)});
-updatePlayer();applyPanelVisibility();
+applyPlayerSurfaceMode(state.playerSurfaceMode,{persist:false});updatePlayer();applyPanelVisibility();
 
 // Direct backend playback has no separate invite login or YouTube modal on Play.
 

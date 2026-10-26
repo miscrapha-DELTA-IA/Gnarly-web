@@ -66,7 +66,8 @@ test('Player density and material adjust independently of visibility and Zen',()
  assert.equal(store.size,'compact');
  assert.equal(store.material,'clear');
  assert.match(renderDisplayPanel(store),/PLAYER · TAMANHO/);
- assert.match(renderDisplayPanel(store),/VIDRO · TRANSPARÊNCIA/);
+ assert.doesNotMatch(renderDisplayPanel(store),/VIDRO · TRANSPARÊNCIA/);
+ assert.match(renderDisplayPanel(store),/aba lateral do player/);
  store.setSize('minimal');store.setMaterial('frosted');
  store.set('player',false);store.setZen(true);
  store=createDisplayStore(storage);
