@@ -154,7 +154,14 @@ assert.equal(await page.locator('#app-shell').getAttribute('data-lyric-style'),'
 assert.equal(await page.locator('.build-badge').innerText(),currentTheme);
 assert.equal(await page.locator('button[data-lyric-style="editorial"]').getAttribute('aria-pressed'),'true');
 // Stage Aa catalogue: 40 styles, instant application, search and manual scope.
-assert.equal(await page.locator('#sheet-content [data-lyric-style]').count(),40);
+assert.equal(await page.locator('#sheet-content [data-lyric-style]').count(),80);
+await page.locator('[data-font-group="art"]').click();
+await page.locator('button[data-lyric-style="art-magazine-cutout"]').click();
+assert.equal(await page.locator('#app-shell').getAttribute('data-lyric-style'),'art-magazine-cutout');
+assert.match(await page.locator('#lyric-live-specimen').innerHTML(),/gnarly-word/);
+await page.locator('[data-font-group="studio"]').click();
+await page.locator('button[data-lyric-style="studio-velvet-noir"]').click();
+assert.equal(await page.locator('#app-shell').getAttribute('data-lyric-art'),'studio-velvet-noir');
 await page.locator('[data-font-group="poster"]').click();
 assert.equal(await page.locator('[data-lyric-style="font-inter"]').isVisible(),false);
 await page.locator('#lyric-font-search').fill('bebas');
