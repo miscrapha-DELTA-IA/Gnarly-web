@@ -97,6 +97,9 @@ export class KaraokeStage {
   this.opened=false;this.root.hidden=true;this.query('karaoke-stage-font-menu').hidden=true;document.documentElement.classList.remove('karaoke-stage-open');
   clearTimeout(this.feedbackTimer);this.query('karaoke-stage-feedback').hidden=true;
   this.mic.stop();this.scorer.stop();this.updateScore();
+  // A pending image upgrade must be retried on reopen, not leave the stage
+  // with a permanently stale wallpaper when it completed while hidden.
+  ++this.artworkRequest;this.artworkSource='';
   this.trigger?.focus?.({preventScroll:true});this.trigger=null;
  }
  destroy(){this.close();clearTimeout(this.feedbackTimer);this.mic.stop()}
