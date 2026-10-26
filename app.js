@@ -387,6 +387,10 @@ async function enrichSelectedTrack(track,knownDuration=0){
   if(controller.signal.aborted||state.current!==track||!metadata)return;
   const before=track.artist,changed=applyMetadata(track,metadata);
   if(!changed)return;
+  if(isGenericArtist(before)&&!isGenericArtist(track.artist)){
+   const choice=lyricFonts.selected(track).style;
+   if(choice!==state.lyricStyle){state.lyricStyle=choice;applyLyricStyle(app,choice);void loadLyricTypeface(choice)}
+  }
   // Transport, playback URL, audio graph and queue identity remain untouched.
   omnibox.updateMetadata(track);state.history=omnibox.history;
   for(const favorite of state.favorites)if(favorite.id===track.id){
