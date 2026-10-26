@@ -636,11 +636,11 @@ body{position:relative;min-height:100dvh;background:#05090a}
 /* Ambient fill is generated from CSS vectors, not a JPEG enlarged to infinity. */
 #gnarly-background .photo-background[data-art-quality="low"]::before,
 #gnarly-background .photo-background[data-art-quality="unknown"]::before{
- content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
+ content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
  background:
-  radial-gradient(ellipse 68% 57% at 12% 21%,rgba(13,170,145,.20),transparent 85%),
-  radial-gradient(ellipse 62% 58% at 86% 76%,rgba(145,45,128,.17),transparent 82%),
-  linear-gradient(152deg,#101b22,#101416 40%,#191620);
+  radial-gradient(ellipse 68% 57% at 12% 21%,rgba(13,170,145,.30),transparent 85%),
+  radial-gradient(ellipse 62% 58% at 86% 76%,rgba(145,45,128,.24),transparent 82%),
+  linear-gradient(152deg,rgba(6,15,22,.38),transparent 40%,rgba(15,12,22,.42));
 }
 #gnarly-background .photo-background[data-art-quality="low"]::after,
 #gnarly-background .photo-background[data-art-quality="unknown"]::after{
