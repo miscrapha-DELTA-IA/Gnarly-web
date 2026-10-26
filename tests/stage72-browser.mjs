@@ -32,6 +32,21 @@ const nativeGPU=await page.evaluate(()=>{
  return {available:!!gl,compiled:!!program,error:gl.getError()};
 });
 assert.ok(nativeGPU.available&&nativeGPU.compiled,'Metal shader port must compile in WebGL2, never silently use Canvas fallback: '+JSON.stringify(nativeGPU)+'; warnings: '+warnings.slice(0,5).join(' | '));
+
+const firstTime=await page.evaluate(()=>{
+ const gl=document.querySelector('#fluid-canvas').getContext('webgl2');
+ const p=gl.getParameter(gl.CURRENT_PROGRAM);
+ return gl.getUniform(p,gl.getUniformLocation(p,'u_time'));
+});
+await page.waitForTimeout(220);
+const secondTime=await page.evaluate(()=>{
+ const gl=document.querySelector('#fluid-canvas').getContext('webgl2');
+ const p=gl.getParameter(gl.CURRENT_PROGRAM);
+ return {time:gl.getUniform(p,gl.getUniformLocation(p,'u_time')),error:gl.getError()};
+});
+assert.ok(secondTime.time>firstTime+.08,'Native high-res material must move smoothly WITHOUT any track playing');
+assert.equal(secondTime.error,0,'Pixel finishing cannot introduce WebGL errors');
+
 await page.locator('#theme-button').click();
 await page.locator('[data-theme="PRISM CARMINE"]').click();
 await page.waitForFunction(({name,want})=>{

@@ -589,3 +589,16 @@ body{position:relative;min-height:100dvh;background:#05090a}
   margin-top:clamp(28px,calc((100dvh - 690px)/2),120px)!important;
  }
 }
+
+
+/* Stage81: preserve native detail through the compositor: never apply an
+   inherited opacity/filter/scale to the full-resolution GNARLY shader. */
+#gnarly-background{filter:none!important;opacity:1;transform:none}
+#gnarly-background #fluid-canvas{
+ display:block;image-rendering:auto;
+ -webkit-filter:none!important;filter:none!important;
+ mix-blend-mode:normal;
+}
+#gnarly-background .visual-dim{
+ background:linear-gradient(180deg,rgba(0,0,0,.055),transparent 23%,rgba(0,0,0,.09) 100%);
+}
