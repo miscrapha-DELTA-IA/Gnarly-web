@@ -26,3 +26,13 @@ test('browser distinguishes media and autoplay errors from unobservable HTTP sta
   assert.match(playbackFailureMessage(null,{code:2}), /Erro de rede/);
   assert.doesNotMatch(playbackFailureMessage(null,{code:2}), /HTTP 403/);
 });
+
+test('bounded retry forces a fresh browser request without changing canonical source',()=>{
+ const original=new URL(trackAudioURL(youtube));
+ const retry=new URL(trackAudioURL(youtube,{attempt:1}));
+ assert.equal(retry.searchParams.get('retry'),'1');
+ assert.equal(retry.searchParams.get('url'),original.searchParams.get('url'));
+ assert.equal(retry.searchParams.get('delivery'),'browser');
+ assert.equal(new URL(trackAudioURL(youtube,{attempt:9})).searchParams.has('retry'),false);
+ assert.equal(trackAudioURL({...youtube,source:'preview'},{attempt:1}),null);
+});
