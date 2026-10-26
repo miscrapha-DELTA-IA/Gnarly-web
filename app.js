@@ -28,7 +28,7 @@ import {demucsStatus,prepareDemucsAudio,separateWithBestModel} from './lib/demuc
 import {renderMusicPanel,mixerValue} from './ui/music-panel.js';
 import {createDisplayStore,renderDisplayPanel} from './ui/display-panel.js';
 import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel} from './ui/player-surface.js';
-import {artworkBudget,artworkCandidates,resolveArtwork} from './lib/artwork-quality.js';
+import {artworkBudget,artworkCandidates,resolveArtworkAsset} from './lib/artwork-quality.js';
 import {createFullscreenController} from './lib/fullscreen-controller.js';
 import {karaokeStageMarkup,KaraokeStage} from './ui/karaoke-stage.js';
 
@@ -49,6 +49,20 @@ const artEnvironment=()=>({
  deviceMemory:Number(navigator.deviceMemory)||8
 });
 const artPixels=role=>artworkBudget({role,...artEnvironment()});
+function artworkViewport(role){
+ const env=artEnvironment(),viewport=document.getElementById(role==='background'?'gnarly-background':role==='surface'?'player-surface':role==='stage'?'karaoke-stage':'cover-image');
+ const rect=viewport?.getBoundingClientRect();
+ return {pixels:artPixels(role),displayWidth:Math.round(rect?.width||env.viewportWidth),
+  displayHeight:Math.round(rect?.height||env.viewportHeight),dpr:env.dpr};
+}
+function applyArtworkQuality(element,asset,role){
+ const density=Math.min(3,Math.max(1,window.devicePixelRatio||1));
+ const safeWidth=Math.max(160,Math.floor(Math.min(asset.width||360,asset.height||360)/density));
+ element.dataset.artQuality=asset.quality||'unknown';
+ element.style.setProperty('--gnarly-art-safe-width',safeWidth+'px');
+ element.dataset.artPixels=asset.width&&asset.height?asset.width+'×'+asset.height:'';
+ if(role==='background')background.dataset.coverQuality=asset.quality||'unknown';
+}
 let coverArtVersion=0,lastCoverArt='',surfaceArtVersion=0,lastSurfaceArt='',backgroundArtVersion=0,lastBackgroundArt='';
 const fullscreen=createFullscreenController(document,{
  onChange:active=>{
@@ -275,8 +289,11 @@ function updatePlayer(){
   lastCoverArt=coverKey;const version=++coverArtVersion;
   const image=$('#cover-image');image.decoding='async';image.src=cover;
   image.onerror=()=>{if(version!==coverArtVersion)return;image.onerror=null;image.src=icon};
-  if(cover!==icon)void resolveArtwork(cover,{pixels:artPixels('cover'),minDimension:260}).then(url=>{
-   if(version===coverArtVersion&&url!==cover&&lastCoverArt===coverKey){image.src=url;}
+  if(cover!==icon)void resolveArtworkAsset(cover,{...artworkViewport('cover'),minDimension:260}).then(asset=>{
+   if(version===coverArtVersion&&lastCoverArt===coverKey){
+    applyArtworkQuality(image,asset,'cover');
+    if(asset.url!==cover&&asset.url)image.src=asset.url;
+   }
   });
  }
  updatePlayerSurfaceArtwork();
@@ -310,8 +327,11 @@ function updatePlayerSurfaceArtwork(){
   $('#player-surface-artwork-repeat').style.backgroundImage=layers;
  };
  apply(raw); // Never flash a missing 4K file over a usable thumbnail.
- if(raw!==fallback)void resolveArtwork(raw,{pixels,minDimension:300}).then(url=>{
-  if(version===surfaceArtVersion&&lastSurfaceArt===key&&state.current?.artwork===raw)apply(url);
+ if(raw!==fallback)void resolveArtworkAsset(raw,{...artworkViewport('surface'),pixels,minDimension:300}).then(asset=>{
+  if(version===surfaceArtVersion&&lastSurfaceArt===key&&safeSurfaceArtwork(state.current?.artwork)===raw){
+   for(const element of [$('#player-surface-artwork'),$('#player-surface-artwork-repeat')])applyArtworkQuality(element,asset,'surface');
+   apply(asset.url||raw);
+  }
  });
 }
 function closePlayerSurfaceMenu(restoreFocus=false){
@@ -347,6 +367,7 @@ function applyBackground(){
  photo.hidden=!ownPhoto&&!coverPhoto;
  if(ownPhoto){
   lastBackgroundArt='';++backgroundArtVersion;
+  delete photo.dataset.artQuality;
   const layer='url('+JSON.stringify(state.backgroundURL)+')';
   if(photo.style.backgroundImage!==layer)photo.style.backgroundImage=layer;
   photo.style.transform=`translate3d(${state.photoX}%,${state.photoY}%,0) scale(${state.photoZoom})`;
@@ -356,14 +377,19 @@ function applyBackground(){
    lastBackgroundArt=key;const version=++backgroundArtVersion;
    const apply=url=>{photo.style.backgroundImage='url('+JSON.stringify(url)+')'};
    apply(source);
-   void resolveArtwork(source,{pixels,minDimension:480}).then(url=>{
-    if(version===backgroundArtVersion&&lastBackgroundArt===key&&state.backgroundMode==='cover'&&state.current?.artwork===cover)apply(url);
+   void resolveArtworkAsset(source,{...artworkViewport('background'),pixels,minDimension:480}).then(asset=>{
+    if(version===backgroundArtVersion&&lastBackgroundArt===key&&state.backgroundMode==='cover'&&state.current?.artwork===cover){
+     applyArtworkQuality(photo,asset,'background');
+     apply(asset.url||source);
+    }
    });
   }
   photo.style.transform='';
  }else{
   lastBackgroundArt='';++backgroundArtVersion;
   if(photo.style.backgroundImage)photo.style.backgroundImage='';
+  delete photo.dataset.artQuality;
+  photo.style.removeProperty('--gnarly-art-safe-width');
   photo.style.transform='';
  }
  app.style.backgroundImage='';visual.setPaused(ownPhoto||coverPhoto);
