@@ -629,7 +629,7 @@ body{position:relative;min-height:100dvh;background:#05090a}
 #gnarly-background .photo-background[data-art-quality="low"],
 #gnarly-background .photo-background[data-art-quality="unknown"]{
  background-color:#10151b;
- background-size:min(91vw,var(--gnarly-art-safe-width,420px)) auto;
+ background-size:cover;
  background-position:center center;
  box-shadow:inset 0 0 0 100vmax rgba(0,0,0,.035);
 }
@@ -654,7 +654,7 @@ body{position:relative;min-height:100dvh;background:#05090a}
 .app-shell[data-player-surface-mode="moving"] .player-surface-artwork[data-art-quality="low"],
 .app-shell[data-player-surface-mode="sharp"] .player-surface-artwork[data-art-quality="unknown"],
 .app-shell[data-player-surface-mode="moving"] .player-surface-artwork[data-art-quality="unknown"]{
- background-size:min(90%,var(--gnarly-art-safe-width,420px)) auto;
+ background-size:cover;
  background-position:center;
  background-repeat:no-repeat;
  background-color:#111a20;
@@ -671,3 +671,19 @@ body{position:relative;min-height:100dvh;background:#05090a}
 @media(prefers-reduced-motion:reduce){
  #gnarly-background .photo-background{transition:none}
 }
+
+/* Preserve approved edge-to-edge album composition regardless of source
+   quality. A quality flag must never create a postage-stamp cover. */
+#gnarly-background .photo-background,
+#gnarly-background .photo-background[data-art-quality="low"],
+#gnarly-background .photo-background[data-art-quality="unknown"],
+#gnarly-background .photo-background[data-art-quality="medium"]{
+ background-size:cover!important;background-position:center center!important;background-repeat:no-repeat!important;
+}
+.app-shell[data-player-surface-mode="sharp"] .player-surface-artwork,
+.app-shell[data-player-surface-mode="moving"] .player-surface-artwork{
+ background-size:cover!important;background-position:center!important;
+}
+/* Use animated background until an actual cover has decoded. */
+#gnarly-background.cover-bg:not(.cover-art-ready) #fluid-canvas{opacity:1}
+#gnarly-background.cover-bg.cover-art-ready #fluid-canvas{opacity:0}
