@@ -43,5 +43,6 @@ test('four physical texture families preserve the same selected palette',()=>{
    assert.equal(x.reaction,'DESLIGADO');
  }
  assert.equal(resolveVisual('GNARLY ORGANISM',ids[2]).texture,null);
- assert.equal(resolveVisual('JACQUARD SIGNAL',ids[0]).texture,1);
+ assert.equal(resolveVisual('JACQUARD SIGNAL',ids[0]).look,4);
+ assert.equal(resolveVisual('JACQUARD SIGNAL',ids[0]).secondary.texture,1);
 });
