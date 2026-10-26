@@ -27,6 +27,7 @@ jobs:
           node --check lib/visual-selection.js
           node --check ui/music-panel.js
           node --check ui/display-panel.js
+          node --check ui/display-panel.js
           node --check netlify/functions/omnibox.mjs
           node --check netlify/functions/catalog.mjs
           node --check src/worker.js
@@ -40,6 +41,7 @@ jobs:
           npm run build:pages
           test -s dist/index.html
           test -s dist/performance.css
+          test -s dist/module-dock.css
           test -s dist/_headers
           test ! -e dist/netlify
           test ! -e dist/functions
