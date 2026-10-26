@@ -12,7 +12,7 @@ import {AudioDeliveryRecovery} from './lib/audio-delivery.js';
 import {appendUnique,commitPlaying,moveTrack,removeTrack,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
 import {ListeningMemory,MEMORY_KEY,recommendTracks,retainManualQueue,markAutoTracks,sameRecording,discoverySuggestions} from './lib/listening-intelligence.js';
 import {renderSmartQueuePanel} from './ui/smart-queue-panel.js';
-import {CLASSIC_THEMES,MATERIAL_THEMES,GNARLY_MODES,EXPERIENCES,REACTIONS,ROLE_EXPLANATION,resolveVisual,restoredThemeAfterGnarly} from './lib/visual-selection.js';
+import {CLASSIC_THEMES,MATERIAL_THEMES,GNARLY_MODES,NATIVE_COLOR_THEMES,CREATIVE_COLOR_THEMES,EXPERIENCES,REACTIONS,ROLE_EXPLANATION,resolveVisual,restoredThemeAfterGnarly} from './lib/visual-selection.js';
 import {StemMixer,STEM_KINDS,STEM_LABELS,STEM_PRESETS} from './lib/stem-mixer.js';
 import {PerformancePads,PAD_KEYS} from './lib/performance-pads.js';
 import {renderPerformancePanel} from './ui/performance-panel.js';
@@ -86,7 +86,11 @@ let playbackStartedAt=0;
 const state={
   tracks:[],queue:[],current:null,playing:false,searchResults:[],searchTerm:'',
   playerSurfaceMode:normalizePlayerSurfaceMode(getSetting('playerSurfaceMode','turbulent')),
-  theme:getSetting('theme','ACID'),reaction:getSetting('reaction','FLUIDO'),experience:getSetting('experience','original'),previousTheme:getSetting('previousTheme','ACID'),visualTab:'theme',lyricStyle:lyricFonts.global,
+  theme:getSetting('theme','ACID'),reaction:getSetting('reaction','FLUIDO'),experience:getSetting('experience','original'),previousTheme:getSetting('previousTheme','ACID'),visualTab:'theme',
+  gnarly2LockColors:getSetting('gnarly2LockColors','no')==='yes',
+  gnarly2LockExperience:getSetting('gnarly2LockExperience','no')==='yes',
+  gnarly2LockMaterial:getSetting('gnarly2LockMaterial','no')==='yes',
+  gnarly2Material:getSetting('gnarly2Material','PRISM CARMINE'),lyricStyle:lyricFonts.global,
   stemStatus:'Separação neural de quatro fontes por GPU gratuita quando disponível. Você também pode carregar quatro Stems.',
   demucsBusy:false,demucsAbort:null,demucsAvailable:false,demucsChecked:false,stemModel:'',
   speed:Number(getSetting('speed','1')),reverb:Number(getSetting('reverb','0')),bass:Number(getSetting('bass','0')),
@@ -165,7 +169,11 @@ function toggleModule(name,force){
 function renderActiveSurfaces(){if(state.sheet)renderSheet();for(const name of MODULE_NAMES)if(isModuleOpen(name))renderModule(name)}
 if(!PALETTES[state.theme])state.theme='ACID';
 if(!['DESLIGADO','FLUIDO','REATIVO'].includes(state.reaction))state.reaction='FLUIDO';
-visual.setTheme(state.theme);visual.setExperience(state.experience);visual.setReaction(state.reaction);visual.startLoop();
+visual.setTheme(state.theme);visual.setExperience(state.experience);visual.setReaction(state.reaction);
+visual.setAccentTheme(state.previousTheme);
+visual.setGnarly2Locks({colors:state.gnarly2LockColors,experience:state.gnarly2LockExperience,
+ material:state.gnarly2LockMaterial,materialTheme:state.gnarly2Material});
+visual.startLoop();
 applyLyricStyle(app,state.lyricStyle);
 void loadLyricTypeface(designFont(state.lyricStyle));
 engine.setSpeed(state.speed,state.pitch);engine.setReverb(state.reverb);engine.setBass(state.bass);
@@ -244,6 +252,9 @@ function updateBadges(){
  document.documentElement.style.setProperty('--acid', ({'ACID':'#46ff12','CYBER NIGHT':'#35d5ff','CRIMSON':'#ff425d','CHROME':'#e6f2ef','SMOKE':'#d5c2ec','XEROX SERPENTINE':'#d5ec46','PRISM CARMINE':'#ff56ab','GNARLY':'#45ff8a'})[state.theme]||'#46ff12');
  $('.build-badge').textContent=`WEB · ${state.theme}`;
  visual.setTheme(state.theme);visual.setExperience(state.experience);visual.setReaction(state.reaction);
+ visual.setAccentTheme(state.previousTheme);
+ visual.setGnarly2Locks({colors:state.gnarly2LockColors,experience:state.gnarly2LockExperience,
+  material:state.gnarly2LockMaterial,materialTheme:state.gnarly2Material});
  const fave=state.current&&state.favorites.some(x=>x.id===state.current.id);
  $('#favorite-button').classList.toggle('is-favorite',!!fave);
  $('#favorite-button').setAttribute('aria-label',fave?'Remover dos favoritos':'Adicionar aos favoritos');
@@ -632,7 +643,7 @@ function mediaList(tracks,context){
   return '<div class="media-item"><img src="'+safe(artworkCandidates(tr.artwork||icon,{pixels:artPixels('thumb')})[0]||icon)+'" data-original-art="'+safe(tr.artwork||icon)+'" alt="" loading="lazy" decoding="async" /><div class="media-text"><strong>'+label+'</strong><small>'+safe(displayArtist(tr))+' · '+source+'</small></div>'+play+actions+'</div>';
  }).join('')+'</div>';
 }
-const visualTile=(name)=>`<button class="visual-choice ${state.theme===name?'active':''}" data-theme="${safe(name)}"><i class="swatch" style="--swatch-a:${PALETTES[name]?.[0]||'#000'};--swatch-b:${PALETTES[name]?.[1]||'#444'};--swatch-c:${PALETTES[name]?.[2]||'#aaa'}"></i><strong>${safe(name)}</strong></button>`;
+const visualTile=(name)=>`<button class="visual-choice ${(state.theme===name||(state.theme==='GNARLY 2'&&(state.previousTheme===name||state.gnarly2LockMaterial&&state.gnarly2Material===name)))?'active':''}" data-theme="${safe(name)}"><i class="swatch" style="--swatch-a:${PALETTES[name]?.[0]||'#000'};--swatch-b:${PALETTES[name]?.[1]||'#444'};--swatch-c:${PALETTES[name]?.[2]||'#aaa'}"></i><strong>${safe(name)}</strong></button>`;
 const experienceTile=(v)=>`<button class="visual-choice ${state.experience===v.id?'active':''}" data-experience="${v.id}"><strong>${safe(v.name)}</strong><small>${safe(v.detail)}</small></button>`;
 const btn=(caption,command,other='')=>`<button class="action-button ${other}" data-command="${command}">${caption}</button>`;
 const setting=(id,title,value,minimum,maximum,step,unit)=>`<div class="setting"><div class="setting-title"><span>${title}</span><span id="${id}-value">${Number(value).toFixed(step<1?2:0)}${unit}</span></div><input id="${id}" data-slider="${id}" type="range" min="${minimum}" max="${maximum}" step="${step}" value="${value}" aria-label="${title}" /></div>`;
@@ -744,6 +755,23 @@ function renderQueuePanel(){
  '<div class="row-end"><p class="section-note">A seguir · arraste a ordem com ↑ ↓</p>'+btn('Limpar fila','clear-queue','alt')+'</div>'+
  mediaList(state.queue,'queue');
 }
+function renderGnarly2Controls(){
+ const toggle=(id,label,enabled)=>'<button type="button" class="gnarly2-lock '+(enabled?'active':'')+
+  '" data-gnarly2-lock="'+id+'" aria-pressed="'+String(enabled)+'">'+(enabled?'🔒 ':'◇ ')+label+'</button>';
+ return '<div class="gnarly2-studio"><div class="section-head">GNARLY 2 · CONTROLE DE EVOLUÇÃO</div>'+
+  '<p class="section-note">O compositor combina no máximo dois shaders por quadro. Você pode fixar qualquer camada, e as demais continuam evoluindo.</p>'+
+  '<div class="gnarly2-lock-row">'+toggle('colors','Fixar paleta',state.gnarly2LockColors)+
+  toggle('material','Fixar material',state.gnarly2LockMaterial)+
+  toggle('experience','Fixar experiência',state.gnarly2LockExperience)+'</div>'+
+  '<div class="section-head">MATERIAL DE REFERÊNCIA · GNARLY 2</div>'+
+  '<div class="visual-choices">'+MATERIAL_THEMES.map(name=>
+   '<button class="visual-choice '+(state.gnarly2Material===name?'active':'')+
+   '" data-gnarly2-material="'+safe(name)+'" aria-pressed="'+String(state.gnarly2Material===name)+'">'+
+   '<strong>'+safe(name)+'</strong><small>Selecionar material de referência</small></button>').join('')+'</div>'+
+  '<p class="section-note">Paleta atual: '+safe(state.previousTheme)+' · Experiência: '+safe(EXPERIENCES.find(x=>x.id===state.experience)?.name||state.experience)+
+  '. Escolha cores acima ou outra experiência no ⚡; enquanto o GNARLY 2 estiver ativo, elas serão aplicadas como referências.</p>'+
+  '<div class="button-row">'+btn('Voltar ao visual manual','restore-theme','alt')+'</div></div>';
+}
 function renderVisualLayer(layer){
  const resolved=resolveVisual(state.theme,state.experience,state.reaction);
  const status='<div class="visual-status"><strong>'+safe(layer==='theme'?'🎨 Camada 1 · Tema':layer==='experience'?'⚡ Camada 2 · Experiência':'Ritmo visual')+'</strong>'+
@@ -752,15 +780,21 @@ function renderVisualLayer(layer){
  if(layer==='theme'){
   return status+'<div class="section-head">TEMAS · CORES E MATERIAL</div>'+
    '<div class="visual-choices">'+CLASSIC_THEMES.map(visualTile).join('')+'</div>'+
+   '<div class="section-head">PALETAS NATIVAS · SETE MATERIAIS</div>'+
+   '<p class="section-note">As combinações de cinco cores originais do app Swift agora podem colorir qualquer experiência, sem forçar a geometria do material.</p>'+
+   '<div class="visual-choices">'+NATIVE_COLOR_THEMES.map(visualTile).join('')+'</div>'+
+   '<div class="section-head">PALETAS CREATIVE UNIVERSE</div>'+
+   '<div class="visual-choices">'+CREATIVE_COLOR_THEMES.map(visualTile).join('')+'</div>'+
    '<div class="section-head">MATERIAIS GNARLY</div><div class="visual-choices">'+MATERIAL_THEMES.map(visualTile).join('')+'</div>'+
-   '<div class="section-head">MODOS ESPECIAIS GNARLY</div><p class="section-note">Os modos especiais podem sobrepor temporariamente o visual, mas preservam sua experiência escolhida.</p>'+
+   '<div class="section-head">MODOS GNARLY</div><p class="section-note">O GNARLY original permanece igual. GNARLY 2 combina paleta, material e experiência durante a música; tema e experiência escolhidos continuam salvos.</p>'+
    '<div class="visual-choices">'+GNARLY_MODES.map(visualTile).join('')+'</div>'+
+   (state.theme==='GNARLY 2'?renderGnarly2Controls():'')+
    (resolved.override?btn('Voltar ao tema anterior','restore-theme','alt'):'')+
    '<div class="button-row">'+btn('Concluído','apply-theme')+btn('Tema original','reset-theme-only','alt')+'</div>';
  }
  if(layer==='experience'){
   return status+'<div class="section-head">EXPERIÊNCIAS · TEXTURAS E MOVIMENTO</div>'+
-   '<p class="section-note">Sua paleta continua a mesma ao alternar entre experiências.</p>'+
+   '<p class="section-note">Todos os 24 movimentos estão disponíveis no relâmpago. Em temas materiais, o movimento participa em uma segunda camada visual suave, sem apagar o material original.</p>'+
    '<div class="visual-choices">'+EXPERIENCES.filter(x=>x.category==='classic').map(experienceTile).join('')+'</div>'+
    '<div class="section-head">EXPERIÊNCIAS GNARLY</div>'+
    '<div class="visual-choices">'+EXPERIENCES.filter(x=>x.category==='gnarly').map(experienceTile).join('')+'</div>'+
@@ -908,8 +942,8 @@ $('#favorite-button').addEventListener('click',toggleFavorite);
 $('#controls-button').addEventListener('click',()=>openSheet('controls'));
 // Tap: instantly apply next visual / typeface. Hold ~0.5 s, right-click or
 // Shift+Enter: open the full curated library for a precise manual selection.
-const QUICK_THEMES=['ACID','CYBER NIGHT','CRIMSON','ULTRAVIOLET','PRISM CARMINE','XEROX SERPENTINE','GNARLY','NOIR','SOLAR','SAPPHIRE'];
-const QUICK_EXPERIENCES=['original','cyber-night','liquid-dream','neon-pulse','chrome-night','organic-pulse','atmospheric-smoke','gnarly-exp-subcultural-archive','gnarly-exp-vector-drift-2000','gnarly-exp-liquid-monochrome'];
+const QUICK_THEMES=[...CLASSIC_THEMES,...NATIVE_COLOR_THEMES,...CREATIVE_COLOR_THEMES,...MATERIAL_THEMES,...GNARLY_MODES];
+const QUICK_EXPERIENCES=EXPERIENCES.map(x=>x.id);
 const QUICK_LYRIC_STYLES=['original','art-magazine-cutout','art-xerox-ransom','art-glitch-zine','art-chrome-surge','studio-vogue-editorial','studio-concrete-poster','art-y2k-warp','studio-neon-serif','art-stereo-echo'];
 bindQuickCreative($('#theme-button'),{
  cycle:()=>{
