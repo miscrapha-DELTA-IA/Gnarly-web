@@ -34,3 +34,26 @@
 .lyrics-ai-consent{display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin:12px 0;padding:11px;border:1px solid rgba(255,255,255,.15);border-radius:12px;background:rgba(255,255,255,.04)}
 .lyrics-ai-consent input{flex:none;margin-top:3px;accent-color:var(--acid)}
 .lyrics-unsynced .lyric-line{opacity:.95;cursor:default;transition:none}
+
+/* Smart Queue resides inside the existing Omnibox sheet; no new tab or overlay. */
+.smart-queue-panel{padding:12px;border:1px solid rgba(255,255,255,.13);border-radius:15px;background:rgba(12,18,20,.24);margin-bottom:15px}
+.smart-queue-panel .section-head{margin:0 0 12px}
+.smart-chip-row{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 10px}
+.smart-chip{min-height:33px;padding:7px 10px;border-radius:12px;background:rgba(255,255,255,.075);border:1px solid rgba(255,255,255,.17);color:#f1f6f0;font-size:12px;touch-action:manipulation}
+.smart-chip.active{color:var(--acid);background:color-mix(in srgb,var(--acid) 14%,transparent);border-color:color-mix(in srgb,var(--acid) 48%,transparent)}
+.smart-queue-explain{color:rgba(247,248,247,.7);font-size:12px;line-height:1.45;margin-bottom:10px}
+.smart-anchor{display:block;color:#fff;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:10px}
+.smart-queue-actions{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:5px}
+.smart-queue-actions .action-button,.smart-playlist-controls .action-button,.smart-playlist-subactions .action-button{font-size:12px;padding:8px 11px;min-height:34px}
+.smart-playlist-controls{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:14px}
+.smart-playlist-name{font-size:10px;letter-spacing:.12em;font-weight:800;opacity:.8}
+#smart-playlist-select{border:1px solid rgba(255,255,255,.26);border-radius:9px;background:#182421;color:#f9fff9;min-width:120px;max-width:190px;padding:9px;font-size:12px}
+.smart-playlist-subactions{margin-top:7px}
+.smart-playlist-heading{font-size:12px;font-weight:800;margin:10px 0}
+#sheet-content .media-item{min-width:0}
+#sheet-content .media-item>button[data-action]{flex-shrink:0;min-width:29px;min-height:32px;touch-action:manipulation}
+#sheet-content .media-item>button[data-action="up"],
+#sheet-content .media-item>button[data-action="down"],
+#sheet-content .media-item>button[data-action="remove"],
+#sheet-content .media-item>button[data-action="playlist-remove"]{font-size:16px}
+@media(max-width:390px){.smart-queue-panel{padding:10px}.smart-chip{padding:6px 8px}.smart-queue-explain{font-size:11px}#sheet-content .media-item>button[data-action]{min-width:26px}}

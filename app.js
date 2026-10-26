@@ -8,6 +8,8 @@ import {MUSIC_PRESETS,musicalPreset} from './lib/music-presets.js';
 import {autoLyrics} from './lib/lyrics-auto.js';
 import {trackAudioURL,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
 import {AudioDeliveryRecovery} from './lib/audio-delivery.js';
+import {appendUnique,commitPlaying,moveTrack,removeTrack,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
+import {renderSmartQueuePanel} from './ui/smart-queue-panel.js';
 import {CLASSIC_THEMES,MATERIAL_THEMES,GNARLY_MODES,EXPERIENCES,REACTIONS,ROLE_EXPLANATION,resolveVisual,restoredThemeAfterGnarly} from './lib/visual-selection.js';
 import {StemMixer,STEM_KINDS,STEM_LABELS,STEM_PRESETS} from './lib/stem-mixer.js';
 import {PerformancePads,PAD_KEYS} from './lib/performance-pads.js';
@@ -38,6 +40,14 @@ const svg=(name)=>`<svg class="icon" aria-hidden="true"><use href="#i-${name}" /
 const getSetting=(name,fallback)=>{try{return localStorage.getItem('gnarly.web.'+name)||fallback}catch{return fallback}};
 const setSetting=(name,value)=>{try{localStorage.setItem('gnarly.web.'+name,String(value))}catch{/* private mode */}};
 const parseJSON=(s,fallback)=>{try{return JSON.parse(s)}catch{return fallback}};
+const playlistStore=new PlaylistLibrary(omniboxStorage);
+let selectedPlaylist=getSetting('smartPlaylist','Meu Mix');
+if(!playlistStore.names().includes(selectedPlaylist))selectedPlaylist='Meu Mix';
+let smartMode=effectiveMode(getSetting('smartMode','off'));
+let smartStatus='Escolha um modo para complementar a fila sem substituir músicas.';
+let pendingQueueId=null,smartFillEpoch=0,smartFillPending=false,lastSmartSeed='';
+const audioWarmup=new AudioConnectionWarmup((url,options)=>fetch(url,options));
+let playbackStartedAt=0;
 const state={
   tracks:[],queue:[],current:null,playing:false,searchResults:[],searchTerm:'',
   playerSurfaceMode:normalizePlayerSurfaceMode(getSetting('playerSurfaceMode','turbulent')),
@@ -119,7 +129,6 @@ function syncDJControls(){
  if(record){record.classList.toggle('recording',m.recording);record.setAttribute('aria-pressed',String(m.recording))}
  const out=root.querySelector('#dj-bpm-label');if(out)out.textContent=String(m.bpm);
 }
-
 function invalidateMidiAnalysis(){
  midiAnalysis.revision++;midiAnalysis.abort?.abort();
  midiAnalysis.abort=null;midiAnalysis.busy=false;midiAnalysis.notes=[];midiAnalysis.duration=0;
@@ -380,8 +389,9 @@ async function enrichSelectedTrack(track,knownDuration=0){
   if(state.sheet==='search')displaySearch(state.searchResults);
  }catch(error){if(error?.name!=='AbortError')console.debug('Metadata enrichment unavailable');}
 }
-function selectTrack(track,autoplay=true){
+function selectTrack(track,autoplay=true,{fromQueue=false}={}){
  if(!track)return;
+ pendingQueueId=fromQueue?track.id:null;
  if(isGenericArtist(track.artist))track.artist=displayArtist(track);
  audioDelivery.select(track);recoveryOperation=null;state.userPaused=false;
  state.demucsAbort?.abort();metadataAbort?.abort();invalidateMidiAnalysis();lyricsAIController?.abort();state.lyricsAIWorking=false;pads.resetSong();stems.clear();state.stemModel='';state.stemStatus='Escolha quatro Stems ou solicite separação automática.';
@@ -434,6 +444,7 @@ async function play(){
  if(!state.current){openSheet('search');toast('Escolha uma música na Busca ou adicione seu áudio pelo botão +.');return;}
  if(recoveryOperation)return recoveryOperation;
  const track=state.current;
+ playbackStartedAt=performance.now();
  if(state.audioState==='error'||state.userPaused)audioDelivery.select(track); // Manual retry starts a new bounded session.
  state.userPaused=false;
  if(track.source==='youtube'){
@@ -454,10 +465,10 @@ async function play(){
  }
 }
 function pause(){state.userPaused=true;audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
-function next(){const nextTrack=state.queue.shift();if(nextTrack)selectTrack(nextTrack);else{pause();audio.currentTime=0;toast('Fim da fila')}updatePlayer()}
+function next(){const nextTrack=state.queue[0];if(nextTrack)selectTrack(nextTrack,true,{fromQueue:true});else{pause();audio.currentTime=0;toast('Fim da fila')}updatePlayer()}
 function previous(){if(audio.currentTime>3){audio.currentTime=0;return}const idx=state.tracks.findIndex(x=>x.id===state.current?.id);if(idx>0)selectTrack(state.tracks[idx-1]);else audio.currentTime=0}
-function addToQueue(track){if(!track)return;state.queue.push(track);updatePlayer();toast(`Adicionado à fila: ${track.title}`)}
-function importAudio(files){const valid=[...files].filter(x=>x.type.startsWith('audio/')||/\.(mp3|m4a|aac|wav|ogg|flac)$/i.test(x.name));if(!valid.length){toast('Escolha arquivos de áudio compatíveis.');return}for(const file of valid){const names=titleForFile(file);state.tracks.push({id:`local:${crypto.randomUUID?.()||Date.now()+Math.random()}`,title:names.title,artist:names.artist,album:'Biblioteca local',artwork:icon,url:URL.createObjectURL(file),file,source:'local',duration:0})}if(!state.current){selectTrack(state.tracks[0],true);state.queue.push(...state.tracks.slice(1));updatePlayer()}else if(valid.length>1)toast(`${valid.length} músicas importadas`);if(state.sheet==='library')renderSheet()}
+function addToQueue(track,{quiet=false}={}){if(!track)return false;const before=state.queue.length;state.queue=appendUnique(state.queue,[track],state.current?.id);if(before===state.queue.length){if(!quiet)toast('Esta música já está na fila ou tocando.');return false}updatePlayer();if(state.sheet==='queue')renderSheet();if(!quiet)toast('Adicionado à fila: '+track.title);return true}
+function importAudio(files){const valid=[...files].filter(x=>x.type.startsWith('audio/')||/\.(mp3|m4a|aac|wav|ogg|flac)$/i.test(x.name));if(!valid.length){toast('Escolha arquivos de áudio compatíveis.');return}for(const file of valid){const names=titleForFile(file);state.tracks.push({id:`local:${crypto.randomUUID?.()||Date.now()+Math.random()}`,title:names.title,artist:names.artist,album:'Biblioteca local',artwork:icon,url:URL.createObjectURL(file),file,source:'local',duration:0})}if(!state.current){selectTrack(state.tracks[0],true);state.queue=appendUnique(state.queue,state.tracks.slice(1),state.current?.id);updatePlayer()}else if(valid.length>1)toast(`${valid.length} músicas importadas`);if(state.sheet==='library')renderSheet()}
 function applyPreset(id){const v=musicalPreset(id);if(!v)return;state.preset=id;state.speed=v.speed;state.reverb=v.reverb;state.pitch=v.pitch;engine.setSpeed(v.speed,v.pitch);engine.setReverb(v.reverb);for(const key of ['speed','reverb','pitch','preset'])setSetting(key,key==='pitch'?(state.pitch?'yes':'no'):state[key]);updatePresetButtons();renderModule('controls');if(stems.ready)stems.sync();toast(id==='ORIGINAL'?'Som original restaurado':id+' ativado')}
 function updatePresetButtons(){document.querySelectorAll('[data-preset]').forEach(b=>{const selected=b.dataset.preset===state.preset;b.classList.toggle('active',selected);b.setAttribute('aria-pressed',String(selected))})}
 function openYouTubePlayer(track){if(!/^[A-Za-z0-9_-]{11}$/.test(track?.videoId||''))return toast('Link do YouTube inválido');audio.pause();const dialog=$('#youtube-player-dialog'),frame=$('#youtube-player-frame');frame.src='https://www.youtube-nocookie.com/embed/'+track.videoId+'?autoplay=1&playsinline=1';$('#youtube-player-title').textContent=track.title;$('#youtube-player-link').href='https://www.youtube.com/watch?v='+track.videoId;dialog.hidden=false;dialog.setAttribute('aria-hidden','false');toast('Player oficial: Nightcore e reverb não podem alterar o áudio dentro do YouTube.');}
@@ -466,6 +477,7 @@ function toggleFavorite(){if(!state.current){openSheet('library');return}const a
 const OMNIBOX_TABS=['search','library','queue','karaoke'];
 function openSheet(which){
  closePlayerSurfaceMenu();
+ if(which==='search'||which==='queue')audioWarmup.start();
  if(which==='stems'){state.musicTab='stems';which='controls'}
  if(MODULE_NAMES.includes(which)){if(state.sheet)closeSheet();toggleModule(which,true);return}
  if(OMNIBOX_TABS.includes(which)){state.omniboxTab=which;setSetting('omniboxTab',which)}
@@ -501,7 +513,20 @@ function applyPanelVisibility(){
  syncModuleState();
 }
 function omniboxTabs(){return `<div class="omnibox-tabs" role="tablist" aria-label="Omnibox">${[['search','Busca'],['library','Mix · Offline'],['queue','Fila'],['karaoke','Karaokê']].map(([id,label])=>`<button role="tab" data-omnibox-tab="${id}" aria-selected="${state.sheet===id}" class="${state.sheet===id?'active':''}">${label}</button>`).join('')}</div>`}
-function mediaList(tracks,context){if(!tracks.length)return `<p class="section-note">Nenhuma música por aqui ainda.</p>`;return `<div class="media-list">${tracks.map((tr,i)=>`<div class="media-item"><img src="${safe(tr.artwork||icon)}" alt="" loading="lazy" /><div class="media-text"><strong>${safe(tr.title)}</strong><small>${safe(displayArtist(tr))} · ${tr.source='preview'?'Prévia · 30 s':tr.source==='youtube'?'GNARLY · áudio via backend':'Áudio completo · local'}</small></div><button data-action="play" data-context="${context}" data-index="${i}" aria-label="Reproduzir ${safe(tr.title)}">${svg('play')}</button><button data-action="enqueue" data-context="${context}" data-index="${i}" aria-label="Adicionar ${safe(tr.title)} à fila">${svg('plus')}</button></div>`).join('')}</div>`}
+function mediaList(tracks,context){
+ if(!tracks.length)return '<p class="section-note">Nenhuma música por aqui ainda.</p>';
+ return '<div class="media-list">'+tracks.map((tr,i)=>{
+  const label=safe(tr.title),attrs=' data-context="'+safe(context)+'" data-index="'+i+'"';
+  const source=tr.source==='preview'?'Prévia · 30 s':tr.source==='youtube'?'GNARLY · áudio via backend':'Áudio completo · local';
+  const play='<button data-action="play"'+attrs+' aria-label="Reproduzir '+label+'">'+svg('play')+'</button>';
+  const actions=context==='queue'
+   ? '<button data-action="up"'+attrs+' aria-label="Subir '+label+' na fila">↑</button><button data-action="down"'+attrs+' aria-label="Descer '+label+' na fila">↓</button><button data-action="remove"'+attrs+' aria-label="Remover '+label+' da fila">×</button>'
+   :context==='playlist'
+   ? '<button data-action="enqueue"'+attrs+' aria-label="Enfileirar '+label+'">'+svg('plus')+'</button><button data-action="playlist-remove"'+attrs+' aria-label="Remover '+label+' da playlist">×</button>'
+   : '<button data-action="enqueue"'+attrs+' aria-label="Enfileirar '+label+'">'+svg('plus')+'</button><button data-action="playlist-add"'+attrs+' aria-label="Salvar '+label+' na playlist">♫+</button>';
+  return '<div class="media-item"><img src="'+safe(tr.artwork||icon)+'" alt="" loading="lazy" /><div class="media-text"><strong>'+label+'</strong><small>'+safe(displayArtist(tr))+' · '+source+'</small></div>'+play+actions+'</div>';
+ }).join('')+'</div>';
+}
 const visualTile=(name)=>`<button class="visual-choice ${state.theme===name?'active':''}" data-theme="${safe(name)}"><i class="swatch" style="--swatch-a:${PALETTES[name]?.[0]||'#000'};--swatch-b:${PALETTES[name]?.[1]||'#444'};--swatch-c:${PALETTES[name]?.[2]||'#aaa'}"></i><strong>${safe(name)}</strong></button>`;
 const experienceTile=(v)=>`<button class="visual-choice ${state.experience===v.id?'active':''}" data-experience="${v.id}"><strong>${safe(v.name)}</strong><small>${safe(v.detail)}</small></button>`;
 const btn=(caption,command,other='')=>`<button class="action-button ${other}" data-command="${command}">${caption}</button>`;
@@ -543,11 +568,53 @@ async function startDemucs(){
  finally{state.demucsBusy=false;state.demucsAbort=null;if(isModuleOpen('controls'))renderModule('controls')}
 }
 
+function setSmartMode(mode){
+ smartMode=effectiveMode(mode);setSetting('smartMode',smartMode);
+ smartFillEpoch++;smartFillPending=false;lastSmartSeed='';
+ smartStatus=smartMode==='off'?'Fila manual · ordem preservada.':'Modo '+smartMode+' ativo · músicas manuais preservadas.';
+ if(smartMode==='playlist'){const items=playlistStore.tracks(selectedPlaylist);state.queue=appendUnique(state.queue,items.filter(t=>!state.history.slice(0,3).some(r=>r.id===t.id)),state.current?.id);}
+ updatePlayer();if(state.sheet==='queue')renderSheet();if(smartMode!=='off')void maybeFillSmartQueue({force:true});
+}
+async function maybeFillSmartQueue({force=false}={}){
+ const mode=smartMode,anchor=state.current;
+ if(mode==='off'||!anchor||(!force&&state.queue.length>=2))return;
+ if(mode==='playlist'){
+  const items=playlistStore.tracks(selectedPlaylist).filter(x=>!state.history.slice(0,3).some(r=>r.id===x.id));
+  state.queue=appendUnique(state.queue,items,anchor.id);
+  updatePlayer();if(state.sheet==='queue')renderSheet();return;
+ }
+ const query=radioQuery(mode,anchor);
+ if(!query){smartStatus='Artista ou álbum não confirmado para esta música.';if(state.sheet==='queue')renderSheet();return;}
+ const seed=mode+'|'+anchor.id+'|'+query;
+ if(smartFillPending||(!force&&seed===lastSmartSeed))return;
+ const ticket=++smartFillEpoch;
+ smartFillPending=true;lastSmartSeed=seed;smartStatus='Consultando catálogo GNARLY sem interromper a música…';
+ if(state.sheet==='queue')renderSheet();
+ try{
+  const cached=[...state.searchResults,...state.history,...state.favorites,...state.queue];
+  const remote=await searchNativeBackend(query).catch(()=>[]);
+  if(ticket!==smartFillEpoch||mode!==smartMode||anchor!==state.current)return;
+  const choices=chooseSmartTracks({mode,anchor,candidates:[...cached,...remote],existing:state.queue,recent:state.history,max:7});
+  const count=state.queue.length;
+  state.queue=appendUnique(state.queue,choices,anchor.id);
+  smartStatus=state.queue.length>count?'Adicionadas '+(state.queue.length-count)+' faixas verificadas.':'Sem novas faixas confirmadas. Sua fila foi preservada.';
+  updatePlayer();
+ }finally{
+  if(ticket===smartFillEpoch){smartFillPending=false;if(state.sheet==='queue')renderSheet();}
+ }
+}
+function renderQueuePanel(){
+ return renderSmartQueuePanel({mode:smartMode,queueCount:state.queue.length,playlistNames:playlistStore.names(),selectedPlaylist,playlistCount:playlistStore.tracks(selectedPlaylist).length,status:smartStatus,anchor:state.current})+
+ '<div class="smart-playlist-heading"><span>Playlist · '+safe(selectedPlaylist)+'</span></div>'+
+ mediaList(playlistStore.tracks(selectedPlaylist),'playlist')+
+ '<div class="row-end"><p class="section-note">A seguir · arraste a ordem com ↑ ↓</p>'+btn('Limpar fila','clear-queue','alt')+'</div>'+
+ mediaList(state.queue,'queue');
+}
 function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet){
  case 'search':content.innerHTML=`<form id="search-form" class="search-bar"><input id="search-term" type="search" autocomplete="off" placeholder="Buscar música ou colar link" aria-label="Omnibox GNARLY" value="${safe(state.searchTerm)}"/><button type="submit">Buscar</button></form><p class="section-note">Omnibox Stage 72: histórico imediato e busca no catálogo musical ao confirmar. Resultados musicais priorizados, fila, histórico e reprodução pelo backend GNARLY. A reprodução pode falhar em faixas indisponíveis ou sem autorização.</p><div id="search-state" class="status-text">${safe(state.searchError||'Digite uma busca e pressione Buscar')}</div><div id="search-results">${mediaList(state.searchResults,'search')}</div>${state.history.length?`<div class="section-head">Ouvidas recentemente</div>${mediaList(state.history.slice(0,4),'history')}`:''}`;break;
  case 'library':content.innerHTML=`<div class="card-help">Sua <strong>biblioteca local</strong> toca arquivos do dispositivo, sem servidor e sem conta. Os arquivos importados permanecem apenas nesta sessão.</div>${btn('＋ Adicionar músicas','import')}<div class="section-head">Mix · ${state.tracks.length} músicas</div>${mediaList(state.tracks,'library')}<div class="section-head">Favoritas · ${state.favorites.length}</div>${mediaList(state.favorites,'favorites')}`;break;
  case 'favorites':content.innerHTML=`<div class="section-head">Favoritos</div>${mediaList(state.favorites,'favorites')}`;break;
- case 'queue':content.innerHTML=`<div class="row-end"><p class="section-note">A seguir, nesta sessão</p>${btn('Limpar fila','clear-queue','alt')}</div>${mediaList(state.queue,'queue')}`;break;
+ case 'queue':content.innerHTML=renderQueuePanel();break;
  case 'controls':
  case 'stems':
   content.innerHTML=renderMusicPanel({
@@ -567,8 +634,14 @@ function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet)
  default:content.textContent='';
  }}
 function renderSheet(){renderSheetCore();if(OMNIBOX_TABS.includes(state.sheet))$('#sheet-content').insertAdjacentHTML('afterbegin',omniboxTabs());refreshMixerRails();}
-function resolveTracks(context){return ({search:state.searchResults,library:state.tracks,queue:state.queue,favorites:state.favorites,history:state.history})[context]||[]}
-function handleCommand(command){switch(command){case 'import':$('#audio-import').click();break;case 'load-lrc':$('#lrc-import').click();break;case 'retry-lyrics':if(state.current)void loadAutoLyrics(state.current);break;case 'lyrics-ai':if(state.current&&!state.lyricsAIWorking)$('#lyrics-ai-import').click();break;case 'load-background':$('#background-import').click();break;case 'use-photo':if(state.backgroundURL){state.backgroundMode='custom';setSetting('backgroundMode','custom');applyBackground();renderActiveSurfaces()}break;case 'adjust-photo':state.photoAdjust=true;renderActiveSurfaces();break;case 'done-photo':state.photoAdjust=false;renderActiveSurfaces();break;case 'show-visual':state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();closeSheet();break;case 'show-cover':if(!state.current?.artwork){toast('Selecione uma música com capa primeiro.');break}state.backgroundMode='cover';setSetting('backgroundMode','cover');applyBackground();closeSheet();break;case 'remove-background':if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL);state.backgroundURL=null;state.photoAdjust=false;state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();toast('Tema animado restaurado');break;case 'clear-queue':state.queue.length=0;updatePlayer();renderActiveSurfaces();break;case 'play-youtube':if(state.current?.source==='youtube')openYouTubePlayer(state.current);break;case 'reset-audio':state.speed=1;state.reverb=0;state.bass=0;state.pitch=true;state.preset='ORIGINAL';engine.setSpeed(1,true);engine.setBass(0);engine.setReverb(0);for(const p of ['speed','bass','reverb','pitch','preset'])setSetting(p,p==='pitch'?'yes':p==='preset'?'ORIGINAL':p==='speed'?1:0);renderActiveSurfaces();break;case 'go-theme':state.visualTab='theme';openSheet('theme');break;case 'go-experience':state.visualTab='experience';openSheet('theme');break;case 'go-reaction':state.visualTab='reaction';openSheet('theme');break;case 'restore-theme':state.theme=restoredThemeAfterGnarly(state.previousTheme);setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();break;case 'reset-visual':state.theme='ACID';state.experience='original';state.reaction='FLUIDO';for(const k of ['theme','experience','reaction'])setSetting(k,state[k]);updateBadges();renderActiveSurfaces();break;case 'go-stems':state.musicTab='stems';openSheet('controls');void refreshCloudStemAvailability();break;case 'go-speed-pitch':state.musicTab='speedPitch';openSheet('controls');break;case 'auto-demucs':void startDemucs();break;case 'cancel-stems':state.demucsAbort?.abort();state.stemStatus='Cancelamento solicitado; o provedor pode continuar consumindo a cota.';renderActiveSurfaces();break;case 'load-stems':if(!state.current){toast('Selecione uma música antes de importar Stems.');break}$('#stems-import').click();break;case 'reset-stems':stems.applyPreset('original');renderActiveSurfaces();break;case 'clear-stems':stems.clear();state.stemModel='';state.stemStatus='Mixer desativado. Voltamos ao áudio original.';renderActiveSurfaces();break;case 'go-controls':state.musicTab='speedPitch';openSheet('controls');break;case 'go-performance':openSheet('performance');break;case 'go-library':openSheet('library');break;case 'go-favorites':openSheet('favorites');break;case 'go-queue':openSheet('queue');break;case 'go-karaoke':openSheet('karaoke');break;case 'go-display':openSheet('display');break;case 'go-install':openSheet('install');break;case 'close-display':closeSheet();break;case 'hide-display-panels':displayStore.setGroup(['search','presets','controls','header','player','export','performance'],false);applyPanelVisibility();renderActiveSurfaces();break;case 'apply-theme':closeSheet();break}}
+function resolveTracks(context){if(context==='playlist')return playlistStore.tracks(selectedPlaylist);return ({search:state.searchResults,library:state.tracks,queue:state.queue,favorites:state.favorites,history:state.history})[context]||[]}
+function handleCommand(command){switch(command){
+ case 'smart-refresh':lastSmartSeed='';void maybeFillSmartQueue({force:true});break;
+ case 'playlist-add-current':if(!state.current){toast('Escolha uma faixa primeiro.');break}if(playlistStore.add(selectedPlaylist,state.current)){toast('Salvo em '+selectedPlaylist);if(state.sheet==='queue')renderSheet()}else toast('Faixa já salva ou não persistível.');break;
+ case 'playlist-create':{const name=window.prompt('Nome da nova playlist (até 45 caracteres):');if(name===null)break;if(!playlistStore.create(name)){toast('Nome repetido ou limite de playlists atingido.');break}selectedPlaylist=name.trim().slice(0,45);setSetting('smartPlaylist',selectedPlaylist);if(state.sheet==='queue')renderSheet();break}
+ case 'playlist-load':{const items=playlistStore.tracks(selectedPlaylist);const before=state.queue.length;state.queue=appendUnique(state.queue,items,state.current?.id);updatePlayer();if(state.sheet==='queue')renderSheet();toast((state.queue.length-before)+' adicionadas · '+selectedPlaylist);break}
+ case 'playlist-delete':if(playlistStore.delete(selectedPlaylist)){selectedPlaylist='Meu Mix';setSetting('smartPlaylist',selectedPlaylist);if(state.sheet==='queue')renderSheet();toast('Playlist removida.')}else toast('A playlist Meu Mix é permanente.');break;
+ case 'import':$('#audio-import').click();break;case 'load-lrc':$('#lrc-import').click();break;case 'retry-lyrics':if(state.current)void loadAutoLyrics(state.current);break;case 'lyrics-ai':if(state.current&&!state.lyricsAIWorking)$('#lyrics-ai-import').click();break;case 'load-background':$('#background-import').click();break;case 'use-photo':if(state.backgroundURL){state.backgroundMode='custom';setSetting('backgroundMode','custom');applyBackground();renderActiveSurfaces()}break;case 'adjust-photo':state.photoAdjust=true;renderActiveSurfaces();break;case 'done-photo':state.photoAdjust=false;renderActiveSurfaces();break;case 'show-visual':state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();closeSheet();break;case 'show-cover':if(!state.current?.artwork){toast('Selecione uma música com capa primeiro.');break}state.backgroundMode='cover';setSetting('backgroundMode','cover');applyBackground();closeSheet();break;case 'remove-background':if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL);state.backgroundURL=null;state.photoAdjust=false;state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();toast('Tema animado restaurado');break;case 'clear-queue':state.queue.length=0;pendingQueueId=null;smartFillEpoch++;updatePlayer();renderActiveSurfaces();break;case 'play-youtube':if(state.current?.source==='youtube')openYouTubePlayer(state.current);break;case 'reset-audio':state.speed=1;state.reverb=0;state.bass=0;state.pitch=true;state.preset='ORIGINAL';engine.setSpeed(1,true);engine.setBass(0);engine.setReverb(0);for(const p of ['speed','bass','reverb','pitch','preset'])setSetting(p,p==='pitch'?'yes':p==='preset'?'ORIGINAL':p==='speed'?1:0);renderActiveSurfaces();break;case 'go-theme':state.visualTab='theme';openSheet('theme');break;case 'go-experience':state.visualTab='experience';openSheet('theme');break;case 'go-reaction':state.visualTab='reaction';openSheet('theme');break;case 'restore-theme':state.theme=restoredThemeAfterGnarly(state.previousTheme);setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();break;case 'reset-visual':state.theme='ACID';state.experience='original';state.reaction='FLUIDO';for(const k of ['theme','experience','reaction'])setSetting(k,state[k]);updateBadges();renderActiveSurfaces();break;case 'go-stems':state.musicTab='stems';openSheet('controls');void refreshCloudStemAvailability();break;case 'go-speed-pitch':state.musicTab='speedPitch';openSheet('controls');break;case 'auto-demucs':void startDemucs();break;case 'cancel-stems':state.demucsAbort?.abort();state.stemStatus='Cancelamento solicitado; o provedor pode continuar consumindo a cota.';renderActiveSurfaces();break;case 'load-stems':if(!state.current){toast('Selecione uma música antes de importar Stems.');break}$('#stems-import').click();break;case 'reset-stems':stems.applyPreset('original');renderActiveSurfaces();break;case 'clear-stems':stems.clear();state.stemModel='';state.stemStatus='Mixer desativado. Voltamos ao áudio original.';renderActiveSurfaces();break;case 'go-controls':state.musicTab='speedPitch';openSheet('controls');break;case 'go-performance':openSheet('performance');break;case 'go-library':openSheet('library');break;case 'go-favorites':openSheet('favorites');break;case 'go-queue':openSheet('queue');break;case 'go-karaoke':openSheet('karaoke');break;case 'go-display':openSheet('display');break;case 'go-install':openSheet('install');break;case 'close-display':closeSheet();break;case 'hide-display-panels':displayStore.setGroup(['search','presets','controls','header','player','export','performance'],false);applyPanelVisibility();renderActiveSurfaces();break;case 'apply-theme':closeSheet();break}}
 function syncVisual(){visual.setSong(audio.currentTime||0,Number.isFinite(audio.duration)&&state.current?.source!=='preview'?audio.duration:state.current?.duration||0,state.artworkHue);const pulse=pads.getPulse();const active=!document.hidden&&(state.playing||pads.running||pulse>.009);const signal=active?engine.sampleSpectrum():{bass:0,mid:0,treble:0,beat:0,energy:0};if(pulse>.009){signal.beat=Math.max(signal.beat,pulse);signal.energy=Math.max(signal.energy,pulse*.72);signal.bass=Math.max(signal.bass,pulse*.48)}visual.setSpectrum(signal);requestAnimationFrame(syncVisual)}requestAnimationFrame(syncVisual);
 $('#audio-import').addEventListener('change',e=>{importAudio(e.target.files||[]);e.target.value='' });
 $('#dj-midi-import').addEventListener('change',e=>{const file=e.target.files?.[0];e.target.value='';if(file)void analyzeMidi(file)});
@@ -651,9 +724,32 @@ for(const el of document.querySelectorAll('[data-drawer]'))el.addEventListener('
 for(const host of [$('#sheet-content'),$('#module-dock')])host.addEventListener('pointerdown',e=>{const pad=e.target.closest('[data-dj-pad]');if(!pad||!isModuleOpen('performance')||(e.pointerType==='mouse'&&e.button!==0))return;e.preventDefault();void pads.trigger(Number(pad.dataset.djPad));},{passive:false});
 for(const host of [$('#sheet-content'),$('#module-dock')])host.addEventListener('change',e=>{if(e.target.hasAttribute('data-dj-output'))pads.setOutput(e.target.value)});
 $('#sheet-content').addEventListener('submit',e=>{if(e.target.id==='search-form'){e.preventDefault();void runSearch($('#search-term').value)}});
-function handlePanelClick(e){const target=e.target.closest('button,[data-lyric-time]');if(!target)return;if(target.dataset.djPad!==undefined){if(e.detail===0)void pads.trigger(Number(target.dataset.djPad));return}if(target.dataset.djCommand){const c=target.dataset.djCommand;if(c==='loop')void pads.startLoop().catch(()=>toast('Não foi possível iniciar o áudio do loop.'));if(c==='record')void pads.setRecording(!pads.recording).catch(()=>toast('Não foi possível iniciar a gravação.'));if(c==='clear')pads.clearPattern();if(c==='refresh')void pads.prepareSong(state.current,{force:true});if(c==='midi')void pads.connectMIDI().then(ok=>{renderModule('performance');toast(ok?'Controlador MIDI conectado aos pads.':'Controlador MIDI indisponível. Os pads funcionam sem ele.')});if(c==='analyze-midi'){if(state.current?.source==='local'&&state.current.file)void analyzeMidi(state.current.file);else $('#dj-midi-import').click()}if(c==='cancel-midi'){invalidateMidiAnalysis();renderModule('performance')}if(c==='save-midi')exportEstimatedMidi();if(c==='map-midi'){const count=pads.applyNotePattern(midiAnalysis.notes);toast(count?`${count} passos da transcrição mapeados para pads. Toque Loop para ouvir os recortes.`:'Nenhuma nota válida para mapear.');renderModule('performance')}return}if(target.dataset.omniboxTab){openSheet(target.dataset.omniboxTab);return}if(target.dataset.playerSize){displayStore.setSize(target.dataset.playerSize);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.playerMaterial){displayStore.setMaterial(target.dataset.playerMaterial);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.layout){displayStore.apply(target.dataset.layout);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.layoutGroup){displayStore.setGroup(['presets','controls'],target.dataset.layoutGroup==='all');applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.exportStyle){state.exportStyle=target.dataset.exportStyle;renderActiveSurfaces();return}if(target.dataset.exportFormat){toast(target.dataset.exportFormat==='image'?'A exportação de imagem será habilitada após validar a captura WebGL.':'Este formato ainda depende do motor web de exportação; nenhum arquivo foi gerado.');return}if(target.dataset.lyricTime){audio.currentTime=Number(target.dataset.lyricTime);return}if(target.dataset.command){handleCommand(target.dataset.command);return}if(target.dataset.visualTab){state.visualTab=target.dataset.visualTab;renderActiveSurfaces();return}if(target.dataset.experience){state.experience=target.dataset.experience;setSetting('experience',state.experience);updateBadges();renderActiveSurfaces();return}if(target.dataset.stemPreset){stems.applyPreset(target.dataset.stemPreset);renderActiveSurfaces();return}if(target.dataset.preset){applyPreset(target.dataset.preset);return}if(target.dataset.theme){if(!GNARLY_MODES.includes(state.theme)&&GNARLY_MODES.includes(target.dataset.theme)){state.previousTheme=state.theme;setSetting('previousTheme',state.theme)}state.theme=target.dataset.theme;setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();return}if(target.dataset.reaction){state.reaction=target.dataset.reaction;setSetting('reaction',state.reaction);updateBadges();renderActiveSurfaces();return}if(target.dataset.action){const list=resolveTracks(target.dataset.context),track=list[Number(target.dataset.index)];if(!track)return;if(target.dataset.action==='enqueue')addToQueue(track);else if(target.dataset.action==='play'){if(target.dataset.context==='queue')state.queue.splice(Number(target.dataset.index),1);selectTrack(track);closeSheet()}}}
+function handlePanelClick(e){const target=e.target.closest('button,[data-lyric-time]');if(!target)return;if(target.dataset.djPad!==undefined){if(e.detail===0)void pads.trigger(Number(target.dataset.djPad));return}if(target.dataset.djCommand){const c=target.dataset.djCommand;if(c==='loop')void pads.startLoop().catch(()=>toast('Não foi possível iniciar o áudio do loop.'));if(c==='record')void pads.setRecording(!pads.recording).catch(()=>toast('Não foi possível iniciar a gravação.'));if(c==='clear')pads.clearPattern();if(c==='refresh')void pads.prepareSong(state.current,{force:true});if(c==='midi')void pads.connectMIDI().then(ok=>{renderModule('performance');toast(ok?'Controlador MIDI conectado aos pads.':'Controlador MIDI indisponível. Os pads funcionam sem ele.')});if(c==='analyze-midi'){if(state.current?.source==='local'&&state.current.file)void analyzeMidi(state.current.file);else $('#dj-midi-import').click()}if(c==='cancel-midi'){invalidateMidiAnalysis();renderModule('performance')}if(c==='save-midi')exportEstimatedMidi();if(c==='map-midi'){const count=pads.applyNotePattern(midiAnalysis.notes);toast(count?`${count} passos da transcrição mapeados para pads. Toque Loop para ouvir os recortes.`:'Nenhuma nota válida para mapear.');renderModule('performance')}return}if(target.dataset.omniboxTab){openSheet(target.dataset.omniboxTab);return}if(target.dataset.playerSize){displayStore.setSize(target.dataset.playerSize);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.playerMaterial){displayStore.setMaterial(target.dataset.playerMaterial);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.layout){displayStore.apply(target.dataset.layout);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.layoutGroup){displayStore.setGroup(['presets','controls'],target.dataset.layoutGroup==='all');applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.exportStyle){state.exportStyle=target.dataset.exportStyle;renderActiveSurfaces();return}if(target.dataset.exportFormat){toast(target.dataset.exportFormat==='image'?'A exportação de imagem será habilitada após validar a captura WebGL.':'Este formato ainda depende do motor web de exportação; nenhum arquivo foi gerado.');return}if(target.dataset.lyricTime){audio.currentTime=Number(target.dataset.lyricTime);return}if(target.dataset.command){handleCommand(target.dataset.command);return}if(target.dataset.visualTab){state.visualTab=target.dataset.visualTab;renderActiveSurfaces();return}if(target.dataset.experience){state.experience=target.dataset.experience;setSetting('experience',state.experience);updateBadges();renderActiveSurfaces();return}if(target.dataset.stemPreset){stems.applyPreset(target.dataset.stemPreset);renderActiveSurfaces();return}if(target.dataset.preset){applyPreset(target.dataset.preset);return}if(target.dataset.theme){if(!GNARLY_MODES.includes(state.theme)&&GNARLY_MODES.includes(target.dataset.theme)){state.previousTheme=state.theme;setSetting('previousTheme',state.theme)}state.theme=target.dataset.theme;setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();return}if(target.dataset.reaction){state.reaction=target.dataset.reaction;setSetting('reaction',state.reaction);updateBadges();renderActiveSurfaces();return}if(target.dataset.smartMode){setSmartMode(target.dataset.smartMode);return}
+ if(target.dataset.action){
+  const context=target.dataset.context,list=resolveTracks(context),track=list[Number(target.dataset.index)];
+  if(!track)return;
+  const action=target.dataset.action;
+  if(context==='queue'&&['remove','up','down'].includes(action)){
+   if(action==='remove'){state.queue=removeTrack(state.queue,track.id);if(pendingQueueId===track.id)pendingQueueId=null;}
+   else state.queue=moveTrack(state.queue,track.id,action==='up'?-1:1);
+   updatePlayer();renderSheet();return;
+  }
+  if(action==='playlist-remove'){playlistStore.remove(selectedPlaylist,track.id);renderSheet();return}
+  if(action==='playlist-add'){
+   toast(playlistStore.add(selectedPlaylist,track)?'Salvo em '+selectedPlaylist:'Já está salvo ou não pode persistir este arquivo.');
+   return;
+  }
+  if(action==='enqueue'){addToQueue(track);return}
+  if(action==='play'){
+   selectTrack(track,true,{fromQueue:context==='queue'});
+   closeSheet();return;
+  }
+ }
+}
+
 function handlePanelInput(e){const el=e.target;if(el.id==='lyrics-ai-autofallback'){lyricsAIAutoSession=el.checked;if(el.checked&&state.current?.source==='local'&&state.current.file&&!state.lyrics.length&&!state.plainLyrics.length&&!state.lyricsAIWorking&&!lyricsAIOnce.has(state.current.id)){lyricsAIOnce.add(state.current.id);void transcribeOwnLyrics(state.current.file)}return}if(el.hasAttribute('data-dj-bpm')){pads.setBpm(el.value);return}if(el.dataset.photoParameter){const key=el.dataset.photoParameter;const v=Number(el.value);if(['photoZoom','photoX','photoY'].includes(key)&&Number.isFinite(v)){state[key]=v;setSetting(key,v);applyBackground();if(key==='photoZoom')$('#photo-zoom-value').textContent=Math.round(v*100)+'%'}return}if(el.dataset.panelToggle){displayStore.set(el.dataset.panelToggle,el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.hasAttribute('data-zen-toggle')){displayStore.setZen(el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.id==='search-term'){state.searchTerm=el.value;const local=omnibox.setQuery(state.searchTerm);const kind=classifyIntent(state.searchTerm);state.searchResults=local;searchCounter++;displaySearch(local,kind.kind==='direct'?'Link do YouTube detectado · pressione Buscar':local.length?'Histórico local · pressione Buscar para atualizar':'Pressione Buscar para consultar o catálogo')}if(el.dataset.stemLevel){const kind=el.dataset.stemLevel;stems.setLevel(kind,el.value);const label=$(`#stem-${kind}-value`);if(label)label.textContent=`${Math.round(stems.levels[kind]*100)}%`;return}if(el.dataset.slider){const id=el.dataset.slider,v=Number(el.value);if(id==='speed'){state.speed=v;engine.setSpeed(v,state.pitch);state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='reverb'){state.reverb=v;engine.setReverb(v);state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='bass'){state.bass=v;engine.setBass(v)}setSetting(id,v);const out=$(`#${id}-value`);if(out)out.textContent=mixerValue(id,v)}if(el.id==='pitch-check'){state.pitch=el.checked;engine.setSpeed(state.speed,state.pitch);setSetting('pitch',state.pitch?'yes':'no');state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}}
 for(const host of [$('#sheet-content'),$('#module-dock')]){host.addEventListener('click',handlePanelClick);host.addEventListener('input',handlePanelInput)}
+$('#sheet-content').addEventListener('change',e=>{if(!e.target.hasAttribute('data-smart-playlist'))return;const name=e.target.value;if(!playlistStore.names().includes(name))return;selectedPlaylist=name;setSetting('smartPlaylist',name);if(smartMode==='playlist'){smartFillEpoch++;lastSmartSeed='';void maybeFillSmartQueue({force:true})}renderSheet()});
 // Stage72 Omnibox: local hits while typing, remote search on submit, fresh/stale cache.
 let searchCounter=0;
 function displaySearch(results,info=''){if(state.sheet!=='search')return;const resultsEl=$('#search-results'),status=$('#search-state');if(resultsEl)resultsEl.innerHTML=mediaList(results,'search');if(status)status.textContent=info}
@@ -689,7 +785,7 @@ async function runSearch(raw){const query=String(raw||'').trim();state.searchTer
  const hits=rank(query,selectMusicResults(songs,previews),omnibox.history);state.searchResults=hits;omnibox.cacheResults(query,hits);displaySearch(hits,`${songs.length} músicas no catálogo GNARLY · ${previews.length} prévias autorizadas`+(songs.length===0?' · servidor musical indisponível ou sem resultados':''));
  }catch(error){if(count!==searchCounter)return;displaySearch(state.searchResults,'Falha de rede. Resultados locais mantidos.');console.warn('Omnibox',error)}
 }
-audio.addEventListener('play',()=>{if(stems.ready)void stems.play();state.playing=true;updatePlayer()});audio.addEventListener('pause',()=>{stems.pause();state.playing=false;updatePlayer()});audio.addEventListener('timeupdate',()=>{if(stems.ready)stems.sync();updateProgress();syncLyrics()});audio.addEventListener('loadedmetadata',()=>{updateProgress();if(state.current?.source==='local'&&Number.isFinite(audio.duration))void enrichSelectedTrack(state.current,audio.duration)});audio.addEventListener('seeked',()=>stems.seek());audio.addEventListener('ended',()=>{state.queue.length?next():pause()});audio.addEventListener('waiting',()=>{if(state.current?.source==='youtube')reportAudioStatus('Carregando áudio…')});audio.addEventListener('playing',()=>{state.audioState='playing';reportAudioStatus('')});audio.addEventListener('error',()=>{if(!state.current||state.userPaused)return;state.playing=false;updatePlayer();if(state.current.source==='youtube'){
+audio.addEventListener('play',()=>{if(stems.ready)void stems.play();state.playing=true;updatePlayer()});audio.addEventListener('pause',()=>{stems.pause();state.playing=false;updatePlayer()});audio.addEventListener('timeupdate',()=>{if(stems.ready)stems.sync();updateProgress();syncLyrics()});audio.addEventListener('loadedmetadata',()=>{updateProgress();if(state.current?.source==='local'&&Number.isFinite(audio.duration))void enrichSelectedTrack(state.current,audio.duration)});audio.addEventListener('seeked',()=>stems.seek());audio.addEventListener('ended',()=>{state.queue.length?next():pause()});audio.addEventListener('waiting',()=>{if(state.current?.source==='youtube')reportAudioStatus('Carregando áudio…')});audio.addEventListener('playing',()=>{state.audioState='playing';reportAudioStatus('');if(pendingQueueId&&pendingQueueId===state.current?.id){state.queue=commitPlaying(state.queue,pendingQueueId);pendingQueueId=null;updatePlayer();if(state.sheet==='queue')renderSheet()}if(playbackStartedAt){console.debug('GNARLY startup ms',Math.round(performance.now()-playbackStartedAt));playbackStartedAt=0}void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!state.current||state.userPaused)return;state.playing=false;updatePlayer();if(state.current.source==='youtube'){
  // Ignore a late error from the previous source after another Omnibox selection.
  if(audio.hasAttribute('src')&&audio.src===trackAudioURL(state.current,{attempt:audioDelivery.attempt}))void recoverNativeAudio(state.current);
  }else reportAudioError('Não foi possível carregar o áudio.');});
