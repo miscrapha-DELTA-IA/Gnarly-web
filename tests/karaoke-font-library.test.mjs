@@ -5,13 +5,15 @@ import {FONT_CATALOG,FONT_GROUPS,loadLyricTypeface,findFont} from '../lib/lyric-
 import {LyricFontPreferences,artistKey} from '../lib/lyric-font-preferences.js';
 import {allLyricStyles,applyLyricStyle} from '../lib/lyric-style.js';
 import {renderLyricStylePanel} from '../ui/lyric-style-panel.js';
+import {KARAOKE_DESIGNS,KARAOKE_ART_PRESETS,KARAOKE_STUDIO_PRESETS,renderLyricArtwork,lyricWordHash} from '../lib/karaoke-art-direction.js';
 
 const track={id:'youtube:abc123789xyz',source:'youtube',title:'Luzes da Cidade',artist:'Sample Singer',duration:212};
 function fakeStorage(){const stored=new Map();return {getItem:k=>stored.get(k)||null,setItem:(k,v)=>stored.set(k,v)}}
 test('40 total Aa choices: 6 browser built-ins plus 34 curated font families',()=>{
- assert.equal(FONT_CATALOG.length,34);assert.equal(allLyricStyles().length,40);
- assert.equal(new Set(allLyricStyles().map(x=>x.id)).size,40);
- assert.equal(FONT_GROUPS.length,7);
+ assert.equal(FONT_CATALOG.length,34);assert.equal(allLyricStyles().length,80);
+ assert.equal(KARAOKE_ART_PRESETS.length,20);assert.equal(KARAOKE_STUDIO_PRESETS.length,20);
+ assert.equal(new Set(allLyricStyles().map(x=>x.id)).size,80);
+ assert.equal(FONT_GROUPS.length,9);
  for(const font of FONT_CATALOG){assert.match(font.id,/^font-[a-z0-9-]+$/);assert.equal(typeof font.fontFamily,'string');assert.ok(findFont(font.id));}
  for(const id of ['font-space-grotesk','font-bebas-neue','font-playfair-display','font-jetbrains-mono','font-caveat']){
   assert.ok(allLyricStyles().some(x=>x.id===id),id);
@@ -76,7 +78,9 @@ test('Aa gallery is searchable, accessible and always applies on single tap',()=
  assert.match(html,/id="lyric-font-search"/);
  assert.match(html,/data-font-group="serif"/);
  assert.match(html,/data-lazy-typeface="font-unbounded"/);
- assert.equal((html.match(/data-lyric-style="/g)||[]).length,40);
+ assert.equal((html.match(/data-lyric-style="/g)||[]).length,80);
+ assert.match(html,/data-lyric-style="art-magazine-cutout"/);
+ assert.match(html,/data-lyric-style="studio-velvet-noir"/);
  assert.match(html,/Esta música/);
  assert.doesNotMatch(html,/<script/);
  const anonymous=renderLyricStylePanel('original',{track:{...track,artist:'YouTube Music'}});
@@ -91,4 +95,39 @@ test('Only karaoke presentation code changed; player, LRC timestamps and queue a
  assert.match(app,/lyricGroup/);
  assert.match(styles,/text-wrap:balance/);
  assert.doesNotMatch(readFileSync(new URL('../lib/lyric-font-catalog.js',import.meta.url),'utf8'),/new AudioContext|yt-dlp|fetch\(.*\/download/);
+});
+
+test('40 genuinely different curated composition IDs and actual CSS implementations',()=>{
+ assert.equal(KARAOKE_DESIGNS.length,40);
+ const css=readFileSync(new URL('../karaoke-art.css',import.meta.url),'utf8');
+ for(const item of KARAOKE_DESIGNS){
+  assert.match(css,new RegExp('data-lyric-art="'+item.id+'"'),item.id);
+  assert.ok(allLyricStyles().some(x=>x.id===item.id),item.id);
+ }
+ assert.ok((css.match(/@keyframes gnarly-/g)||[]).length>=7);
+ assert.match(css,/prefers-reduced-motion/);
+});
+test('native-inspired Magazine Cutout generates stable mixed paper-word markup',()=>{
+ const text='Eu te amo & GNARLY <3';
+ const markup=renderLyricArtwork(text,'art-magazine-cutout',{lineId:42});
+ assert.match(markup,/gnarly-typeart--cutout/);
+ assert.match(markup,/gnarly-tone-[0-3]/);
+ assert.match(markup,/gnarly-face-[0-3]/);
+ assert.match(markup,/aria-label="Eu te amo &amp; GNARLY &lt;3"/);
+ assert.ok((markup.match(/gnarly-word /g)||[]).length>=5);
+ assert.equal(markup,renderLyricArtwork(text,'art-magazine-cutout',{lineId:42}));
+ assert.equal(lyricWordHash('GNARLY',42,2),lyricWordHash('GNARLY',42,2));
+ assert.notEqual(lyricWordHash('GNARLY',42,2),lyricWordHash('GNARLY',43,2));
+ assert.doesNotMatch(markup,/<script|<img/i);
+});
+test('long lyrics remain readable with bounded DOM and no fake karaoke timing',()=>{
+ const long='palavra '.repeat(90).trim();
+ const cutout=renderLyricArtwork(long,'art-magazine-cutout',{lineId:9});
+ assert.match(cutout,/gnarly-typeart/);
+ assert.doesNotMatch(cutout,/gnarly-word /);
+ const premium=renderLyricArtwork('Olha para mim','studio-vogue-editorial',{lineId:12});
+ assert.match(premium,/gnarly-typeart--studio/);
+ assert.doesNotMatch(premium,/gnarly-word /);
+ const plain=renderLyricArtwork('<letra>','original');
+ assert.equal(plain,'&lt;letra&gt;');
 });
