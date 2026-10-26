@@ -410,4 +410,29 @@ assert.deepEqual(stage80Errors,[]);
 await stage80.screenshot({path:'stage80-long-page-mobile.png',fullPage:false});
 await stage80.close();
 
+// GNARLY quick creative actions: a tap applies immediately without opening a sheet;
+// sustained press opens a complete selector, without triggering a second selection.
+const quick=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1,isMobile:true,hasTouch:true});
+const quickErrors=[];quick.on('pageerror',e=>quickErrors.push(e.message));
+await quick.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
+await quick.locator('#theme-button').click();
+assert.match(await quick.locator('.build-badge').innerText(),/CYBER NIGHT/,'Palette tap cycles immediately');
+assert.equal(await quick.locator('#bottom-sheet').isVisible(),false);
+const selectedTheme=await quick.locator('.build-badge').innerText();
+await quick.locator('#experience-button').click();
+assert.equal(await quick.locator('.build-badge').innerText(),selectedTheme,'Experience tap preserves theme');
+assert.equal(await quick.evaluate(()=>localStorage.getItem('gnarly.web.experience')),'cyber-night');
+assert.equal(await quick.locator('#bottom-sheet').isVisible(),false);
+await quick.locator('#lyric-style-button').click();
+assert.equal(await quick.locator('#app-shell').getAttribute('data-lyric-style'),'art-magazine-cutout');
+assert.equal(await quick.locator('#bottom-sheet').isVisible(),false);
+await quick.locator('#lyric-style-button').dispatchEvent('pointerdown',{button:0,pointerType:'touch'});
+await quick.waitForTimeout(550);
+assert.equal(await quick.locator('#bottom-sheet').isVisible(),true,'Holding Aa opens manual font catalog');
+assert.equal(await quick.locator('#sheet-title').innerText(),'Aa · Estilo de legenda');
+await quick.locator('#lyric-style-button').dispatchEvent('pointerup',{button:0,pointerType:'touch'});
+await quick.locator('#close-sheet').click();
+assert.deepEqual(quickErrors,[]);
+await quick.close();
+
 await browser.close();
