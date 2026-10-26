@@ -9,6 +9,7 @@ export function karaokeStageMarkup(){
   <header class="karaoke-stage-header">
    <img id="karaoke-stage-art" src="./assets/gnarly-icon.png" alt="" class="karaoke-stage-art">
    <div class="karaoke-stage-song"><h2 id="karaoke-stage-heading">GNARLY · Karaokê</h2><p id="karaoke-stage-artist">Selecione uma música</p></div>
+   <button type="button" class="karaoke-stage-transport" id="karaoke-stage-play" aria-label="Reproduzir música">▶</button>
    <button type="button" class="karaoke-stage-close" id="karaoke-stage-close" aria-label="Recolher karaokê">✕</button>
   </header>
   <nav class="karaoke-stage-actions" aria-label="Controles de karaokê">
@@ -36,9 +37,9 @@ export function karaokeStageMarkup(){
 }
 const SILENCE={rms:0,hz:null,confidence:0,voiced:false};
 export class KaraokeStage {
- constructor({root,audio,getState,onStyle,onNotify,onMicConflict}){
+ constructor({root,audio,getState,onStyle,onNotify,onMicConflict,onPlayPause}){
   this.root=root;this.audio=audio;this.getState=getState;this.onStyle=onStyle;
-  this.onNotify=onNotify||(()=>{});this.onMicConflict=onMicConflict||(()=>false);
+  this.onNotify=onNotify||(()=>{});this.onMicConflict=onMicConflict||(()=>false);this.onPlayPause=onPlayPause||(()=>{});
   this.mic=new KaraokeMicrophone();this.scorer=new KaraokeLiveScore();
   this.opened=false;this.follow=true;this.trackId=null;this.lineRef=null;this.currentIndex=-999;
   this.reducedMotion=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches||false;
@@ -103,6 +104,7 @@ export class KaraokeStage {
    }else{const p=document.createElement('p');p.className='karaoke-reader-empty';p.textContent=track?'A letra ainda não está disponível. O áudio continua normalmente.':'Selecione uma música para começar.';holder.append(p)}
    if(this.mic.active)this.scorer.start(synced?lines:[],this.audio.currentTime||0,this.audio.duration||0);
   }
+  this.updateTransport();
   this.query('karaoke-stage-status').textContent=data.synced?'Letra sincronizada · acompanhamento ao vivo':(plain.length?'Letra simples · pontuação desativada sem tempos confirmados':data.status||'Buscando letra...');
   this.setFollowing(this.follow);
   this.tick(true);
@@ -132,7 +134,13 @@ export class KaraokeStage {
   }
   this.updateScore();
  }
+ updateTransport(){
+  const button=this.query('karaoke-stage-play'),playing=!this.audio.paused&&!this.audio.ended;
+  button.textContent=playing?'❚❚':'▶';
+  button.setAttribute('aria-label',playing?'Pausar música':'Reproduzir música');
+ }
  updateScore(){
+  this.updateTransport();
   const result=this.scorer.snapshot(),voice=this.mic.frameNow(),active=this.mic.active;
   this.query('karaoke-voice-toggle').textContent=active?'🎤 Desligar mic':'🎤 Ligar mic';
   this.query('karaoke-voice-toggle').setAttribute('aria-pressed',String(active));
@@ -166,6 +174,7 @@ export class KaraokeStage {
   const target=e.target.closest('button');if(!target)return;
   switch(target.id){
    case 'karaoke-stage-close':this.close();break;
+   case 'karaoke-stage-play':this.onPlayPause();break;
    case 'karaoke-voice-toggle':void this.toggleMic();break;
    case 'karaoke-voice-record':
     if(this.mic.recording)this.mic.stopRecording();
