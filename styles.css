@@ -434,3 +434,78 @@
   animation:none;will-change:auto;transform:translateX(0);
  }
 }
+
+
+/* Stage 78: genuine desktop canvas. Never constrain the shader to a phone column. */
+@media (min-width:900px) and (pointer:fine){
+ html,body{width:100%;height:100%;min-height:100%;overflow:hidden}
+ .app-shell{
+   width:100%;max-width:none;height:100dvh;min-height:100dvh;
+   margin:0;border:0;border-radius:0;box-shadow:none;overflow:hidden;
+ }
+ .app-shell #fluid-canvas,.app-shell .photo-background{
+   width:100%;height:100%;inset:0;
+ }
+ .app-shell .topbar{
+   width:min(100%,1450px);margin-inline:auto;
+   min-height:76px;padding:clamp(15px,2vh,25px) clamp(22px,3vw,58px) 0;
+   justify-content:space-between;
+ }
+ .app-shell .main{
+   width:100%;height:calc(100dvh - 76px);min-height:0!important;
+   display:flex;flex-direction:column;align-items:stretch;
+   padding:0 clamp(28px,4vw,88px) clamp(14px,2.1vh,30px);
+   overflow:visible;
+ }
+ .app-shell .brand-line{
+   width:min(100%,1390px);align-self:center;
+   margin-top:clamp(8px,1.8vh,25px);
+ }
+ .app-shell .player,
+ .app-shell[data-player-size="compact"] .player,
+ .app-shell[data-player-size="standard"] .player,
+ .app-shell[data-player-size="minimal"] .player{
+   margin: auto auto 0!important;
+   width:min(100%,clamp(490px,40vw,780px))!important;
+   max-width:780px!important;
+   max-height:calc(100dvh - 265px);
+ }
+ .app-shell[data-player-size="standard"] .player{
+   width:min(100%,clamp(540px,43vw,850px))!important;
+   max-width:850px!important;
+ }
+ .app-shell[data-player-size="minimal"] .player{
+   width:min(100%,clamp(410px,32vw,650px))!important;
+   max-width:650px!important;
+ }
+ .app-shell .cover-wrap{
+   width:clamp(105px,min(17vw,19vh),210px);max-width:210px;
+ }
+ .app-shell .player h2{font-size:clamp(19px,1.65vw,29px)}
+ .app-shell .artist{font-size:clamp(14px,1.15vw,20px)}
+ .app-shell .omnibox-shell{
+   width:min(100%,clamp(425px,37vw,730px));max-width:730px;
+   margin:clamp(9px,1.7vh,20px) auto 0;
+ }
+ .app-shell .bottom-sheet:not(.display-sheet){
+   top:clamp(90px,11vh,125px);bottom:auto;left:auto;right:clamp(16px,2vw,45px);
+   width:min(530px,37vw);height:min(77dvh,850px);
+   border:1px solid rgba(255,255,255,.17);border-radius:24px;
+ }
+ .app-shell .bottom-sheet.display-sheet{
+   top:clamp(90px,11vh,125px);bottom:auto;
+   left:auto;right:clamp(16px,2vw,45px);margin:0;
+   width:min(530px,37vw);max-width:530px;height:min(77dvh,850px);
+ }
+ .app-shell .floating-lyrics{max-width:min(90vw,900px);align-self:center;margin:auto 0 8px}
+}
+/* Laptop with shorter viewport: preserve the browser viewport without clipping the timeline. */
+@media (min-width:900px) and (pointer:fine) and (max-height:760px){
+ .app-shell .topbar{min-height:62px;padding-top:8px}
+ .app-shell .main{height:calc(100dvh - 62px);padding-bottom:11px}
+ .app-shell .brand-line{margin-top:2px}
+ .app-shell .cover-wrap{width:clamp(85px,15vh,150px)}
+ .app-shell .transport{margin:7px 0!important}
+ .app-shell .player{padding-top:9px!important;padding-bottom:7px!important;max-height:calc(100dvh - 205px)}
+ .app-shell .omnibox-shell{margin-top:8px}
+}
