@@ -11,5 +11,11 @@
     "build": "npm run build:pages",
     "deploy": "npm run build && wrangler deploy",
     "deploy:dry": "npm run build && wrangler deploy --dry-run"
+  },
+  "dependencies": {
+    "@spotify/basic-pitch": "1.0.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.2"
   }
 }
