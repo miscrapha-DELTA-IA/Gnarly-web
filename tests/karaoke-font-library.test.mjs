@@ -131,3 +131,19 @@ test('long lyrics remain readable with bounded DOM and no fake karaoke timing',(
  const plain=renderLyricArtwork('<letra>','original');
  assert.equal(plain,'&lt;letra&gt;');
 });
+
+test('40 treatments get a refined typographic art-direction layer, not plain additional font names',()=>{
+ const css=readFileSync(new URL('../karaoke-art-refined.css',import.meta.url),'utf8');
+ const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+ const build=readFileSync(new URL('../scripts/build-pages.mjs',import.meta.url),'utf8');
+ const original=readFileSync(new URL('../karaoke-art.css',import.meta.url),'utf8');
+ const examples=['art-magazine-cutout','art-xerox-ransom','art-liquid-type','art-chrome-surge',
+  'studio-vogue-editorial','studio-velvet-noir','studio-hot-metal','studio-cyanotype'];
+ for(const id of examples)assert.ok(css.includes('data-lyric-art="'+id+'"'),id);
+ assert.ok(css.length>10000);
+ assert.match(css,/prefers-reduced-motion:reduce/);
+ assert.match(css,/font-optical-sizing/);
+ assert.match(html,/karaoke-art-refined\.css/);
+ assert.match(build,/karaoke-art-refined\.css/);
+ assert.ok(original.length>0);
+});
