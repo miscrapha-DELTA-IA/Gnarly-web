@@ -47,6 +47,10 @@ const secondTime=await page.evaluate(()=>{
 assert.ok(secondTime.time>firstTime+.08,'Native high-res material must move smoothly WITHOUT any track playing');
 assert.equal(secondTime.error,0,'Pixel finishing cannot introduce WebGL errors');
 
+async function openCreativeLayer(button){
+ if(await page.locator('#bottom-sheet').isVisible())await page.locator('#close-sheet').click();
+ await page.locator(button).click();
+}
 await page.locator('#theme-button').click();
 await page.locator('[data-theme="PRISM CARMINE"]').click();
 await page.waitForFunction(({name,want})=>{
@@ -66,9 +70,9 @@ const prism=await page.evaluate(()=>{
 });
 assert.equal(prism.look,2,'Prism must render native diamond lattice instead of generic Cyber Night: '+JSON.stringify(prism));
 assert.equal(prism.error,0);
-await page.locator('[data-visual-tab="theme"]').click();
+await openCreativeLayer('#theme-button');
 await page.locator('[data-theme="ACID"]').click();
-await page.locator('[data-visual-tab="experience"]').click();
+await openCreativeLayer('#experience-button');
 await page.locator('[data-experience="gnarly-exp-vector-drift-2000"]').click();
 await page.waitForFunction(({name,want})=>{
  const gl=document.querySelector('#fluid-canvas').getContext('webgl2');
@@ -100,9 +104,9 @@ assert.equal(chrome.material[0],2);
 /* Visual identity regression: one theme, four material geometries.
  * Read the actual GPU output, not just UI labels or fragment source text.
  */
-await page.locator('[data-visual-tab="theme"]').click();
+await openCreativeLayer('#theme-button');
 await page.locator('[data-theme="CRIMSON"]').click();
-await page.locator('[data-visual-tab="experience"]').click();
+await openCreativeLayer('#experience-button');
 const materials=[
  ['gnarly-texture-organic-web',1],
  ['gnarly-texture-fractured-cells',2],
@@ -141,6 +145,14 @@ for(const [id,family] of materials){
 assert.equal(new Set(signatures).size,4,'Four textures must produce four different actual GPU pixel patterns: '+signatures.join(','));
 assert.equal(new Set(palettes).size,1,'Changing experience must preserve Crimson palette colors');
 
+// Aa is a separate selector; changing lyric typography may not change the visual state.
+const currentTheme=await page.locator('.build-badge').innerText();
+await openCreativeLayer('#lyric-style-button');
+assert.equal(await page.locator('#sheet-title').innerText(),'Aa · Estilo de legenda');
+await page.locator('[data-lyric-style="editorial"]').click();
+assert.equal(await page.locator('#app-shell').getAttribute('data-lyric-style'),'editorial');
+assert.equal(await page.locator('.build-badge').innerText(),currentTheme);
+assert.equal(await page.locator('button[data-lyric-style="editorial"]').getAttribute('aria-pressed'),'true');
 await page.locator('#close-sheet').click();
 assert.equal(await page.locator('#reaction-button').count(),0);
 assert.equal(await page.locator('.progress-foot #player-surface-button').count(),1);

@@ -34,7 +34,9 @@
   <div class="app-shell" id="app-shell">
     <header class="topbar" id="topbar">
       <button class="icon-button edge" id="search-toggle" title="Exibição" aria-label="Editar exibição" aria-expanded="false"><svg class="icon"><use href="#i-eye" /></svg></button>
-      <button class="icon-button bolt" id="theme-button" aria-label="Escolher tema" title="Temas"><svg class="icon"><use href="#i-bolt" /></svg></button>
+      <button class="icon-button palette" id="theme-button" type="button" aria-controls="bottom-sheet" aria-expanded="false" aria-label="Camada 1: escolher tema, cores e materiais" title="🎨 Camada 1 · Tema"><svg class="icon"><use href="#i-palette" /></svg></button>
+      <button class="icon-button bolt" id="experience-button" type="button" aria-controls="bottom-sheet" aria-expanded="false" aria-label="Camada 2: escolher experiência, animação e movimento" title="⚡ Camada 2 · Experiência"><svg class="icon"><use href="#i-bolt" /></svg></button>
+      <button class="icon-button lyric-typography-button" id="lyric-style-button" type="button" aria-controls="bottom-sheet" aria-expanded="false" aria-label="Aa: escolher estilo da legenda de karaokê" title="Aa · Estilo das letras"><span aria-hidden="true">Aa</span></button>
       <button class="icon-button" id="background-button" aria-label="Alterar fundo" title="Fundo"><svg class="icon"><use href="#i-photo" /></svg></button>
       <button class="icon-button" id="music-toggle-button" type="button" aria-controls="module-controls-body" aria-expanded="false" aria-label="Mostrar ou recolher Música, controles e presets" title="Música · Controles e Presets"><svg class="icon"><use href="#i-sliders" /></svg></button>
       <button class="icon-button" id="share-button" aria-label="Mostrar ou recolher Exportar" aria-controls="module-export-body" aria-expanded="false" title="Exportar"><svg class="icon"><use href="#i-share" /></svg></button>
@@ -141,6 +143,7 @@
     <symbol id="i-more" viewBox="0 0 24 24"><circle cx="4" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="20" cy="12" r="1.6"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m5 9 7 7 7-7"/></symbol>
     <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3.2"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0 0 20h1.5a2.5 2.5 0 0 0 1.8-4.2 1.45 1.45 0 0 1 1.1-2.4H19A3 3 0 0 0 22 12a10 10 0 0 0-10-10Z"/><circle cx="6.9" cy="12" r="1"/><circle cx="9.4" cy="7.8" r="1"/><circle cx="14.3" cy="7" r="1"/><circle cx="17.9" cy="11.2" r="1"/></symbol>
     <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 13h7l-1 9 10-12h-7l1-8Z"/></symbol>
     <symbol id="i-wand" viewBox="0 0 24 24"><path d="m4 20 11-11m-5-5 1 2m7-4v4M4 6l2 2m13 6 1 2m-6 5 2-1M4 14 2 15"/></symbol>
     <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 16V2m-5 5 5-5 5 5M5 13H3v9h18v-9h-2"/></symbol>
