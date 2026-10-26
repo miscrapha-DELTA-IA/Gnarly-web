@@ -15,3 +15,16 @@ export function renderPlayerSurfaceMenu(selected){
     `<button type="button" class="player-surface-option ${id===mode?'selected':''}" role="menuitemradio" data-player-surface="${id}" aria-checked="${String(id===mode)}"><span>${label}</span><span class="surface-option-glyph" aria-hidden="true">${mode===id?'✓':glyph}</span></button>`
   ).join('');
 }
+
+/** Upgrade only recognized Apple Music artwork URLs to an actually available
+ * larger artwork variant. Other providers retain their original URL.
+ */
+export function preferHighResolutionArtwork(raw){
+ const source=String(raw||'');
+ try{
+  const url=new URL(source);
+  if(!/^(?:[a-z0-9-]+\.)*mzstatic\.com$/i.test(url.hostname))return source;
+  url.pathname=url.pathname.replace(/\/\d{2,4}x\d{2,4}bb(?=\.(?:jpe?g|png|webp)$)/i,'/800x800bb');
+  return url.href;
+ }catch{return source}
+}

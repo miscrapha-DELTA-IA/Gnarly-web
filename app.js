@@ -11,7 +11,7 @@ import {StemMixer,STEM_KINDS,STEM_LABELS,STEM_PRESETS} from './lib/stem-mixer.js
 import {demucsStatus,prepareDemucsAudio,separateWithBestModel} from './lib/demucs-cloud.js';
 import {renderMusicPanel,mixerValue} from './ui/music-panel.js';
 import {createDisplayStore,renderDisplayPanel} from './ui/display-panel.js';
-import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu} from './ui/player-surface.js';
+import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,preferHighResolutionArtwork} from './ui/player-surface.js';
 
 const $=(selector)=>document.querySelector(selector);
 const app=$('#app-shell'), audio=$('#player-audio'), visual=new FluidVisual($('#fluid-canvas'));
@@ -101,14 +101,25 @@ function safeSurfaceArtwork(raw){
  return new URL(icon,location.href).href;
 }
 function updatePlayerSurfaceArtwork(){
- const url=safeSurfaceArtwork(state.current?.artwork);
- if(lastSurfaceArtwork===url)return;
- lastSurfaceArtwork=url;
+ const original=safeSurfaceArtwork(state.current?.artwork);
+ const url=safeSurfaceArtwork(preferHighResolutionArtwork(original));
+ if(lastSurfaceArtwork===original)return;
+ lastSurfaceArtwork=original;
  const fallback=new URL(icon,location.href).href;
  // Add the local logo underneath third-party artwork as a network-error fallback.
  const images=`url(${JSON.stringify(url)}),url(${JSON.stringify(fallback)})`;
  $('#player-surface-artwork').style.backgroundImage=images;
  $('#player-surface-artwork-repeat').style.backgroundImage=images;
+ if(url!==original){
+  const probe=new Image();
+  probe.onerror=()=>{
+   if(lastSurfaceArtwork!==original)return; // Old track should never replace the new cover.
+   const originalImages='url('+JSON.stringify(original)+'),url('+JSON.stringify(fallback)+')';
+   $('#player-surface-artwork').style.backgroundImage=originalImages;
+   $('#player-surface-artwork-repeat').style.backgroundImage=originalImages;
+  };
+  probe.src=url;
+ }
 }
 function closePlayerSurfaceMenu(restoreFocus=false){
  const menu=$('#player-surface-menu');
