@@ -689,10 +689,11 @@ function setSmartMode(mode){
 async function maybeFillSmartQueue({force=false}={}){
  const mode=smartMode,anchor=state.current;
  if(mode==='off'||!anchor||(!force&&state.queue.length>=2))return;
- const ticket=++smartFillEpoch,revision=force?++smartRevision:smartRevision;
- const seed=mode+'|'+anchor.id+'|'+selectedPlaylist+'|'+revision;
  if(smartFillPending&&!force)return;
+ const revision=force?++smartRevision:smartRevision;
+ const seed=mode+'|'+anchor.id+'|'+selectedPlaylist+'|'+revision;
  if(!force&&seed===lastSmartSeed)return;
+ const ticket=++smartFillEpoch;
  smartFillPending=true;lastSmartSeed=seed;
  smartStatus='Compondo '+(mode==='playlist'?'sua playlist':mode==='album'?'faixas deste álbum':mode==='artist'?'outras músicas do artista':'um mix do seu gosto')+'…';
  if(state.sheet==='queue')renderSheet();
