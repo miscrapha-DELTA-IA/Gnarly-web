@@ -162,3 +162,6 @@ body.gnarly-immersive{min-height:100dvh}
 .app-shell #cover-image,.app-shell .media-item img,.karaoke-stage-art{image-rendering:auto;object-fit:cover}
 .gnarly-background .photo-background{background-position:center;background-size:cover;background-repeat:no-repeat;image-rendering:auto}
 @media(max-width:380px){.app-shell .fullscreen-toggle{width:32px;height:36px;flex-basis:32px;min-width:32px}.app-shell .fullscreen-toggle [data-fullscreen-glyph]{font-size:20px}.app-shell .quick-actions{gap:4px}}
+
+/* One-tap GNARLY layer cycling, hold for the full manual selector. */
+#theme-button,#experience-button,#lyric-style-button{touch-action:manipulation;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}

@@ -47,9 +47,10 @@ test('palette, lightning and Aa are independent accessible controls',()=>{
  for(const id of ['theme-button','experience-button','lyric-style-button'])assert.match(html,new RegExp('id="'+id+'"[^>]*aria-controls="bottom-sheet"'));
  assert.match(html,/<use href="#i-palette"/);
  assert.match(html,/<use href="#i-bolt"/);
- assert.match(app,/\$\('#experience-button'\)\.addEventListener\('click',\(\)=>openSheet\('experience'\)\)/);
- assert.match(app,/\$\('#theme-button'\)\.addEventListener\('click',\(\)=>openSheet\('theme'\)\)/);
- assert.match(app,/\$\('#lyric-style-button'\)\.addEventListener\('click',\(\)=>openSheet\('lyric-style'\)\)/);
+ assert.match(app,/bindQuickCreative\(\$\('#experience-button'\)/);
+ assert.match(app,/bindQuickCreative\(\$\('#theme-button'\)/);
+ assert.match(app,/bindQuickCreative\(\$\('#lyric-style-button'\)/);
+ assert.match(app,/expand:\(\)=>openSheet\('lyric-style'\)/);
  assert.match(app,/case 'experience':/);
  assert.match(app,/case 'lyric-style':/);
  assert.match(app,/applyLyricStyle\(app,state.lyricStyle\)/);
