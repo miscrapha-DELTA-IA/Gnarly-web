@@ -12,7 +12,7 @@ import {AudioDeliveryRecovery} from './lib/audio-delivery.js';
 import {appendUnique,commitPlaying,moveTrack,removeTrack,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
 import {ListeningMemory,MEMORY_KEY,recommendTracks,retainManualQueue,markAutoTracks,sameRecording,discoverySuggestions} from './lib/listening-intelligence.js';
 import {renderSmartQueuePanel} from './ui/smart-queue-panel.js';
-import {CLASSIC_THEMES,MATERIAL_THEMES,GNARLY_MODES,EXPERIENCES,REACTIONS,ROLE_EXPLANATION,resolveVisual,restoredThemeAfterGnarly} from './lib/visual-selection.js';
+import {CLASSIC_THEMES,MATERIAL_THEMES,GNARLY_MODES,NATIVE_COLOR_THEMES,CREATIVE_COLOR_THEMES,EXPERIENCES,REACTIONS,ROLE_EXPLANATION,resolveVisual,restoredThemeAfterGnarly} from './lib/visual-selection.js';
 import {StemMixer,STEM_KINDS,STEM_LABELS,STEM_PRESETS} from './lib/stem-mixer.js';
 import {PerformancePads,PAD_KEYS} from './lib/performance-pads.js';
 import {renderPerformancePanel} from './ui/performance-panel.js';
@@ -100,7 +100,13 @@ let playbackStartedAt=0;
 const state={
   tracks:[],queue:[],current:null,playing:false,searchResults:[],searchTerm:'',
   playerSurfaceMode:normalizePlayerSurfaceMode(getSetting('playerSurfaceMode','turbulent')),
-  theme:getSetting('theme','ACID'),reaction:getSetting('reaction','FLUIDO'),experience:getSetting('experience','original'),previousTheme:getSetting('previousTheme','ACID'),visualTab:'theme',lyricStyle:lyricFonts.global,
+  theme:getSetting('theme','ACID'),reaction:getSetting('reaction','FLUIDO'),experience:getSetting('experience','original'),previousTheme:getSetting('previousTheme','ACID'),visualTab:'theme',
+  gnarly2LockColors:getSetting('gnarly2LockColors','no')==='yes',
+  gnarly2LockExperience:getSetting('gnarly2LockExperience','no')==='yes',
+  gnarly2LockMaterial:getSetting('gnarly2LockMaterial','no')==='yes',
+  gnarly2Material:getSetting('gnarly2Material','PRISM CARMINE'),
+  gnarlyAccentEnabled:getSetting('gnarlyAccentEnabled','no')==='yes',
+  materialLayer:getSetting('materialLayer','none'),lyricStyle:lyricFonts.global,
   stemStatus:'Separação neural de quatro fontes por GPU gratuita quando disponível. Você também pode carregar quatro Stems.',
   demucsBusy:false,demucsAbort:null,demucsAvailable:false,demucsChecked:false,stemModel:'',
   speed:Number(getSetting('speed','1')),reverb:Number(getSetting('reverb','0')),bass:Number(getSetting('bass','0')),
@@ -178,8 +184,15 @@ function toggleModule(name,force){
 }
 function renderActiveSurfaces(){if(state.sheet)renderSheet();for(const name of MODULE_NAMES)if(isModuleOpen(name))renderModule(name)}
 if(!PALETTES[state.theme])state.theme='ACID';
+if(!MATERIAL_THEMES.includes(state.materialLayer))state.materialLayer='none';
 if(!['DESLIGADO','FLUIDO','REATIVO'].includes(state.reaction))state.reaction='FLUIDO';
-visual.setTheme(state.theme);visual.setExperience(state.experience);visual.setReaction(state.reaction);visual.startLoop();
+visual.setTheme(state.theme);visual.setExperience(state.experience);visual.setReaction(state.reaction);
+visual.setAccentTheme(state.previousTheme);
+visual.setGnarlyAccentEnabled(state.gnarlyAccentEnabled);
+visual.setMaterialLayer(state.materialLayer);
+visual.setGnarly2Locks({colors:state.gnarly2LockColors,experience:state.gnarly2LockExperience,
+ material:state.gnarly2LockMaterial,materialTheme:state.gnarly2Material});
+visual.startLoop();
 applyLyricStyle(app,state.lyricStyle);
 void loadLyricTypeface(designFont(state.lyricStyle));
 engine.setSpeed(state.speed,state.pitch);engine.setReverb(state.reverb);engine.setBass(state.bass);
@@ -258,6 +271,11 @@ function updateBadges(){
  document.documentElement.style.setProperty('--acid', ({'ACID':'#46ff12','CYBER NIGHT':'#35d5ff','CRIMSON':'#ff425d','CHROME':'#e6f2ef','SMOKE':'#d5c2ec','XEROX SERPENTINE':'#d5ec46','PRISM CARMINE':'#ff56ab','GNARLY':'#45ff8a'})[state.theme]||'#46ff12');
  $('.build-badge').textContent=`WEB · ${state.theme}`;
  visual.setTheme(state.theme);visual.setExperience(state.experience);visual.setReaction(state.reaction);
+ visual.setAccentTheme(state.previousTheme);
+ visual.setGnarlyAccentEnabled(state.gnarlyAccentEnabled);
+ visual.setMaterialLayer(state.materialLayer);
+ visual.setGnarly2Locks({colors:state.gnarly2LockColors,experience:state.gnarly2LockExperience,
+  material:state.gnarly2LockMaterial,materialTheme:state.gnarly2Material});
  const fave=state.current&&state.favorites.some(x=>x.id===state.current.id);
  $('#favorite-button').classList.toggle('is-favorite',!!fave);
  $('#favorite-button').setAttribute('aria-label',fave?'Remover dos favoritos':'Adicionar aos favoritos');
@@ -662,7 +680,7 @@ function mediaList(tracks,context){
   return '<div class="media-item"><img src="'+safe(artworkCandidates(tr.artwork||icon,{pixels:artPixels('thumb')})[0]||icon)+'" data-original-art="'+safe(tr.artwork||icon)+'" alt="" loading="lazy" decoding="async" /><div class="media-text"><strong>'+label+'</strong><small>'+safe(displayArtist(tr))+' · '+source+'</small></div>'+play+actions+'</div>';
  }).join('')+'</div>';
 }
-const visualTile=(name)=>`<button class="visual-choice ${state.theme===name?'active':''}" data-theme="${safe(name)}"><i class="swatch" style="--swatch-a:${PALETTES[name]?.[0]||'#000'};--swatch-b:${PALETTES[name]?.[1]||'#444'};--swatch-c:${PALETTES[name]?.[2]||'#aaa'}"></i><strong>${safe(name)}</strong></button>`;
+const visualTile=(name)=>`<button class="visual-choice ${(state.theme===name||(state.theme==='GNARLY 2'&&(state.previousTheme===name||state.gnarly2LockMaterial&&state.gnarly2Material===name)))?'active':''}" data-theme="${safe(name)}"><i class="swatch" style="--swatch-a:${PALETTES[name]?.[0]||'#000'};--swatch-b:${PALETTES[name]?.[1]||'#444'};--swatch-c:${PALETTES[name]?.[2]||'#aaa'}"></i><strong>${safe(name)}</strong></button>`;
 const experienceTile=(v)=>`<button class="visual-choice ${state.experience===v.id?'active':''}" data-experience="${v.id}"><strong>${safe(v.name)}</strong><small>${safe(v.detail)}</small></button>`;
 const btn=(caption,command,other='')=>`<button class="action-button ${other}" data-command="${command}">${caption}</button>`;
 const setting=(id,title,value,minimum,maximum,step,unit)=>`<div class="setting"><div class="setting-title"><span>${title}</span><span id="${id}-value">${Number(value).toFixed(step<1?2:0)}${unit}</span></div><input id="${id}" data-slider="${id}" type="range" min="${minimum}" max="${maximum}" step="${step}" value="${value}" aria-label="${title}" /></div>`;
@@ -774,6 +792,23 @@ function renderQueuePanel(){
  '<div class="row-end"><p class="section-note">A seguir · arraste a ordem com ↑ ↓</p>'+btn('Limpar fila','clear-queue','alt')+'</div>'+
  mediaList(state.queue,'queue');
 }
+function renderGnarly2Controls(){
+ const toggle=(id,label,enabled)=>'<button type="button" class="gnarly2-lock '+(enabled?'active':'')+
+  '" data-gnarly2-lock="'+id+'" aria-pressed="'+String(enabled)+'">'+(enabled?'🔒 ':'◇ ')+label+'</button>';
+ return '<div class="gnarly2-studio"><div class="section-head">GNARLY 2 · CONTROLE DE EVOLUÇÃO</div>'+
+  '<p class="section-note">O compositor combina no máximo dois shaders por quadro. Você pode fixar qualquer camada, e as demais continuam evoluindo.</p>'+
+  '<div class="gnarly2-lock-row">'+toggle('colors','Fixar paleta',state.gnarly2LockColors)+
+  toggle('material','Fixar material',state.gnarly2LockMaterial)+
+  toggle('experience','Fixar experiência',state.gnarly2LockExperience)+'</div>'+
+  '<div class="section-head">MATERIAL DE REFERÊNCIA · GNARLY 2</div>'+
+  '<div class="visual-choices">'+MATERIAL_THEMES.map(name=>
+   '<button class="visual-choice '+(state.gnarly2Material===name?'active':'')+
+   '" data-gnarly2-material="'+safe(name)+'" aria-pressed="'+String(state.gnarly2Material===name)+'">'+
+   '<strong>'+safe(name)+'</strong><small>Selecionar material de referência</small></button>').join('')+'</div>'+
+  '<p class="section-note">Paleta atual: '+safe(state.previousTheme)+' · Experiência: '+safe(EXPERIENCES.find(x=>x.id===state.experience)?.name||state.experience)+
+  '. Escolha cores acima ou outra experiência no ⚡; enquanto o GNARLY 2 estiver ativo, elas serão aplicadas como referências.</p>'+
+  '<div class="button-row">'+btn('Voltar ao visual manual','restore-theme','alt')+'</div></div>';
+}
 function renderVisualLayer(layer){
  const resolved=resolveVisual(state.theme,state.experience,state.reaction);
  const status='<div class="visual-status"><strong>'+safe(layer==='theme'?'🎨 Camada 1 · Tema':layer==='experience'?'⚡ Camada 2 · Experiência':'Ritmo visual')+'</strong>'+
@@ -782,15 +817,27 @@ function renderVisualLayer(layer){
  if(layer==='theme'){
   return status+'<div class="section-head">TEMAS · CORES E MATERIAL</div>'+
    '<div class="visual-choices">'+CLASSIC_THEMES.map(visualTile).join('')+'</div>'+
+   '<div class="section-head">PALETAS NATIVAS · SETE MATERIAIS</div>'+
+   '<p class="section-note">As combinações de cinco cores originais do app Swift agora podem colorir qualquer experiência, sem forçar a geometria do material.</p>'+
+   '<div class="visual-choices">'+NATIVE_COLOR_THEMES.map(visualTile).join('')+'</div>'+
+   '<div class="section-head">PALETAS CREATIVE UNIVERSE</div>'+
+   '<div class="visual-choices">'+CREATIVE_COLOR_THEMES.map(visualTile).join('')+'</div>'+
    '<div class="section-head">MATERIAIS GNARLY</div><div class="visual-choices">'+MATERIAL_THEMES.map(visualTile).join('')+'</div>'+
-   '<div class="section-head">MODOS ESPECIAIS GNARLY</div><p class="section-note">Os modos especiais podem sobrepor temporariamente o visual, mas preservam sua experiência escolhida.</p>'+
+   '<div class="section-head">MATERIAL INDEPENDENTE · SOBRE QUALQUER PALETA</div>'+
+   '<p class="section-note">Escolha a geometria do material sem perder a cor do tema nem o movimento da experiência. Esta camada é opcional: a escolha Nenhum mantém o visual original.</p>'+
+   '<div class="visual-choices"><button class="visual-choice '+(state.materialLayer==='none'?'active':'')+
+   '" data-material-layer="none"><strong>◇ Nenhum</strong><small>Usar os shaders e presets originais</small></button>'+
+   MATERIAL_THEMES.map(name=>'<button class="visual-choice '+(state.materialLayer===name?'active':'')+
+   '" data-material-layer="'+safe(name)+'"><strong>'+safe(name)+'</strong><small>Material sem substituir a paleta</small></button>').join('')+'</div>'+
+   '<div class="section-head">MODOS GNARLY</div><p class="section-note">GNARLY original preservado. Com um modo GNARLY ativo, escolher uma cor acima ajusta sua paleta de referência sem sair do modo. GNARLY 2 combina materiais e experiências ao longo da música.</p>'+
    '<div class="visual-choices">'+GNARLY_MODES.map(visualTile).join('')+'</div>'+
-   (resolved.override?btn('Voltar ao tema anterior','restore-theme','alt'):'')+
+   (state.theme==='GNARLY 2'?renderGnarly2Controls():'')+
+   (resolved.override&&state.theme!=='GNARLY 2'?btn('Voltar ao tema anterior','restore-theme','alt'):'')+
    '<div class="button-row">'+btn('Concluído','apply-theme')+btn('Tema original','reset-theme-only','alt')+'</div>';
  }
  if(layer==='experience'){
   return status+'<div class="section-head">EXPERIÊNCIAS · TEXTURAS E MOVIMENTO</div>'+
-   '<p class="section-note">Sua paleta continua a mesma ao alternar entre experiências.</p>'+
+   '<p class="section-note">Todos os 24 movimentos estão disponíveis no relâmpago. Em temas materiais, o movimento participa em uma segunda camada visual suave, sem apagar o material original.</p>'+
    '<div class="visual-choices">'+EXPERIENCES.filter(x=>x.category==='classic').map(experienceTile).join('')+'</div>'+
    '<div class="section-head">EXPERIÊNCIAS GNARLY</div>'+
    '<div class="visual-choices">'+EXPERIENCES.filter(x=>x.category==='gnarly').map(experienceTile).join('')+'</div>'+
@@ -897,7 +944,7 @@ function handleCommand(command){switch(command){
  case 'playlist-create':{const name=window.prompt('Nome da nova playlist (até 45 caracteres):');if(name===null)break;if(!playlistStore.create(name)){toast('Nome repetido ou limite de playlists atingido.');break}selectedPlaylist=name.trim().slice(0,45);setSetting('smartPlaylist',selectedPlaylist);if(state.sheet==='queue')renderSheet();break}
  case 'playlist-load':{const items=playlistStore.tracks(selectedPlaylist);const before=state.queue.length;state.queue=appendUnique(state.queue,items,state.current?.id);updatePlayer();if(state.sheet==='queue')renderSheet();toast((state.queue.length-before)+' adicionadas · '+selectedPlaylist);break}
  case 'playlist-delete':if(playlistStore.delete(selectedPlaylist)){selectedPlaylist='Meu Mix';setSetting('smartPlaylist',selectedPlaylist);if(state.sheet==='queue')renderSheet();toast('Playlist removida.')}else toast('A playlist Meu Mix é permanente.');break;
- case 'import':$('#audio-import').click();break;case 'load-lrc':$('#lrc-import').click();break;case 'retry-lyrics':if(state.current)void loadAutoLyrics(state.current);break;case 'lyrics-ai':if(state.current&&!state.lyricsAIWorking)$('#lyrics-ai-import').click();break;case 'load-background':$('#background-import').click();break;case 'use-photo':if(state.backgroundURL){state.backgroundMode='custom';setSetting('backgroundMode','custom');applyBackground();renderActiveSurfaces()}break;case 'adjust-photo':state.photoAdjust=true;renderActiveSurfaces();break;case 'done-photo':state.photoAdjust=false;renderActiveSurfaces();break;case 'show-visual':state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();closeSheet();break;case 'show-cover':if(!state.current?.artwork){toast('Selecione uma música com capa primeiro.');break}state.backgroundMode='cover';setSetting('backgroundMode','cover');applyBackground();closeSheet();break;case 'remove-background':if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL);state.backgroundURL=null;state.photoAdjust=false;state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();toast('Tema animado restaurado');break;case 'clear-queue':state.queue.length=0;pendingQueueId=null;smartFillEpoch++;updatePlayer();renderActiveSurfaces();break;case 'play-youtube':if(state.current?.source==='youtube')openYouTubePlayer(state.current);break;case 'reset-audio':state.speed=1;state.reverb=0;state.bass=0;state.pitch=true;state.preset='ORIGINAL';engine.setSpeed(1,true);engine.setBass(0);engine.setReverb(0);for(const p of ['speed','bass','reverb','pitch','preset'])setSetting(p,p==='pitch'?'yes':p==='preset'?'ORIGINAL':p==='speed'?1:0);renderActiveSurfaces();break;case 'go-theme':openSheet('theme');break;case 'go-experience':openSheet('experience');break;case 'go-reaction':openSheet('reaction');break;case 'go-lyric-style':openSheet('lyric-style');break;case 'restore-theme':state.theme=restoredThemeAfterGnarly(state.previousTheme);setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();break;case 'reset-theme-only':state.theme='ACID';setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();break;case 'reset-experience-only':state.experience='original';setSetting('experience',state.experience);updateBadges();renderActiveSurfaces();break;case 'reset-reaction-only':state.reaction='FLUIDO';setSetting('reaction',state.reaction);updateBadges();renderActiveSurfaces();break;case 'reset-visual':state.theme='ACID';state.experience='original';state.reaction='FLUIDO';for(const k of ['theme','experience','reaction'])setSetting(k,state[k]);updateBadges();renderActiveSurfaces();break;case 'go-stems':state.musicTab='stems';openSheet('controls');void refreshCloudStemAvailability();break;case 'go-speed-pitch':state.musicTab='speedPitch';openSheet('controls');break;case 'auto-demucs':void startDemucs();break;case 'cancel-stems':state.demucsAbort?.abort();state.stemStatus='Cancelamento solicitado; o provedor pode continuar consumindo a cota.';renderActiveSurfaces();break;case 'load-stems':if(!state.current){toast('Selecione uma música antes de importar Stems.');break}$('#stems-import').click();break;case 'reset-stems':stems.applyPreset('original');renderActiveSurfaces();break;case 'clear-stems':stems.clear();state.stemModel='';state.stemStatus='Mixer desativado. Voltamos ao áudio original.';renderActiveSurfaces();break;case 'go-controls':state.musicTab='speedPitch';openSheet('controls');break;case 'go-performance':openSheet('performance');break;case 'go-library':openSheet('library');break;case 'go-favorites':openSheet('favorites');break;case 'go-queue':openSheet('queue');break;case 'go-karaoke':openSheet('karaoke');break;case 'go-display':openSheet('display');break;case 'toggle-fullscreen':closeSheet();void fullscreen.toggle();break;case 'go-install':openSheet('install');break;case 'close-display':closeSheet();break;case 'hide-display-panels':displayStore.setGroup(['search','presets','controls','header','player','export','performance'],false);applyPanelVisibility();renderActiveSurfaces();break;case 'apply-theme':closeSheet();break}}
+ case 'import':$('#audio-import').click();break;case 'load-lrc':$('#lrc-import').click();break;case 'retry-lyrics':if(state.current)void loadAutoLyrics(state.current);break;case 'lyrics-ai':if(state.current&&!state.lyricsAIWorking)$('#lyrics-ai-import').click();break;case 'load-background':$('#background-import').click();break;case 'use-photo':if(state.backgroundURL){state.backgroundMode='custom';setSetting('backgroundMode','custom');applyBackground();renderActiveSurfaces()}break;case 'adjust-photo':state.photoAdjust=true;renderActiveSurfaces();break;case 'done-photo':state.photoAdjust=false;renderActiveSurfaces();break;case 'show-visual':state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();closeSheet();break;case 'show-cover':if(!state.current?.artwork){toast('Selecione uma música com capa primeiro.');break}state.backgroundMode='cover';setSetting('backgroundMode','cover');applyBackground();closeSheet();break;case 'remove-background':if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL);state.backgroundURL=null;state.photoAdjust=false;state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();toast('Tema animado restaurado');break;case 'clear-queue':state.queue.length=0;pendingQueueId=null;smartFillEpoch++;updatePlayer();renderActiveSurfaces();break;case 'play-youtube':if(state.current?.source==='youtube')openYouTubePlayer(state.current);break;case 'reset-audio':state.speed=1;state.reverb=0;state.bass=0;state.pitch=true;state.preset='ORIGINAL';engine.setSpeed(1,true);engine.setBass(0);engine.setReverb(0);for(const p of ['speed','bass','reverb','pitch','preset'])setSetting(p,p==='pitch'?'yes':p==='preset'?'ORIGINAL':p==='speed'?1:0);renderActiveSurfaces();break;case 'go-theme':openSheet('theme');break;case 'go-experience':openSheet('experience');break;case 'go-reaction':openSheet('reaction');break;case 'go-lyric-style':openSheet('lyric-style');break;case 'restore-theme':state.theme=restoredThemeAfterGnarly(state.previousTheme);setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();break;case 'reset-theme-only':state.theme='ACID';setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();break;case 'reset-experience-only':state.experience='original';setSetting('experience',state.experience);updateBadges();renderActiveSurfaces();break;case 'reset-reaction-only':state.reaction='FLUIDO';setSetting('reaction',state.reaction);updateBadges();renderActiveSurfaces();break;case 'reset-visual':state.theme='ACID';state.experience='original';state.reaction='FLUIDO';state.materialLayer='none';for(const k of ['theme','experience','reaction','materialLayer'])setSetting(k,state[k]);updateBadges();renderActiveSurfaces();break;case 'go-stems':state.musicTab='stems';openSheet('controls');void refreshCloudStemAvailability();break;case 'go-speed-pitch':state.musicTab='speedPitch';openSheet('controls');break;case 'auto-demucs':void startDemucs();break;case 'cancel-stems':state.demucsAbort?.abort();state.stemStatus='Cancelamento solicitado; o provedor pode continuar consumindo a cota.';renderActiveSurfaces();break;case 'load-stems':if(!state.current){toast('Selecione uma música antes de importar Stems.');break}$('#stems-import').click();break;case 'reset-stems':stems.applyPreset('original');renderActiveSurfaces();break;case 'clear-stems':stems.clear();state.stemModel='';state.stemStatus='Mixer desativado. Voltamos ao áudio original.';renderActiveSurfaces();break;case 'go-controls':state.musicTab='speedPitch';openSheet('controls');break;case 'go-performance':openSheet('performance');break;case 'go-library':openSheet('library');break;case 'go-favorites':openSheet('favorites');break;case 'go-queue':openSheet('queue');break;case 'go-karaoke':openSheet('karaoke');break;case 'go-display':openSheet('display');break;case 'toggle-fullscreen':closeSheet();void fullscreen.toggle();break;case 'go-install':openSheet('install');break;case 'close-display':closeSheet();break;case 'hide-display-panels':displayStore.setGroup(['search','presets','controls','header','player','export','performance'],false);applyPanelVisibility();renderActiveSurfaces();break;case 'apply-theme':closeSheet();break}}
 function syncVisual(){visual.setSong(audio.currentTime||0,Number.isFinite(audio.duration)&&state.current?.source!=='preview'?audio.duration:state.current?.duration||0,state.artworkHue);const pulse=pads.getPulse();const active=!document.hidden&&(state.playing||pads.running||pulse>.009);const signal=active?engine.sampleSpectrum():{bass:0,mid:0,treble:0,beat:0,energy:0};if(pulse>.009){signal.beat=Math.max(signal.beat,pulse);signal.energy=Math.max(signal.energy,pulse*.72);signal.bass=Math.max(signal.bass,pulse*.48)}visual.setSpectrum(signal);requestAnimationFrame(syncVisual)}requestAnimationFrame(syncVisual);
 $('#audio-import').addEventListener('change',e=>{importAudio(e.target.files||[]);e.target.value='' });
 $('#dj-midi-import').addEventListener('change',e=>{const file=e.target.files?.[0];e.target.value='';if(file)void analyzeMidi(file)});
@@ -938,15 +985,46 @@ $('#favorite-button').addEventListener('click',toggleFavorite);
 $('#controls-button').addEventListener('click',()=>openSheet('controls'));
 // Tap: instantly apply next visual / typeface. Hold ~0.5 s, right-click or
 // Shift+Enter: open the full curated library for a precise manual selection.
-const QUICK_THEMES=['ACID','CYBER NIGHT','CRIMSON','ULTRAVIOLET','PRISM CARMINE','XEROX SERPENTINE','GNARLY','NOIR','SOLAR','SAPPHIRE'];
-const QUICK_EXPERIENCES=['original','cyber-night','liquid-dream','neon-pulse','chrome-night','organic-pulse','atmospheric-smoke','gnarly-exp-subcultural-archive','gnarly-exp-vector-drift-2000','gnarly-exp-liquid-monochrome'];
+const QUICK_THEMES=[...CLASSIC_THEMES,...NATIVE_COLOR_THEMES,...CREATIVE_COLOR_THEMES,...MATERIAL_THEMES,...GNARLY_MODES];
+const QUICK_EXPERIENCES=EXPERIENCES.map(x=>x.id);
+// While GNARLY 2 is active, selecting other colors/materials edits its anchor
+// rather than silently leaving the procedural universe.
+function selectVisualTheme(next){
+ if(!PALETTES[next])return;
+ if(GNARLY_MODES.includes(state.theme)&&!GNARLY_MODES.includes(next)){
+  if(state.theme==='GNARLY 2'&&MATERIAL_THEMES.includes(next)){
+   state.gnarly2Material=next;state.gnarly2LockMaterial=true;
+   setSetting('gnarly2Material',next);setSetting('gnarly2LockMaterial','yes');
+   toast('GNARLY 2 · material fixado: '+next);
+  }else{
+   state.previousTheme=next;setSetting('previousTheme',next);
+   if(state.theme!=='GNARLY 2'){
+    state.gnarlyAccentEnabled=true;setSetting('gnarlyAccentEnabled','yes');
+   }
+   toast(state.theme+' · paleta de referência: '+next);
+  }
+ }else{
+  if(!GNARLY_MODES.includes(state.theme)&&GNARLY_MODES.includes(next)){
+   state.previousTheme=state.theme;setSetting('previousTheme',state.previousTheme);
+  }
+  state.theme=next;setSetting('theme',next);
+ }
+ updateBadges();renderActiveSurfaces();
+}
+function configureGnarly2Lock(id){
+ const map={colors:['gnarly2LockColors','colors'],material:['gnarly2LockMaterial','material'],
+  experience:['gnarly2LockExperience','experience']};
+ const field=map[id]?.[0];if(!field)return;
+ state[field]=!state[field];setSetting(field,state[field]?'yes':'no');
+ updateBadges();renderActiveSurfaces();
+ toast('GNARLY 2 · '+id+' '+(state[field]?'fixado':'livre'));
+}
 const QUICK_LYRIC_STYLES=['original','art-magazine-cutout','art-xerox-ransom','art-glitch-zine','art-chrome-surge','studio-vogue-editorial','studio-concrete-poster','art-y2k-warp','studio-neon-serif','art-stereo-echo'];
 bindQuickCreative($('#theme-button'),{
  cycle:()=>{
-  const next=cycleValue(QUICK_THEMES,state.theme);
-  if(!GNARLY_MODES.includes(state.theme)&&GNARLY_MODES.includes(next)){state.previousTheme=state.theme;setSetting('previousTheme',next===state.theme?state.previousTheme:state.theme)}
-  state.theme=next;setSetting('theme',next);updateBadges();renderActiveSurfaces();
-  toast('🎨 Tema · '+next);
+  const next=cycleValue(QUICK_THEMES,GNARLY_MODES.includes(state.theme)?state.previousTheme:state.theme);
+  selectVisualTheme(next);
+  if(!GNARLY_MODES.includes(state.theme))toast('🎨 Tema · '+next);
  },
  expand:()=>openSheet('theme')
 });
@@ -1027,7 +1105,24 @@ function handlePanelClick(e){const target=e.target.closest('button,[data-lyric-t
  if(target.dataset.fontGroup){lyricGroup=target.dataset.fontGroup;updateLyricFontFilter();return}
  if(target.hasAttribute('data-lyric-reset')){const result=lyricFonts.clear(lyricScope,state.current);state.lyricStyle=result.style;applyLyricStyle(app,result.style);void loadLyricTypeface(designFont(result.style));refreshLyricArtwork();renderSheet();return}
  if(target.hasAttribute('data-lyric-next')){const styles=allLyricStyles();const index=styles.findIndex(x=>x.id===state.lyricStyle);applyChosenLyricFont(styles[(index+1)%styles.length].id);return}
- if(target.dataset.lyricStyle){applyChosenLyricFont(target.dataset.lyricStyle);return}if(target.dataset.experience){state.experience=target.dataset.experience;setSetting('experience',state.experience);updateBadges();renderActiveSurfaces();return}if(target.dataset.stemPreset){stems.applyPreset(target.dataset.stemPreset);renderActiveSurfaces();return}if(target.dataset.preset){applyPreset(target.dataset.preset);return}if(target.dataset.theme){if(!GNARLY_MODES.includes(state.theme)&&GNARLY_MODES.includes(target.dataset.theme)){state.previousTheme=state.theme;setSetting('previousTheme',state.theme)}state.theme=target.dataset.theme;setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();return}if(target.dataset.reaction){state.reaction=target.dataset.reaction;setSetting('reaction',state.reaction);updateBadges();renderActiveSurfaces();return}if(target.dataset.smartMode){setSmartMode(target.dataset.smartMode);return}
+ if(target.dataset.lyricStyle){applyChosenLyricFont(target.dataset.lyricStyle);return}if(target.dataset.experience){state.experience=target.dataset.experience;setSetting('experience',state.experience);updateBadges();renderActiveSurfaces();return}
+ if(target.dataset.materialLayer){
+  state.materialLayer=MATERIAL_THEMES.includes(target.dataset.materialLayer)?target.dataset.materialLayer:'none';
+  setSetting('materialLayer',state.materialLayer);updateBadges();renderActiveSurfaces();
+  toast(state.materialLayer==='none'?'Material independente desativado.':'Material · '+state.materialLayer+' · com a paleta atual.');
+  return;
+ }
+ if(target.dataset.gnarly2Lock){configureGnarly2Lock(target.dataset.gnarly2Lock);return}
+ if(target.dataset.gnarly2Material){
+  const value=target.dataset.gnarly2Material;
+  if(MATERIAL_THEMES.includes(value)){
+   state.gnarly2Material=value;state.gnarly2LockMaterial=true;
+   setSetting('gnarly2Material',value);setSetting('gnarly2LockMaterial','yes');
+   updateBadges();renderActiveSurfaces();toast('GNARLY 2 · material de referência: '+value);
+  }
+  return;
+ }
+ if(target.dataset.stemPreset){stems.applyPreset(target.dataset.stemPreset);renderActiveSurfaces();return}if(target.dataset.preset){applyPreset(target.dataset.preset);return}if(target.dataset.theme){selectVisualTheme(target.dataset.theme);return}if(target.dataset.reaction){state.reaction=target.dataset.reaction;setSetting('reaction',state.reaction);updateBadges();renderActiveSurfaces();return}if(target.dataset.smartMode){setSmartMode(target.dataset.smartMode);return}
  if(target.dataset.action){
   const context=target.dataset.context,list=resolveTracks(context),track=list[Number(target.dataset.index)];
   if(!track)return;

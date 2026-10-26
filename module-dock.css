@@ -173,3 +173,15 @@ body.gnarly-immersive{min-height:100dvh}
 .smart-taste-clear{margin-left:auto;border:1px solid rgba(255,255,255,.23);border-radius:999px;
  padding:6px 11px;background:rgba(255,255,255,.075);color:inherit;font:inherit;font-weight:700;cursor:pointer}
 .smart-taste-clear:hover,.smart-taste-clear:focus-visible{border-color:var(--acid,#46ff12);color:var(--acid,#46ff12)}
+
+/* GNARLY 2 layer locks: quiet glass controls without another permanent toolbar. */
+.gnarly2-studio{margin:16px 0;padding:12px;border:1px solid rgba(255,255,255,.16);
+ background:linear-gradient(130deg,rgba(98,150,187,.08),rgba(239,97,177,.06));border-radius:17px}
+.gnarly2-lock-row{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 16px}
+.gnarly2-lock{border:1px solid rgba(255,255,255,.19);color:inherit;
+ background:rgba(255,255,255,.07);border-radius:100px;
+ padding:9px 13px;font-size:12px;font-weight:740;min-height:40px}
+.gnarly2-lock.active,.gnarly2-lock[aria-pressed="true"]{border-color:var(--acid,#46ff12);
+ background:color-mix(in srgb,var(--acid,#46ff12) 16%,rgba(0,12,14,.8))}
+.gnarly2-lock:focus-visible{outline:2px solid var(--acid,#46ff12);outline-offset:3px}
+@media(max-width:375px){.gnarly2-lock-row{gap:6px}.gnarly2-lock{font-size:11px;padding:8px 10px}}
