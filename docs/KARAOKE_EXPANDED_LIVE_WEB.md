@@ -17,15 +17,15 @@ These concepts are ported to the browser; SwiftUI and AVAudioEngine aren't copie
 
 1. The previous floating lyric remains above the player, now with a tiny microphone symbol at its right edge. Tapping expands a fullscreen, frosted singing stage; it does **not** request microphone access.
 2. Stage reuses **the exact existing HTMLAudioElement** and `state.current`, `state.lyrics`, `state.plainLyrics`, `state.lyricsSynced`, `state.lyricStyle`. A single source of playback truth.
-3. Cover, title, artist, microphone opt-in, live voice-only recording, caption font menu (14 quick presets plus complete Aa catalog), score panel and combo, synchronized active LRC lines, manual scroll, `Voltar à letra ao vivo`, caption-source status, return-to-compact button.
+3. Cover, title, artist, player Play/Pause on the existing HTMLAudioElement, microphone opt-in, live voice-only recording, caption font menu (14 quick presets plus complete Aa catalog), score panel and combo, synchronized active LRC lines, manual scroll, `Voltar à letra ao vivo`, caption-source status, return-to-compact button.
 4. The selected karaoke font is retained through the existing artist/song/global preference service. Scores reset on a new track; audio remains unchanged when opening or closing.
 
 ## Microphone permissions and recording
 
 - User initiates `getUserMedia({audio: ...})` with echo cancellation and noise suppression; no automatic permission prompt.
-- Microphone is a separate MediaStreamSource -> AnalyserNode. **No connection to speakers, the playback WebAudio graph, the backend or telemetry.**
+- Microphone is a separate MediaStreamSource -> AnalyserNode. A zero-gain sink keeps the microphone analysis graph running reliably (including Safari) with **inaudible output** and no connection to the playback WebAudio engine, backend or telemetry.
 - Only ephemeral, bounded 2048-sample normalized-autocorrelation frames (voice frequency + confidence + RMS) at about 11Hz. Audio does not leave the device. A chosen `Gravar voz` action uses the same mic stream, then saves a voice-only file locally, without the commercial backing track.
-- Stream tracks, timer, nodes and audio context are disposed when the stage closes, another track is selected or the page unloads. An older outstanding permission request cannot reopen capture after the modal closes.
+- Stream tracks, timer, nodes and audio context are disposed when the stage closes, another track is selected, the page becomes hidden or the page unloads. An older outstanding permission request cannot reopen capture after the modal closes.
 - Safari/microphone denial shows status; playback still works. Recommend headphones against music leakage.
 
 ## Accuracy caveats
