@@ -90,7 +90,8 @@ const state={
   gnarly2LockColors:getSetting('gnarly2LockColors','no')==='yes',
   gnarly2LockExperience:getSetting('gnarly2LockExperience','no')==='yes',
   gnarly2LockMaterial:getSetting('gnarly2LockMaterial','no')==='yes',
-  gnarly2Material:getSetting('gnarly2Material','PRISM CARMINE'),lyricStyle:lyricFonts.global,
+  gnarly2Material:getSetting('gnarly2Material','PRISM CARMINE'),
+  gnarlyAccentEnabled:getSetting('gnarlyAccentEnabled','no')==='yes',lyricStyle:lyricFonts.global,
   stemStatus:'Separação neural de quatro fontes por GPU gratuita quando disponível. Você também pode carregar quatro Stems.',
   demucsBusy:false,demucsAbort:null,demucsAvailable:false,demucsChecked:false,stemModel:'',
   speed:Number(getSetting('speed','1')),reverb:Number(getSetting('reverb','0')),bass:Number(getSetting('bass','0')),
@@ -171,6 +172,7 @@ if(!PALETTES[state.theme])state.theme='ACID';
 if(!['DESLIGADO','FLUIDO','REATIVO'].includes(state.reaction))state.reaction='FLUIDO';
 visual.setTheme(state.theme);visual.setExperience(state.experience);visual.setReaction(state.reaction);
 visual.setAccentTheme(state.previousTheme);
+visual.setGnarlyAccentEnabled(state.gnarlyAccentEnabled);
 visual.setGnarly2Locks({colors:state.gnarly2LockColors,experience:state.gnarly2LockExperience,
  material:state.gnarly2LockMaterial,materialTheme:state.gnarly2Material});
 visual.startLoop();
@@ -253,6 +255,7 @@ function updateBadges(){
  $('.build-badge').textContent=`WEB · ${state.theme}`;
  visual.setTheme(state.theme);visual.setExperience(state.experience);visual.setReaction(state.reaction);
  visual.setAccentTheme(state.previousTheme);
+ visual.setGnarlyAccentEnabled(state.gnarlyAccentEnabled);
  visual.setGnarly2Locks({colors:state.gnarly2LockColors,experience:state.gnarly2LockExperience,
   material:state.gnarly2LockMaterial,materialTheme:state.gnarly2Material});
  const fave=state.current&&state.favorites.some(x=>x.id===state.current.id);
@@ -786,7 +789,7 @@ function renderVisualLayer(layer){
    '<div class="section-head">PALETAS CREATIVE UNIVERSE</div>'+
    '<div class="visual-choices">'+CREATIVE_COLOR_THEMES.map(visualTile).join('')+'</div>'+
    '<div class="section-head">MATERIAIS GNARLY</div><div class="visual-choices">'+MATERIAL_THEMES.map(visualTile).join('')+'</div>'+
-   '<div class="section-head">MODOS GNARLY</div><p class="section-note">O GNARLY original permanece igual. GNARLY 2 combina paleta, material e experiência durante a música; tema e experiência escolhidos continuam salvos.</p>'+
+   '<div class="section-head">MODOS GNARLY</div><p class="section-note">GNARLY original preservado. Com um modo GNARLY ativo, escolher uma cor acima ajusta sua paleta de referência sem sair do modo. GNARLY 2 combina materiais e experiências ao longo da música.</p>'+
    '<div class="visual-choices">'+GNARLY_MODES.map(visualTile).join('')+'</div>'+
    (state.theme==='GNARLY 2'?renderGnarly2Controls():'')+
    (resolved.override?btn('Voltar ao tema anterior','restore-theme','alt'):'')+
@@ -948,14 +951,17 @@ const QUICK_EXPERIENCES=EXPERIENCES.map(x=>x.id);
 // rather than silently leaving the procedural universe.
 function selectVisualTheme(next){
  if(!PALETTES[next])return;
- if(state.theme==='GNARLY 2'&&!GNARLY_MODES.includes(next)){
-  if(MATERIAL_THEMES.includes(next)){
+ if(GNARLY_MODES.includes(state.theme)&&!GNARLY_MODES.includes(next)){
+  if(state.theme==='GNARLY 2'&&MATERIAL_THEMES.includes(next)){
    state.gnarly2Material=next;state.gnarly2LockMaterial=true;
    setSetting('gnarly2Material',next);setSetting('gnarly2LockMaterial','yes');
    toast('GNARLY 2 · material fixado: '+next);
   }else{
    state.previousTheme=next;setSetting('previousTheme',next);
-   toast('GNARLY 2 · nova paleta base: '+next);
+   if(state.theme!=='GNARLY 2'){
+    state.gnarlyAccentEnabled=true;setSetting('gnarlyAccentEnabled','yes');
+   }
+   toast(state.theme+' · paleta de referência: '+next);
   }
  }else{
   if(!GNARLY_MODES.includes(state.theme)&&GNARLY_MODES.includes(next)){
@@ -976,9 +982,9 @@ function configureGnarly2Lock(id){
 const QUICK_LYRIC_STYLES=['original','art-magazine-cutout','art-xerox-ransom','art-glitch-zine','art-chrome-surge','studio-vogue-editorial','studio-concrete-poster','art-y2k-warp','studio-neon-serif','art-stereo-echo'];
 bindQuickCreative($('#theme-button'),{
  cycle:()=>{
-  const next=cycleValue(QUICK_THEMES,state.theme==='GNARLY 2'?state.previousTheme:state.theme);
+  const next=cycleValue(QUICK_THEMES,GNARLY_MODES.includes(state.theme)?state.previousTheme:state.theme);
   selectVisualTheme(next);
-  if(state.theme!=='GNARLY 2')toast('🎨 Tema · '+next);
+  if(!GNARLY_MODES.includes(state.theme))toast('🎨 Tema · '+next);
  },
  expand:()=>openSheet('theme')
 });
