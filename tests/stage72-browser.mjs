@@ -152,7 +152,7 @@ assert.equal(await page.locator('#sheet-title').innerText(),'Aa · Estilo de leg
 await page.locator('[data-lyric-style="editorial"]').click();
 assert.equal(await page.locator('#app-shell').getAttribute('data-lyric-style'),'editorial');
 assert.equal(await page.locator('.build-badge').innerText(),currentTheme);
-assert.equal(await page.locator('[data-lyric-style="editorial"]').getAttribute('aria-pressed'),'true');
+assert.equal(await page.locator('button[data-lyric-style="editorial"]').getAttribute('aria-pressed'),'true');
 await page.locator('#close-sheet').click();
 assert.equal(await page.locator('#reaction-button').count(),0);
 assert.equal(await page.locator('.progress-foot #player-surface-button').count(),1);
