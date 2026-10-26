@@ -221,7 +221,7 @@ await page.locator('#more-button').click();
 await page.locator('[data-command="go-install"]').click();
 assert.equal(await page.locator('#sheet-title').innerText(),'Instalar GNARLY');
 assert.ok(await page.locator('.install-app-panel').isVisible());
-assert.match(await page.locator('.install-app-panel').innerText(),/Adicionar à Tela de Início/);
+assert.match(await page.locator('.install-app-panel').innerText(),/GNARLY como aplicativo/);
 await page.locator('#close-sheet').click();
 await page.locator('#share-button').click();
 assert.equal(await page.locator('#bottom-sheet').isVisible(),false);
