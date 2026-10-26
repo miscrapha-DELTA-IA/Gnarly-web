@@ -239,4 +239,32 @@ await tablet.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
 const tabletViewport=await tablet.locator('#app-shell').boundingBox();
 assert.ok(tabletViewport.width<=768,'Mobile/tablet must retain its normal layout');
 await tablet.close();
+
+// Stage79: one playable song automatically makes 16 true audio-slice pads.
+// A deterministic local PCM WAV avoids cross-origin catalogs in CI.
+const djPage=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1});
+const djErrors=[];djPage.on('pageerror',err=>djErrors.push(err.message));
+await djPage.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
+const rate=8000,seconds=4,samples=rate*seconds,wav=Buffer.alloc(44+samples*2);
+wav.write('RIFF',0);wav.writeUInt32LE(wav.length-8,4);wav.write('WAVEfmt ',8);
+wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);
+wav.writeUInt32LE(rate,24);wav.writeUInt32LE(rate*2,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);
+wav.write('data',36);wav.writeUInt32LE(samples*2,40);
+for(let i=0;i<samples;i++){
+ const gate=(i%rate)<rate/3?1:.22;
+ const value=Math.sin(2*Math.PI*(120+(i%rate)*.005)*i/rate)*gate;
+ wav.writeInt16LE(Math.max(-32767,Math.min(32767,Math.round(value*22000))),44+i*2);
+}
+await djPage.locator('#audio-import').setInputFiles({name:'GNARLY - Local Test.wav',mimeType:'audio/wav',buffer:wav});
+await djPage.locator('#performance-button').click();
+await djPage.locator('[data-dj-state="ready"]').waitFor({timeout:20000});
+assert.equal(await djPage.locator('.dj-pad').count(),16);
+assert.equal(await djPage.locator('.dj-advanced:not([open])').count(),1);
+assert.match(await djPage.locator('#dj-song-status').innerText(),/16 trechos reais/);
+assert.ok(await djPage.locator('[data-dj-pad="0"]').innerText().then(x=>x.includes('0:')),'Pad labels show track-relative timestamps');
+await djPage.locator('[data-dj-pad="0"]').dispatchEvent('pointerdown',{pointerType:'touch',button:0});
+assert.ok(await djPage.locator('[data-dj-pad="0"]').evaluate(el=>el.classList.contains('is-hit')),'Real audio pad should flash immediately on contact');
+await djPage.screenshot({path:'stage79-dj-mobile.png',fullPage:false});
+assert.deepEqual(djErrors,[],'DJ must not crash Web Audio or GPU');
+await djPage.close();
 await browser.close();
