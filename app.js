@@ -16,7 +16,7 @@ import {createDisplayStore,renderDisplayPanel} from './ui/display-panel.js';
 import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel,preferHighResolutionArtwork} from './ui/player-surface.js';
 
 const $=(selector)=>document.querySelector(selector);
-const app=$('#app-shell'), audio=$('#player-audio'), visual=new FluidVisual($('#fluid-canvas'));
+const app=$('#app-shell'), background=$('#gnarly-background'), audio=$('#player-audio'), visual=new FluidVisual($('#fluid-canvas'));
 const engine=new WebAudioEngine(audio);
 const stems=new StemMixer(engine,audio);
 const pads=new PerformancePads(engine);
@@ -218,18 +218,25 @@ function applyBackground(){
  const cover=state.current?.artwork,mode=state.backgroundMode,photo=$('#photo-background');
  const ownPhoto=mode==='custom'&&!!state.backgroundURL;
  const coverPhoto=mode==='cover'&&!!cover;
+ // All three modes use the SAME viewport-fixed visual layer, never a
+ // background image on the document-height-dependent player shell.
  app.classList.toggle('custom-bg',ownPhoto);
  app.classList.toggle('cover-bg',coverPhoto);
- photo.hidden=!ownPhoto;
+ background.classList.toggle('custom-bg',ownPhoto);
+ background.classList.toggle('cover-bg',coverPhoto);
+ photo.hidden=!ownPhoto&&!coverPhoto;
  if(ownPhoto){
   photo.style.backgroundImage=`url("${state.backgroundURL}")`;
   photo.style.transform=`translate3d(${state.photoX}%,${state.photoY}%,0) scale(${state.photoZoom})`;
- }else{photo.style.backgroundImage='';photo.style.transform=''}
- if(coverPhoto){
+ }else if(coverPhoto){
   const original=safeSurfaceArtwork(cover),large=safeSurfaceArtwork(preferHighResolutionArtwork(original,2000));
-  app.style.backgroundImage=`linear-gradient(#0002,#0007),url("${large.replaceAll('"','%22')}"),url("${original.replaceAll('"','%22')}")`;
+  photo.style.backgroundImage=`linear-gradient(#0002,#0007),url("${large.replaceAll('"','%22')}"),url("${original.replaceAll('"','%22')}")`;
+  photo.style.transform='';
+ }else{
+  photo.style.backgroundImage='';
+  photo.style.transform='';
  }
- else app.style.backgroundImage='';
+ app.style.backgroundImage='';
  visual.setPaused(ownPhoto||coverPhoto);
 }
 async function loadArtworkHue(track){if(!track?.artwork||track.artwork===icon){state.artworkHue=.58;return}try{const img=new Image();img.crossOrigin='anonymous';img.src=track.artwork;await img.decode();if(state.current!==track)return;const cv=document.createElement('canvas');cv.width=cv.height=20;const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,20,20);const data=ctx.getImageData(0,0,20,20).data;let x=0,y=0;for(let i=0;i<data.length;i+=4){const r=data[i]/255,g=data[i+1]/255,b=data[i+2]/255,max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;let h=0;if(d>.08){if(max===r)h=((g-b)/d+6)%6/6;else if(max===g)h=((b-r)/d+2)/6;else h=((r-g)/d+4)/6}x+=Math.cos(h*2*Math.PI)*d;y+=Math.sin(h*2*Math.PI)*d}if(x||y)state.artworkHue=(Math.atan2(y,x)/(Math.PI*2)+1)%1}catch{/* third-party artwork might be CORS protected; deterministic fallback */}}

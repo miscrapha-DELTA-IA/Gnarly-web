@@ -20,10 +20,14 @@
   <title>GNARLY WEB — Stage 72</title>
 </head>
 <body>
-  <div class="app-shell" id="app-shell">
+  <!-- Independent fixed layer: the shader follows the VIEWPORT while modules
+       lengthen the scrollable document, without expanding GPU allocations. -->
+  <div id="gnarly-background" class="gnarly-background" aria-hidden="true">
     <canvas id="fluid-canvas" aria-hidden="true"></canvas>
     <div id="photo-background" class="photo-background" aria-hidden="true" hidden></div>
     <div class="visual-dim" aria-hidden="true"></div>
+  </div>
+  <div class="app-shell" id="app-shell">
     <header class="topbar" id="topbar">
       <button class="icon-button edge" id="search-toggle" title="Exibição" aria-label="Editar exibição" aria-expanded="false"><svg class="icon"><use href="#i-eye" /></svg></button>
       <button class="icon-button bolt" id="theme-button" aria-label="Escolher tema" title="Temas"><svg class="icon"><use href="#i-bolt" /></svg></button>
