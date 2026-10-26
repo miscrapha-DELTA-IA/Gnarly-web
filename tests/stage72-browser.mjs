@@ -5,6 +5,15 @@ const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,
 const errs=[],warnings=[];page.on('pageerror',x=>errs.push(x.message));page.on('console',x=>{if(x.type()==='warning'||x.type()==='error')warnings.push(x.text())});
 await page.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
 await page.waitForSelector('#omnibox-toggle');
+assert.equal(await page.locator('#fullscreen-button').count(),1);
+assert.equal(await page.locator('#karaoke-stage-fullscreen').count(),1);
+await page.locator('#fullscreen-button').click();
+assert.equal(await page.locator('#fullscreen-button').getAttribute('aria-pressed'),'true');
+assert.equal(await page.locator('html').evaluate(el=>el.classList.contains('gnarly-fullscreen')),true);
+await page.locator('#fullscreen-button').click();
+assert.equal(await page.locator('#fullscreen-button').getAttribute('aria-pressed'),'false');
+assert.equal(await page.locator('html').evaluate(el=>el.classList.contains('gnarly-fullscreen')),false);
+
 async function assertAppearanceControlFits(label){
  const [seek,button,player]=await Promise.all([
   page.locator('#seek-slider').boundingBox(),
