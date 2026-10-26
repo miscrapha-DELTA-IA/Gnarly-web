@@ -177,3 +177,19 @@ html.karaoke-stage-open,html.karaoke-stage-open body{overflow:hidden;overscroll-
 @media(prefers-reduced-motion:reduce){
  .karaoke-stage .karaoke-reader-line{transition:none}
 }
+
+/* Karaoke uses the same pixel-validated cover decision as GNARLY player.
+ * High-resolution stage artwork remains cover; low-resolution video thumbnails
+ * are shown at native device-pixel size in a decorative letterbox composition.
+ */
+.karaoke-stage-wallpaper:has(img[data-art-quality="low"]),
+.karaoke-stage-wallpaper:has(img[data-art-quality="unknown"]){
+ background:radial-gradient(ellipse at 18% 22%,#16413c 0,transparent 58%),
+ radial-gradient(ellipse at 84% 72%,#3c2539 0,transparent 60%),#0b1015;
+}
+.karaoke-stage-wallpaper img[data-art-quality="low"],
+.karaoke-stage-wallpaper img[data-art-quality="unknown"]{
+ object-fit:contain;width:min(100%,var(--gnarly-art-safe-width,360px));
+ height:100%;margin:auto;display:block;
+ filter:none;opacity:.63;transform:none;
+}
