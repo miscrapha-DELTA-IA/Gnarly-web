@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#061905" />
-  <meta name="gnarly-web-revision" content="stage72-gnarly-performance-dj-midi-2026-10-26" />
+  <meta name="gnarly-web-revision" content="stage72-retractable-music-export-dj-2026-10-26" />
   <meta name="description" content="GNARLY WEB — música, Nightcore, Slowed + Reverb e visuais fluidos. Inspirado no app GNARLY Stage 72." />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -16,6 +16,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="stylesheet" href="./styles.css" />
   <link rel="stylesheet" href="./performance.css" />
+  <link rel="stylesheet" href="./module-dock.css" />
   <title>GNARLY WEB — Stage 72</title>
 </head>
 <body>
@@ -27,17 +28,16 @@
       <button class="icon-button edge" id="search-toggle" title="Exibição" aria-label="Editar exibição" aria-expanded="false"><svg class="icon"><use href="#i-eye" /></svg></button>
       <button class="icon-button bolt" id="theme-button" aria-label="Escolher tema" title="Temas"><svg class="icon"><use href="#i-bolt" /></svg></button>
       <button class="icon-button" id="background-button" aria-label="Alterar fundo" title="Fundo"><svg class="icon"><use href="#i-photo" /></svg></button>
-      <button class="create-pill glass" id="create-button"><svg class="icon small"><use href="#i-wand" /></svg><span>Criar</span></button>
-      <button class="icon-button" id="share-button" aria-label="Exportar" title="Exportar"><svg class="icon"><use href="#i-share" /></svg></button>
+      <button class="icon-button" id="music-toggle-button" type="button" aria-controls="module-controls-body" aria-expanded="false" aria-label="Mostrar ou recolher Música, controles e presets" title="Música · Controles e Presets"><svg class="icon"><use href="#i-sliders" /></svg></button>
+      <button class="icon-button" id="share-button" aria-label="Mostrar ou recolher Exportar" aria-controls="module-export-body" aria-expanded="false" title="Exportar"><svg class="icon"><use href="#i-share" /></svg></button>
       <button class="icon-button record-button" id="record-button" aria-label="Gravar voz" aria-pressed="false" title="Gravar voz"><span class="record-dot"></span></button>
-      <button class="icon-button" id="edit-button" aria-label="Editar visual" title="Editar visual"><svg class="icon"><use href="#i-pencil" /></svg></button>
     </header>
 
     <main class="main" id="main">
       <section class="brand-line" id="brand-line">
         <div class="brand-identity"><img src="./assets/gnarly-icon.png" alt="Logo GNARLY" width="57" height="57" /><div><h1>Gnarly</h1><div class="build-badge">WEB α2 · ACID</div></div></div>
         <div class="quick-actions">
-          <button class="dj-launch glass" id="performance-button" type="button" aria-label="Abrir Performance DJ com 16 pads" title="Performance · 16 pads">DJ</button>
+          <button class="dj-launch glass" id="performance-button" type="button" aria-label="Mostrar ou recolher Performance DJ com 16 pads" aria-controls="module-performance-body" aria-expanded="false" title="Performance · 16 pads">DJ</button>
           <button class="icon-button more-button glass" id="more-button" aria-label="Mais opções"><svg class="icon"><use href="#i-more" /></svg></button>
           <div hidden><button id="library-button"></button><button id="favorite-button"></button><button id="controls-button"></button><button id="add-button"></button></div>
         </div>
@@ -78,6 +78,29 @@
           <span class="omnibox-accent" aria-hidden="true"></span><svg class="icon small omnibox-chevron"><use href="#i-chevron" /></svg>
         </button>
       </div>
+      <section id="module-dock" class="module-dock" aria-label="Janelas retráteis GNARLY">
+        <section id="module-controls" class="module-drawer glass" data-module="controls" aria-label="Música, presets e controles">
+          <button class="module-handle" type="button" data-module-toggle="controls" aria-controls="module-controls-body" aria-expanded="false">
+            <span class="module-handle-label"><span class="module-glyph" aria-hidden="true">♫</span><span><strong>MÚSICA</strong><small>Presets · Controles · Stems</small></span></span>
+            <svg class="icon small module-chevron" aria-hidden="true"><use href="#i-chevron" /></svg>
+          </button>
+          <div class="module-body" id="module-controls-body" hidden></div>
+        </section>
+        <section id="module-export" class="module-drawer glass" data-module="export" aria-label="Exportar">
+          <button class="module-handle" type="button" data-module-toggle="export" aria-controls="module-export-body" aria-expanded="false">
+            <span class="module-handle-label"><span class="module-glyph" aria-hidden="true">⇧</span><span><strong>EXPORTAR</strong><small>Imagem · Vídeo · Estilos</small></span></span>
+            <svg class="icon small module-chevron" aria-hidden="true"><use href="#i-chevron" /></svg>
+          </button>
+          <div class="module-body" id="module-export-body" hidden></div>
+        </section>
+        <section id="module-performance" class="module-drawer glass" data-module="performance" aria-label="Performance DJ">
+          <button class="module-handle" type="button" data-module-toggle="performance" aria-controls="module-performance-body" aria-expanded="false">
+            <span class="module-handle-label"><span class="module-glyph" aria-hidden="true">◈</span><span><strong>PERFORMANCE / DJ</strong><small>MPC · 16 Pads · MIDI</small></span></span>
+            <svg class="icon small module-chevron" aria-hidden="true"><use href="#i-chevron" /></svg>
+          </button>
+          <div class="module-body" id="module-performance-body" hidden></div>
+        </section>
+      </section>
     </main>
 
     <nav class="bottom-dock glass" aria-label="Navegação alternativa" hidden>
