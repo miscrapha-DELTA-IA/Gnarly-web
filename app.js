@@ -1,10 +1,11 @@
 import {FluidVisual,PALETTES} from './lib/visual-engine.js';
 import {WebAudioEngine} from './lib/audio-engine.js';
 import {parseLRC,lyricIndex} from './lib/lrc.js';
-import {searchCatalog,searchNativeBackend} from './lib/catalog.js';
+import {searchCatalog,searchNativeBackend,resolveTrackMetadata} from './lib/catalog.js';
+import {applyMetadata,enrichSearchCredits,isGenericArtist,inferredCredit} from './lib/metadata-intelligence.js';
 import {OmniboxSession,classifyIntent,rank} from './lib/omnibox.js';
 import {MUSIC_PRESETS,musicalPreset} from './lib/music-presets.js';
-import {autoLyrics,normalizeIdentity} from './lib/lyrics-auto.js';
+import {autoLyrics} from './lib/lyrics-auto.js';
 import {trackAudioURL,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
 import {CLASSIC_THEMES,MATERIAL_THEMES,GNARLY_MODES,EXPERIENCES,REACTIONS,ROLE_EXPLANATION,resolveVisual,restoredThemeAfterGnarly} from './lib/visual-selection.js';
 import {StemMixer,STEM_KINDS,STEM_LABELS,STEM_PRESETS} from './lib/stem-mixer.js';
@@ -242,27 +243,41 @@ function applyBackground(){
 async function loadArtworkHue(track){if(!track?.artwork||track.artwork===icon){state.artworkHue=.58;return}try{const img=new Image();img.crossOrigin='anonymous';img.src=track.artwork;await img.decode();if(state.current!==track)return;const cv=document.createElement('canvas');cv.width=cv.height=20;const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,20,20);const data=ctx.getImageData(0,0,20,20).data;let x=0,y=0;for(let i=0;i<data.length;i+=4){const r=data[i]/255,g=data[i+1]/255,b=data[i+2]/255,max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;let h=0;if(d>.08){if(max===r)h=((g-b)/d+6)%6/6;else if(max===g)h=((b-r)/d+2)/6;else h=((r-g)/d+4)/6}x+=Math.cos(h*2*Math.PI)*d;y+=Math.sin(h*2*Math.PI)*d}if(x||y)state.artworkHue=(Math.atan2(y,x)/(Math.PI*2)+1)%1}catch{/* third-party artwork might be CORS protected; deterministic fallback */}}
 async function loadAutoLyrics(track){state.lyricsAbort?.abort();const ac=new AbortController();state.lyricsAbort=ac;state.lyrics=[];state.lastLyric=-2;state.lyricsStatus='Procurando letra sincronizada automaticamente…';syncLyrics();if(state.sheet==='karaoke')renderSheet();const result=await autoLyrics(track,{signal:ac.signal});if(ac.signal.aborted||state.current!==track)return;state.lyrics=result.lines;state.lyricsStatus=result.status;state.lastLyric=-2;syncLyrics();if(state.sheet==='karaoke')renderSheet()}
 function syncLyrics(){const i=lyricIndex(state.lyrics,audio.currentTime||0);if(state.lastLyric===i)return;state.lastLyric=i;const el=$('#floating-lyrics');const line=$('#floating-line');if(!state.lyrics.length||!state.current){el.hidden=true;return}el.hidden=false;line.textContent=i>=0?state.lyrics[i].text:'♪ ♪ ♪';if(state.sheet==='karaoke')renderSheet()}
-async function enrichLocalTrack(track){
- if(track?.source!=='local'||!track.artist||track.artist==='Arquivo local')return;
- try{const found=await searchCatalog(`${track.artist} ${track.title}`);
-   if(state.current!==track)return;
-   const wanted=normalizeIdentity(track.title),artist=normalizeIdentity(track.artist);
-   const matched=found.find(x=>normalizeIdentity(x.title)===wanted&&normalizeIdentity(x.artist)===artist);
-   if(!matched)return;
-   track.artwork=matched.artwork||track.artwork;track.album=matched.album||track.album;
-   updatePlayer();void loadArtworkHue(track);
- }catch{/* Offline files must still play without the catalog. */}
+let metadataAbort=null;
+async function enrichSelectedTrack(track,knownDuration=0){
+ if(!track||!['youtube','local'].includes(track.source)||state.current!==track)return;
+ // An opaque video ID is not a song title; do not invent an artist for it.
+ if(/^[A-Za-z0-9_-]{11}$/.test(track.title||'')&&isGenericArtist(track.artist))return;
+ if(track.metadataConfidence>=84&&track.album&&track.artwork&&!isGenericArtist(track.artist))return;
+ const duration=Number(track.duration)>0?Number(track.duration):Number(knownDuration)||0;
+ const credit=inferredCredit(track.title,track.artist);
+ if(!duration&&!credit.artist)return;
+ metadataAbort?.abort();const controller=new AbortController();metadataAbort=controller;
+ try{
+  const metadata=await resolveTrackMetadata({...track,duration},{signal:controller.signal});
+  if(controller.signal.aborted||state.current!==track||!metadata)return;
+  const before=track.artist,changed=applyMetadata(track,metadata);
+  if(!changed)return;
+  // Transport, playback URL, audio graph and queue identity remain untouched.
+  omnibox.updateMetadata(track);state.history=omnibox.history;
+  for(const favorite of state.favorites)if(favorite.id===track.id){
+   for(const key of ['title','artist','album','artwork'])favorite[key]=track[key];
+  }
+  updatePlayer();void loadArtworkHue(track);
+  if(isGenericArtist(before)&&!isGenericArtist(track.artist))void loadAutoLyrics(track);
+  if(state.sheet==='search')displaySearch(state.searchResults);
+ }catch(error){if(error?.name!=='AbortError')console.debug('Metadata enrichment unavailable');}
 }
 function selectTrack(track,autoplay=true){
  if(!track)return;
- state.demucsAbort?.abort();pads.resetSong();stems.clear();state.stemModel='';state.stemStatus='Escolha quatro Stems ou solicite separação automática.';
+ state.demucsAbort?.abort();metadataAbort?.abort();pads.resetSong();stems.clear();state.stemModel='';state.stemStatus='Escolha quatro Stems ou solicite separação automática.';
  closeYouTubePlayer();audio.pause();state.playing=false;state.current=track;state.artworkHue=.58;state.playbackError='';state.audioState='idle';
  if(track.source==='youtube'){
    // Deferred until Play: avoids wasting a Render extraction on every tapped row.
    audio.removeAttribute('src');audio.preload='none';audio.load();
  }else{audio.preload='metadata';audio.src=track.url;audio.load();}
  reportAudioStatus('');state.lastLyric=-2;updatePlayer();void loadArtworkHue(track);void loadAutoLyrics(track);
- if(track.source==='local')void enrichLocalTrack(track);omnibox.record(track);state.history=omnibox.history;
+ if(track.source==='youtube')void enrichSelectedTrack(track);omnibox.record(track);state.history=omnibox.history;
  if(isModuleOpen('performance'))void pads.prepareSong(track);
  if(autoplay)void play();if(state.sheet&&['library','queue','search'].includes(state.sheet))renderSheet();
 }
@@ -491,17 +506,18 @@ async function runSearch(raw){const query=String(raw||'').trim();state.searchTer
  displaySearch(state.searchResults,'Buscando no catálogo do app…');
  try{const outcome=await Promise.allSettled([searchNativeBackend(query),searchCatalog(query)]);if(count!==searchCounter)return;
  const songs=outcome[0].status==='fulfilled'?outcome[0].value:[],previews=outcome[1].status==='fulfilled'?outcome[1].value:[];
- // Stage72 metadata: prefer exact iTunes title matches to resolve the artist name for LRCLIB, without treating previews as the full audio source.
- for(const song of songs){if(song.artist&&song.artist!=='YouTube Music')continue;const match=previews.find(x=>normalizeIdentity(x.title)===normalizeIdentity(song.title));if(match){song.artist=match.artist; song.album=match.album||song.album}}
+ // Already retrieved iTunes data refines only exact recording/version matches.
+ // There is no change to source, URL, ID, transport or duration.
+ enrichSearchCredits(songs,previews);
  const hits=rank(query,selectMusicResults(songs,previews),omnibox.history);state.searchResults=hits;omnibox.cacheResults(query,hits);displaySearch(hits,`${songs.length} músicas no catálogo GNARLY · ${previews.length} prévias autorizadas`+(songs.length===0?' · servidor musical indisponível ou sem resultados':''));
  }catch(error){if(count!==searchCounter)return;displaySearch(state.searchResults,'Falha de rede. Resultados locais mantidos.');console.warn('Omnibox',error)}
 }
-audio.addEventListener('play',()=>{if(stems.ready)void stems.play();state.playing=true;updatePlayer()});audio.addEventListener('pause',()=>{stems.pause();state.playing=false;updatePlayer()});audio.addEventListener('timeupdate',()=>{if(stems.ready)stems.sync();updateProgress();syncLyrics()});audio.addEventListener('loadedmetadata',updateProgress);audio.addEventListener('seeked',()=>stems.seek());audio.addEventListener('ended',()=>{state.queue.length?next():pause()});audio.addEventListener('waiting',()=>{if(state.current?.source==='youtube')reportAudioStatus('Carregando áudio…')});audio.addEventListener('playing',()=>{state.audioState='playing';reportAudioStatus('')});audio.addEventListener('error',()=>{if(state.current){state.playing=false;updatePlayer();reportAudioError(state.current.source==='youtube'?playbackFailureMessage(null,audio.error):'Não foi possível carregar o áudio.');}});
+audio.addEventListener('play',()=>{if(stems.ready)void stems.play();state.playing=true;updatePlayer()});audio.addEventListener('pause',()=>{stems.pause();state.playing=false;updatePlayer()});audio.addEventListener('timeupdate',()=>{if(stems.ready)stems.sync();updateProgress();syncLyrics()});audio.addEventListener('loadedmetadata',()=>{updateProgress();if(state.current?.source==='local'&&Number.isFinite(audio.duration))void enrichSelectedTrack(state.current,audio.duration)});audio.addEventListener('seeked',()=>stems.seek());audio.addEventListener('ended',()=>{state.queue.length?next():pause()});audio.addEventListener('waiting',()=>{if(state.current?.source==='youtube')reportAudioStatus('Carregando áudio…')});audio.addEventListener('playing',()=>{state.audioState='playing';reportAudioStatus('')});audio.addEventListener('error',()=>{if(state.current){state.playing=false;updatePlayer();reportAudioError(state.current.source==='youtube'?playbackFailureMessage(null,audio.error):'Não foi possível carregar o áudio.');}});
 for(const [action,fn] of [['play',()=>void play()],['pause',pause],['previoustrack',previous],['nexttrack',next],['seekto',details=>{audio.currentTime=details.seekTime||0}]]){try{navigator.mediaSession?.setActionHandler(action,fn)}catch{/* not supported */}}
 window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select')||e.ctrlKey||e.altKey||e.metaKey)return;if(isModuleOpen('performance')&&!state.sheet){const pad=PAD_KEYS.indexOf(e.key.toLowerCase());if(pad>=0){e.preventDefault();if(!e.repeat)void pads.trigger(pad);return}}if(e.code==='Space'){e.preventDefault();state.playing?pause():void play()}if(e.code==='Escape'){if(!$('#player-surface-menu').hidden){e.preventDefault();closePlayerSurfaceMenu(true);return}closeSheet();closeYouTubePlayer()};if(e.key==='ArrowRight'&&state.current)audio.currentTime=Math.min(audio.duration||0,audio.currentTime+5);if(e.key==='ArrowLeft'&&state.current)audio.currentTime=Math.max(0,audio.currentTime-5)});
 window.addEventListener('dragover',e=>{if(e.dataTransfer?.types.includes('Files')){e.preventDefault();app.classList.add('dragover')}});window.addEventListener('dragleave',e=>{if(!e.relatedTarget)app.classList.remove('dragover')});window.addEventListener('drop',e=>{e.preventDefault();app.classList.remove('dragover');importAudio(e.dataTransfer?.files||[])});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&pads.running)pads.stopLoop()});
-window.addEventListener('beforeunload',()=>{pads.destroy();state.micRecorder?.state==='recording'&&state.micRecorder.stop();state.micStream?.getTracks()?.forEach(x=>x.stop());state.demucsAbort?.abort();stems.clear();for(const item of state.tracks)if(item.source==='local')URL.revokeObjectURL(item.url);if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL)});
+window.addEventListener('beforeunload',()=>{metadataAbort?.abort();pads.destroy();state.micRecorder?.state==='recording'&&state.micRecorder.stop();state.micStream?.getTracks()?.forEach(x=>x.stop());state.demucsAbort?.abort();stems.clear();for(const item of state.tracks)if(item.source==='local')URL.revokeObjectURL(item.url);if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL)});
 applyPlayerSurfaceMode(state.playerSurfaceMode,{persist:false});updatePlayer();applyPanelVisibility();
 
 // Direct backend playback has no separate invite login or YouTube modal on Play.
