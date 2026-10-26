@@ -31,5 +31,5 @@ test('all visual families have native geometry rather than a shared Cyber Night 
  const metal=readFileSync(new URL('../lib/metal-shader-port.js',import.meta.url),'utf8');
  for(const signature of ['evaluateLiquidMarble','evaluateProceduralMaterial','evaluateTexturedMarble','universePlateMetric','universeFbm','universePrintDots','universeStrataHeight'])
   assert.ok(metal.includes(signature),signature);
- assert.match(metal,/if \\(look == 15\\)/);
+ assert.ok(metal.includes('look == 15'));
 });
