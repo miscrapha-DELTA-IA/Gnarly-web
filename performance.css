@@ -78,3 +78,15 @@
 }
 @media(max-width:390px){.dj-stage{padding:8px}.dj-pads{gap:6px}.dj-pad{min-height:52px;padding:7px}.dj-pad-center{font-size:10px}.dj-under-grid{font-size:9px}}
 @media(prefers-reduced-motion:reduce){.dj-pad{transition:none}}
+
+/* Performance remains the existing retractable window under the Omnibox.
+   Its new glass pad bank inherits theme colors, never an unrelated RGB deck. */
+.module-drawer[data-module="performance"]{--module-tint:var(--acid);background:linear-gradient(155deg,rgba(46,42,47,.47),rgba(16,22,25,.57))}
+.module-drawer[data-module="performance"].is-open{border-color:color-mix(in srgb,var(--acid) 34%,rgba(255,255,255,.16));box-shadow:0 11px 38px #0005,inset 0 1px #ffffff23}
+.module-drawer[data-module="performance"] .module-body{background:transparent}
+.module-drawer[data-module="performance"] .dj-panel{padding:0 0 3px}
+.module-drawer[data-module="performance"] .dj-heading{margin-bottom:12px}
+@media (min-width:900px) and (pointer:fine){
+ .module-drawer[data-module="performance"]{max-width:100%;width:100%}
+ .module-drawer[data-module="performance"] .dj-pads{gap:12px}
+}
