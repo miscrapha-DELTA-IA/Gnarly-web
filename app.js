@@ -25,7 +25,9 @@ import {renderAppInstallGuide,installModeFromBrowser,installPlatform} from './li
 import {demucsStatus,prepareDemucsAudio,separateWithBestModel} from './lib/demucs-cloud.js';
 import {renderMusicPanel,mixerValue} from './ui/music-panel.js';
 import {createDisplayStore,renderDisplayPanel} from './ui/display-panel.js';
-import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel,preferHighResolutionArtwork} from './ui/player-surface.js';
+import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel} from './ui/player-surface.js';
+import {artworkBudget,artworkCandidates,resolveArtwork} from './lib/artwork-quality.js';
+import {createFullscreenController} from './lib/fullscreen-controller.js';
 import {karaokeStageMarkup,KaraokeStage} from './ui/karaoke-stage.js';
 
 const $=(selector)=>document.querySelector(selector);
@@ -38,6 +40,26 @@ function midiView(){return {...pads.snapshot(),intelligence:{...midiAnalysis.har
 const audioDelivery=new AudioDeliveryRecovery();
 let recoveryOperation=null;
 const icon='/assets/gnarly-icon.png';
+const artEnvironment=()=>({
+ viewportWidth:window.innerWidth,viewportHeight:window.innerHeight,
+ dpr:window.devicePixelRatio||1,
+ saveData:!!navigator.connection?.saveData,
+ deviceMemory:Number(navigator.deviceMemory)||8
+});
+const artPixels=role=>artworkBudget({role,...artEnvironment()});
+let coverArtVersion=0,lastCoverArt='',surfaceArtVersion=0,lastSurfaceArt='',backgroundArtVersion=0,lastBackgroundArt='';
+const fullscreen=createFullscreenController(document,{
+ onChange:active=>{
+  for(const button of ['fullscreen-button','karaoke-stage-fullscreen']){
+   const b=document.getElementById(button);if(!b)continue;
+   b.setAttribute('aria-pressed',String(active));
+   b.setAttribute('aria-label',active?'Sair da tela cheia':'Ativar tela cheia');
+   b.title=active?'Sair da tela cheia':'Tela cheia';
+   const glyph=b.querySelector('[data-fullscreen-glyph]');if(glyph)glyph.textContent=active?'⊟':'⛶';
+  }
+ },
+ onFallback:()=>toast('Modo tela cheia visual ativado. No Safari do iPhone, adicione o GNARLY à Tela de Início para ocultar a barra do navegador.')
+});
 let omniboxStorage=null;try{omniboxStorage=window.localStorage}catch{}
 const omnibox=new OmniboxSession(omniboxStorage);
 const displayStore=createDisplayStore(omniboxStorage);
@@ -242,8 +264,15 @@ function updatePlayer(){
  const track=state.current;
  $('#track-title').textContent=track?.title||'Sua música. Seu universo.';
  $('#track-artist').textContent=track?displayArtist(track):'Selecione uma música para começar';
- $('#cover-image').src=track?.artwork||icon;
- $('#cover-image').onerror=()=>{$('#cover-image').onerror=null;$('#cover-image').src=icon};
+ const cover=track?.artwork||icon,coverKey=cover+'|'+artPixels('cover');
+ if(lastCoverArt!==coverKey){
+  lastCoverArt=coverKey;const version=++coverArtVersion;
+  const image=$('#cover-image');image.decoding='async';image.src=cover;
+  image.onerror=()=>{if(version!==coverArtVersion)return;image.onerror=null;image.src=icon};
+  if(cover!==icon)void resolveArtwork(cover,{pixels:artPixels('cover'),minDimension:260}).then(url=>{
+   if(version===coverArtVersion&&url!==cover&&lastCoverArt===coverKey){image.src=url;}
+  });
+ }
  updatePlayerSurfaceArtwork();
  $('#cover-play-overlay').textContent=track?'Fundo da capa':'Escolher música';
  $('#cover-button').setAttribute('aria-label',track?'Configurar fundo a partir da capa':'Abrir busca de músicas');
@@ -255,39 +284,29 @@ function updatePlayer(){
  $('#duration-label').textContent=track?.source==='preview'?'PRÉVIA · 0:30':fmt(Number.isFinite(audio.duration)&&audio.duration>0?audio.duration:track?.duration||0);
  updatePresetButtons();
  updateBadges(); updateProgress();
- if('mediaSession' in navigator && typeof MediaMetadata!=='undefined'){try{navigator.mediaSession.metadata=track?new MediaMetadata({title:track.title,artist:displayArtist(track),album:track.album||'GNARLY WEB',artwork:[{src:track.artwork||new URL(icon,location.href).href,sizes:'256x256'}]}):null}catch{}}
+ if('mediaSession' in navigator && typeof MediaMetadata!=='undefined'){try{navigator.mediaSession.metadata=track?new MediaMetadata({title:track.title,artist:displayArtist(track),album:track.album||'GNARLY WEB',artwork:[{src:artworkCandidates(track.artwork||new URL(icon,location.href).href,{pixels:512})[0]||new URL(icon,location.href).href}]}):null}catch{}}
 }
 function updateProgress(){const d=audio.duration||0,t=audio.currentTime||0,p=d?Math.min(1000,1000*t/d):0;const slider=$('#seek-slider');slider.value=String(p);slider.style.setProperty('--progress',`${p/10}%`);$('#elapsed-label').textContent=fmt(t);if(state.current?.source!=='preview')$('#duration-label').textContent=fmt(d||state.current?.duration||0)}
 // Internal artwork uses a separate layer, never the app's backgroundMode.
 // Repeating two identical tiles produces a cyclic lateral loop with no reset jump.
-let lastSurfaceArtwork='';
 function safeSurfaceArtwork(raw){
- try{
-  const url=new URL(raw||icon,location.href);
-  if(['https:','http:','blob:'].includes(url.protocol))return url.href;
- }catch{}
+ try{const url=new URL(raw||icon,location.href);if(['https:','http:','blob:'].includes(url.protocol))return url.href}catch{}
  return new URL(icon,location.href).href;
 }
 function updatePlayerSurfaceArtwork(){
- const original=safeSurfaceArtwork(state.current?.artwork);
- const url=safeSurfaceArtwork(preferHighResolutionArtwork(original,1600));
- if(lastSurfaceArtwork===original)return;
- lastSurfaceArtwork=original;
+ const raw=safeSurfaceArtwork(state.current?.artwork),pixels=artPixels('surface'),key=raw+'|'+pixels;
+ if(lastSurfaceArt===key)return;
+ lastSurfaceArt=key;const version=++surfaceArtVersion;
  const fallback=new URL(icon,location.href).href;
- // Add the local logo underneath third-party artwork as a network-error fallback.
- const images=`url(${JSON.stringify(url)}),url(${JSON.stringify(fallback)})`;
- $('#player-surface-artwork').style.backgroundImage=images;
- $('#player-surface-artwork-repeat').style.backgroundImage=images;
- if(url!==original){
-  const probe=new Image();
-  probe.onerror=()=>{
-   if(lastSurfaceArtwork!==original)return; // Old track should never replace the new cover.
-   const originalImages='url('+JSON.stringify(original)+'),url('+JSON.stringify(fallback)+')';
-   $('#player-surface-artwork').style.backgroundImage=originalImages;
-   $('#player-surface-artwork-repeat').style.backgroundImage=originalImages;
-  };
-  probe.src=url;
- }
+ const apply=url=>{
+  const layers='url('+JSON.stringify(url)+'),url('+JSON.stringify(fallback)+')';
+  $('#player-surface-artwork').style.backgroundImage=layers;
+  $('#player-surface-artwork-repeat').style.backgroundImage=layers;
+ };
+ apply(raw); // Never flash a missing 4K file over a usable thumbnail.
+ if(raw!==fallback)void resolveArtwork(raw,{pixels,minDimension:300}).then(url=>{
+  if(version===surfaceArtVersion&&lastSurfaceArt===key&&state.current?.artwork===raw)apply(url);
+ });
 }
 function closePlayerSurfaceMenu(restoreFocus=false){
  const menu=$('#player-surface-menu');
@@ -317,26 +336,31 @@ function applyBackground(){
  const cover=state.current?.artwork,mode=state.backgroundMode,photo=$('#photo-background');
  const ownPhoto=mode==='custom'&&!!state.backgroundURL;
  const coverPhoto=mode==='cover'&&!!cover;
- // All three modes use the SAME viewport-fixed visual layer, never a
- // background image on the document-height-dependent player shell.
- app.classList.toggle('custom-bg',ownPhoto);
- app.classList.toggle('cover-bg',coverPhoto);
- background.classList.toggle('custom-bg',ownPhoto);
- background.classList.toggle('cover-bg',coverPhoto);
+ app.classList.toggle('custom-bg',ownPhoto);app.classList.toggle('cover-bg',coverPhoto);
+ background.classList.toggle('custom-bg',ownPhoto);background.classList.toggle('cover-bg',coverPhoto);
  photo.hidden=!ownPhoto&&!coverPhoto;
  if(ownPhoto){
-  photo.style.backgroundImage=`url("${state.backgroundURL}")`;
+  lastBackgroundArt='';++backgroundArtVersion;
+  const layer='url('+JSON.stringify(state.backgroundURL)+')';
+  if(photo.style.backgroundImage!==layer)photo.style.backgroundImage=layer;
   photo.style.transform=`translate3d(${state.photoX}%,${state.photoY}%,0) scale(${state.photoZoom})`;
  }else if(coverPhoto){
-  const original=safeSurfaceArtwork(cover),large=safeSurfaceArtwork(preferHighResolutionArtwork(original,2000));
-  photo.style.backgroundImage=`linear-gradient(#0002,#0007),url("${large.replaceAll('"','%22')}"),url("${original.replaceAll('"','%22')}")`;
+  const source=safeSurfaceArtwork(cover),pixels=artPixels('background'),key=source+'|'+pixels;
+  if(lastBackgroundArt!==key){
+   lastBackgroundArt=key;const version=++backgroundArtVersion;
+   const apply=url=>{photo.style.backgroundImage='url('+JSON.stringify(url)+')'};
+   apply(source);
+   void resolveArtwork(source,{pixels,minDimension:650}).then(url=>{
+    if(version===backgroundArtVersion&&lastBackgroundArt===key&&state.backgroundMode==='cover'&&state.current?.artwork===cover)apply(url);
+   });
+  }
   photo.style.transform='';
  }else{
-  photo.style.backgroundImage='';
+  lastBackgroundArt='';++backgroundArtVersion;
+  if(photo.style.backgroundImage)photo.style.backgroundImage='';
   photo.style.transform='';
  }
- app.style.backgroundImage='';
- visual.setPaused(ownPhoto||coverPhoto);
+ app.style.backgroundImage='';visual.setPaused(ownPhoto||coverPhoto);
 }
 async function loadArtworkHue(track){if(!track?.artwork||track.artwork===icon){state.artworkHue=.58;return}try{const img=new Image();img.crossOrigin='anonymous';img.src=track.artwork;await img.decode();if(state.current!==track)return;const cv=document.createElement('canvas');cv.width=cv.height=20;const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,20,20);const data=ctx.getImageData(0,0,20,20).data;let x=0,y=0;for(let i=0;i<data.length;i+=4){const r=data[i]/255,g=data[i+1]/255,b=data[i+2]/255,max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;let h=0;if(d>.08){if(max===r)h=((g-b)/d+6)%6/6;else if(max===g)h=((b-r)/d+2)/6;else h=((r-g)/d+4)/6}x+=Math.cos(h*2*Math.PI)*d;y+=Math.sin(h*2*Math.PI)*d}if(x||y)state.artworkHue=(Math.atan2(y,x)/(Math.PI*2)+1)%1}catch{/* third-party artwork might be CORS protected; deterministic fallback */}}
 let lyricsAIAutoSession=false;
@@ -582,7 +606,7 @@ function mediaList(tracks,context){
    :context==='playlist'
    ? '<button data-action="enqueue"'+attrs+' aria-label="Enfileirar '+label+'">'+svg('plus')+'</button><button data-action="playlist-remove"'+attrs+' aria-label="Remover '+label+' da playlist">×</button>'
    : '<button data-action="enqueue"'+attrs+' aria-label="Enfileirar '+label+'">'+svg('plus')+'</button><button data-action="playlist-add"'+attrs+' aria-label="Salvar '+label+' na playlist">♫+</button>';
-  return '<div class="media-item"><img src="'+safe(tr.artwork||icon)+'" alt="" loading="lazy" /><div class="media-text"><strong>'+label+'</strong><small>'+safe(displayArtist(tr))+' · '+source+'</small></div>'+play+actions+'</div>';
+  return '<div class="media-item"><img src="'+safe(artworkCandidates(tr.artwork||icon,{pixels:artPixels('thumb')})[0]||icon)+'" data-original-art="'+safe(tr.artwork||icon)+'" alt="" loading="lazy" decoding="async" /><div class="media-text"><strong>'+label+'</strong><small>'+safe(displayArtist(tr))+' · '+source+'</small></div>'+play+actions+'</div>';
  }).join('')+'</div>';
 }
 const visualTile=(name)=>`<button class="visual-choice ${state.theme===name?'active':''}" data-theme="${safe(name)}"><i class="swatch" style="--swatch-a:${PALETTES[name]?.[0]||'#000'};--swatch-b:${PALETTES[name]?.[1]||'#444'};--swatch-c:${PALETTES[name]?.[2]||'#aaa'}"></i><strong>${safe(name)}</strong></button>`;
@@ -826,6 +850,19 @@ $('#background-button').addEventListener('click',()=>openSheet('background'));
 $('#search-toggle').addEventListener('click',()=>state.sheet==='display'?closeSheet():openSheet('display'));
 $('#omnibox-toggle').addEventListener('click',()=>OMNIBOX_TABS.includes(state.sheet)?closeSheet():openSheet(OMNIBOX_TABS.includes(state.omniboxTab)?state.omniboxTab:'search'));
 $('#more-button').addEventListener('click',()=>openSheet('more'));
+$('#fullscreen-button').addEventListener('click',()=>{void fullscreen.toggle()});
+$('#karaoke-stage').addEventListener('click',e=>{if(e.target.closest('#karaoke-stage-fullscreen'))void fullscreen.toggle()});
+$('#sheet-content').addEventListener('error',e=>{
+ const image=e.target;if(image?.tagName!=='IMG'||!image.matches('[data-original-art]'))return;
+ const original=image.dataset.originalArt,previous=image.getAttribute('src');
+ image.dataset.originalArt='';
+ image.src=previous!==original?original:icon;
+},true);
+let artworkViewportTimer=null;
+window.addEventListener('resize',()=>{
+ clearTimeout(artworkViewportTimer);
+ artworkViewportTimer=setTimeout(()=>{lastCoverArt='';lastSurfaceArt='';lastBackgroundArt='';updatePlayer();},350);
+});
 $('#performance-button').addEventListener('click',()=>{if(state.sheet)closeSheet();toggleModule('performance')});
 $('#music-toggle-button').addEventListener('click',()=>{if(state.sheet)closeSheet();toggleModule('controls')});
 $('#share-button').addEventListener('click',()=>{if(state.sheet)closeSheet();toggleModule('export')});
