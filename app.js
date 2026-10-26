@@ -75,6 +75,7 @@ const karaokeStage=new KaraokeStage({
   synced:state.lyricsSynced,status:state.lyricsStatus,style:state.lyricStyle}),
  onNotify:message=>toast(message),
  onMicConflict:()=>state.micRecorder?.state==='recording',
+ onPlayPause:()=>{if(state.playing)pause();else void play()},
  onStyle:id=>{
   if(!id){karaokeStage.close();openSheet('lyric-style');return}
   const style=resolveLyricStyle(id);
