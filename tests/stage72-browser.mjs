@@ -578,7 +578,7 @@ const artworkSizes=await bleed.evaluate(()=>{
   stage:getComputedStyle(stage).objectFit};
 });
 assert.equal(artworkSizes.photo,'cover');
-assert.equal(artworkSizes.player,'cover');
+assert.ok(artworkSizes.player.split(',').every(size=>size.trim()==='cover'),artworkSizes.player);
 assert.equal(artworkSizes.stage,'cover');
 assert.deepEqual(bleedErrors,[]);
 await bleed.close();
