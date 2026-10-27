@@ -605,7 +605,15 @@ for(const command of ['queue-play','queue-shuffle','smart-refresh'])
  assert.equal(await tastePage.locator('[data-command="'+command+'"]').isDisabled(),true);
 await tastePage.locator('[data-omnibox-tab="search"]').click();
 assert.match(await tastePage.locator('.section-head').first().innerText(),/para você/i);
-assert.deepEqual(tasteErrors,[],'Automatic queue/Omnibox must not throw');
+await tastePage.locator('#close-sheet').click();
+await tastePage.locator('#more-button').click();
+assert.equal(await tastePage.locator('[data-command="go-playlists"]').count(),1,
+ 'Saved playlist management is tucked away in More, not lost');
+await tastePage.locator('[data-command="go-playlists"]').click();
+assert.match(await tastePage.locator('#sheet-title').innerText(),/Playlists/);
+assert.equal(await tastePage.locator('#smart-playlist-select').count(),1);
+assert.equal(await tastePage.locator('[data-command="playlist-create"]').count(),1);
+assert.deepEqual(tasteErrors,[],'Automatic queue/Omnibox/Playlists must not throw');
 await tastePage.close();
 
 // GNARLY 2: manual material/color lock, independent material and experience
