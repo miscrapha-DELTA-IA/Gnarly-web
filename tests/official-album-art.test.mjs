@@ -66,7 +66,32 @@ test('album master flows into background, player, karaoke and visible rows witho
  assert.match(app,/applyOfficialArtwork\(track,official\)/);
  assert.match(app,/data-art-context/);
  assert.match(metadata,/googleusercontent/);
- assert.match(app,/asset\.width<800\|\|asset\.height<800/);
+ assert.match(app,/fullScreen\?900:460/);
+ assert.match(app,/backgroundArtwork=official\.asset\.url/);
  assert.doesNotMatch(app,/track\.url=official/);
  assert.doesNotMatch(app,/track\.source=official/);
+});
+
+test('collaborative credits from Swift catalog do not block high-resolution artwork',()=>{
+ const track={title:'Luv monëy',artist:'Yeat, Lancey Foux',duration:214,album:''};
+ const a=[{wrapperType:'track',trackName:'Luv money (feat. Lancey Foux)',artistName:'Yeat & Lancey Foux',
+  collectionName:'Official Release',trackTimeMillis:214000,
+  artworkUrl100:'https://is1-ssl.mzstatic.com/image/thumb/Music1/collab/100x100bb.jpg'}];
+ const match=matchAppleCover(track,a);
+ assert.ok(match);
+ assert.equal(match.source,'apple');
+ assert.match(match.artwork,/2400x2400bb/);
+ assert.equal(matchAppleCover(track,[{...a[0],artistName:'Other Artist'}]),null);
+ assert.equal(matchAppleCover(track,[{...a[0],trackTimeMillis:280000}]),null);
+});
+test('Swift-style cover remains edge-to-edge even when an individual catalog has no HD source',()=>{
+ const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ assert.match(css,/#gnarly-background\.cover-bg \.photo-background/);
+ assert.match(css,/background-size:cover!important/);
+ assert.match(css,/blur\(15px\)/);
+ assert.match(css,/inset:-22px/);
+ assert.match(app,/state\.current\?\.backgroundArtwork\|\|state\.current\?\.artwork/);
+ assert.match(app,/Math\.max\(2400,artPixels\('background'\)\)/);
+ assert.doesNotMatch(css,/background-size:min\(91vw/);
 });
