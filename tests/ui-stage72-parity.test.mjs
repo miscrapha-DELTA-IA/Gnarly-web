@@ -10,7 +10,7 @@ test('Stage72 home has a preset-free player and a retractable Omnibox below it',
  assert.match(html,/id="player-section"/);
  assert.match(html,/id="omnibox-toggle"/);
  assert.ok(html.indexOf('id="omnibox-toggle"')>html.indexOf('id="player-section"'));
- assert.match(html,/id="search-toggle".*Toque: recolher ícones/);
+ assert.match(html,/id="search-toggle".*arraste/);
  assert.match(html,/id="more-button"/);
  assert.match(html,/id="record-button"/);
  assert.match(app,/if\(!state.current\)\{openSheet\('search'\)/);
