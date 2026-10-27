@@ -574,12 +574,42 @@ assert.equal(await quick.locator('#bottom-sheet').isVisible(),false);
 await quick.locator('#lyric-style-button').click();
 assert.equal(await quick.locator('#app-shell').getAttribute('data-lyric-style'),'art-magazine-cutout');
 assert.equal(await quick.locator('#bottom-sheet').isVisible(),false);
-await quick.locator('#lyric-style-button').dispatchEvent('pointerdown',{button:0,pointerType:'touch'});
-await quick.waitForTimeout(550);
-assert.equal(await quick.locator('#bottom-sheet').isVisible(),true,'Holding Aa opens manual font catalog');
+// Long hold no longer opens a sheet or native text-selection context menu.
+await quick.locator('#lyric-style-button').dispatchEvent('pointerdown',{button:0,pointerType:'touch',pointerId:16,clientX:25,clientY:17});
+await quick.waitForTimeout(540);
+assert.equal(await quick.locator('#bottom-sheet').isVisible(),false,'Holding Aa must not open text-selection/callout');
+assert.equal(await quick.locator('#lyric-style-button').evaluate(el=>el.dispatchEvent(new Event('selectstart',{bubbles:true,cancelable:true}))),false,'Safari selection must be prevented');
+await quick.locator('#lyric-style-button').dispatchEvent('pointerup',{button:0,pointerType:'touch',pointerId:16,clientX:25,clientY:17});
+// Swiping down must open curated Aa, palette, and lightning selectors.
+const swipeDown=async selector=>quick.locator(selector).evaluate(el=>{
+ const init={bubbles:true,cancelable:true,pointerType:'touch',pointerId:20,button:0,clientX:23};
+ el.dispatchEvent(new PointerEvent('pointerdown',{...init,clientY:12}));
+ el.dispatchEvent(new PointerEvent('pointermove',{...init,clientY:68}));
+ el.dispatchEvent(new PointerEvent('pointerup',{...init,clientY:72}));
+});
+await swipeDown('#lyric-style-button');
 assert.equal(await quick.locator('#sheet-title').innerText(),'Aa · Estilo de legenda');
-await quick.locator('#lyric-style-button').dispatchEvent('pointerup',{button:0,pointerType:'touch'});
 await quick.locator('#close-sheet').click();
+await swipeDown('#experience-button');
+assert.match(await quick.locator('#sheet-title').innerText(),/Experiência/i);
+await quick.locator('#close-sheet').click();
+await swipeDown('#theme-button');
+assert.match(await quick.locator('#sheet-title').innerText(),/Tema/i);
+await quick.locator('#close-sheet').click();
+// Palette changes must reach the GPU uniforms rather than only the button tint.
+const gpuColors=async()=>quick.evaluate(()=>{
+ const gl=document.querySelector('#fluid-canvas').getContext('webgl2');
+ const p=gl.getParameter(gl.CURRENT_PROGRAM);
+ if(!p)return null;
+ return ['dark','body','glow'].map(k=>Array.from(gl.getUniform(p,gl.getUniformLocation(p,'u_'+k))).map(v=>Math.round(v*1000)/1000));
+});
+await quick.waitForTimeout(100);
+const beforeColors=await gpuColors();
+await quick.locator('#theme-button').click();
+await quick.waitForTimeout(125);
+const afterColors=await gpuColors();
+assert.ok(beforeColors&&afterColors,'Real shader output must expose palette uniforms');
+assert.notDeepEqual(beforeColors,afterColors,'Palette tap must recolor the GPU wallpaper, not only CSS accents');
 assert.deepEqual(quickErrors,[]);
 await quick.close();
 
