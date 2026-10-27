@@ -5,6 +5,50 @@ const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,
 const errs=[],warnings=[];page.on('pageerror',x=>errs.push(x.message));page.on('console',x=>{if(x.type()==='warning'||x.type()==='error')warnings.push(x.text())});
 await page.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
 await page.waitForSelector('#omnibox-toggle');
+
+// The compact lyrics HUD must never translate the player when a new line
+// renders. iOS lyric typography must wrap, not ellipsize/clamp the stanza.
+const compactKaraoke=await page.evaluate(async()=>{
+ const hud=document.querySelector('#floating-lyrics');
+ const line=document.querySelector('#floating-line');
+ const slot=document.querySelector('#compact-karaoke-slot');
+ const player=document.querySelector('#player-section');
+ const {fitCompactLyricContent}=await import('./lib/compact-karaoke-layout.js');
+ const y=()=>player.getBoundingClientRect().top;
+ const initial=y(),reserved=slot.getBoundingClientRect().height;
+ hud.hidden=false;
+ line.textContent='We are the real rockstars';
+ fitCompactLyricContent(hud,line);
+ const short=y();
+ line.textContent='I want your body, I want your eyes, I want you to hold me all night long, until the sunrise and the colours are changing';
+ const fit=fitCompactLyricContent(hud,line);
+ const medium=y(),lineRect=line.getBoundingClientRect();
+ const readable=line.scrollHeight<=line.clientHeight+2;
+ line.textContent='This is an extremely long multi-line karaoke stanza with countless different words which should never vanish merely because the line extends beyond the natural karaoke view. '.repeat(9);
+ const extreme=fitCompactLyricContent(hud,line);
+ const long=y(),computed=getComputedStyle(line);
+ const scrollRange=line.scrollHeight-line.clientHeight;
+ line.scrollTop=scrollRange;
+ const canReadEnd=scrollRange>0&&line.scrollTop>0;
+ hud.hidden=true;
+ const cleared=y();
+ return {initial,short,medium,long,cleared,reserved,fit,extreme,readable,
+  canReadEnd,lineHeight:lineRect.height,scrollRange,
+  whiteSpace:computed.whiteSpace,textOverflow:computed.textOverflow,
+  overflowY:computed.overflowY};
+});
+for(const key of ['short','medium','long','cleared']){
+ assert.ok(Math.abs(compactKaraoke[key]-compactKaraoke.initial)<=1.5,
+  'Compact lyric '+key+' must not move the player: '+JSON.stringify(compactKaraoke));
+}
+assert.ok(compactKaraoke.reserved>=90,'Lyric slot reserves a stable height');
+assert.ok(compactKaraoke.readable,'Ordinary full stanza must fit without clipping: '+JSON.stringify(compactKaraoke));
+assert.equal(compactKaraoke.whiteSpace,'normal');
+assert.equal(compactKaraoke.textOverflow,'clip');
+assert.equal(compactKaraoke.overflowY,'auto');
+assert.ok(compactKaraoke.extreme.scrollable&&compactKaraoke.canReadEnd,
+ 'Very long lyrics must be independently scrollable instead of lost: '+JSON.stringify(compactKaraoke));
+
 assert.equal(await page.locator('#fullscreen-button').count(),1);
 assert.equal(await page.locator('#karaoke-stage-fullscreen').count(),1);
 assert.equal(await page.locator('#fullscreen-button').isVisible(),false,'Phone does not need desktop fullscreen shortcut');
