@@ -377,7 +377,13 @@ assert.ok(desk1.canvas.backingWidth>=2700&&desk1.canvas.backingHeight>=1600,'Ret
 assert.ok(desk1.player.x>=0&&desk1.player.right<=1440,'Desktop player should fit inside viewport');
 assert.ok(desk1.scrollWidth<=1441,'PC layout should not cause horizontal page scrolling');
 await desktop.setViewportSize({width:1920,height:1080});
-await desktop.waitForFunction(()=>{const c=document.querySelector('#fluid-canvas');return Math.abs(c.getBoundingClientRect().width-1920)<2&&c.width>=1800;},null,{timeout:12000});
+await desktop.waitForFunction(()=>{
+ const c=document.querySelector('#fluid-canvas'),shell=document.querySelector('#app-shell');
+ const r=c.getBoundingClientRect(),root=shell.getBoundingClientRect();
+ return Math.abs(r.width-1920)<2&&Math.abs(r.height-1080)<2&&
+  Math.abs(root.width-1920)<2&&root.height>=1080&&
+  c.width>=1800&&c.height>=1000;
+},null,{timeout:15000});
 const desk2=await inspectDesktop(1920,1080);
 assert.ok(Math.abs(desk2.root.width-1920)<2&&Math.abs(desk2.root.height-1080)<2,'Canvas must resize to fill 1920 × 1080');
 assert.ok(desk2.canvas.backingWidth>=1800&&desk2.canvas.backingHeight>=1000,'Full HD frame must retain crisp backing');
