@@ -6,7 +6,7 @@ const track={id:'youtube:AAAAAAAAAAA',title:'PENDULUM',artist:'Lancey Foux',sour
 
 test('native queue exposes exactly three actions with smart recommendations on',()=>{
  const html=renderSmartQueuePanel({queueCount:7,anchor:track,status:'',busy:false,playing:false});
- assert.equal((html.match(/class="native-queue-action/g)||[]).length,3,html);
+ assert.equal((html.match(/<button[^>]*class="native-queue-action(?: primary)?"/g)||[]).length,3,html);
  for(const cmd of ['queue-play','queue-shuffle','smart-refresh'])
   assert.match(html,new RegExp('data-command="'+cmd+'"'));
  assert.match(html,/Mix inteligente/);
