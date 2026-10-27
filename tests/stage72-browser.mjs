@@ -30,15 +30,18 @@ const compactKaraoke=await page.evaluate(async()=>{
  const scrollRange=line.scrollHeight-line.clientHeight;
  line.scrollTop=scrollRange;
  const canReadEnd=scrollRange>0&&line.scrollTop>0;
+ // Measure the visible stanza BEFORE hiding the synthetic no-song HUD.
+ const metrics={chars:line.textContent.length,scrollHeight:line.scrollHeight,
+  clientHeight:line.clientHeight,rectHeight:line.getBoundingClientRect().height,
+  computedFont:computed.fontSize,computedDisplay:computed.display,
+  scrollWidth:line.scrollWidth,clientWidth:line.clientWidth,
+  lineSample:line.innerText.slice(0,55),hudDisplay:getComputedStyle(hud).display,
+  hudHidden:hud.hidden,hiddenAttribute:hud.hasAttribute('hidden')};
  hud.hidden=true;
  const cleared=y();
  return {initial,short,medium,long,cleared,reserved,fit,extreme,readable,
   canReadEnd,lineHeight:lineRect.height,scrollRange,
-  chars:line.textContent.length,scrollHeight:line.scrollHeight,clientHeight:line.clientHeight,
-  rectHeight:line.getBoundingClientRect().height,computedFont:computed.fontSize,
-  computedDisplay:computed.display,scrollWidth:line.scrollWidth,clientWidth:line.clientWidth,
-  lineSample:line.innerText.slice(0,55),hudDisplay:getComputedStyle(hud).display,
-  whiteSpace:computed.whiteSpace,textOverflow:computed.textOverflow,
+  ...metrics,whiteSpace:computed.whiteSpace,textOverflow:computed.textOverflow,
   overflowY:computed.overflowY};
 });
 for(const key of ['short','medium','long','cleared']){
