@@ -1266,8 +1266,8 @@ $('#add-button').addEventListener('click',()=>$('#audio-import').click());
 $('#library-button').addEventListener('click',()=>openSheet('library'));
 $('#favorite-button').addEventListener('click',toggleFavorite);
 $('#controls-button').addEventListener('click',()=>openSheet('controls'));
-// Tap: instantly apply next visual / typeface. Hold ~0.5 s, right-click or
-// Shift+Enter: open the full curated library for a precise manual selection.
+// Tap: instantly cycle. Swipe down, desktop right-click or Shift+Enter:
+// open the curated selector without Safari long-touch text selection.
 const QUICK_THEMES=[...CLASSIC_THEMES,...NATIVE_COLOR_THEMES,...CREATIVE_COLOR_THEMES,...MATERIAL_THEMES,...GNARLY_MODES];
 const QUICK_EXPERIENCES=EXPERIENCES.map(x=>x.id);
 // While GNARLY 2 is active, selecting other colors/materials edits its anchor
@@ -1281,9 +1281,9 @@ function selectVisualTheme(next){
    toast('GNARLY 2 · material fixado: '+next);
   }else{
    state.previousTheme=next;setSetting('previousTheme',next);
-   if(state.theme!=='GNARLY 2'){
-    state.gnarlyAccentEnabled=true;setSetting('gnarlyAccentEnabled','yes');
-   }
+   // Manual reference must recolor GNARLY 2 too, without freezing its
+   // five evolving stages or replacing its album-first identity.
+   state.gnarlyAccentEnabled=true;setSetting('gnarlyAccentEnabled','yes');
    toast(state.theme+' · paleta de referência: '+next);
   }
  }else{
@@ -1291,6 +1291,12 @@ function selectVisualTheme(next){
    state.previousTheme=state.theme;setSetting('previousTheme',state.previousTheme);
   }
   state.theme=next;setSetting('theme',next);
+ }
+ // Selecting a palette must affect the actual animated background, not only
+ // the interface. Preserve custom user photos unless removed explicitly.
+ if(state.backgroundMode==='cover'){
+  state.backgroundMode='visual';setSetting('backgroundMode','visual');
+  applyBackground(); // Unpauses the GPU shader previously frozen by cover.
  }
  updateBadges();renderActiveSurfaces();
 }
