@@ -29,29 +29,51 @@ function mockButton(){
  trigger(n,data={}){return handlers.get(n)?.({button:0,clientX:20,clientY:20,
   preventDefault(){},stopPropagation(){},...data})},handlers};
 }
-test('eye tap collapses icons, hold opens display once without also tapping',()=>{
- const button=mockButton();
- let tap=0,hold=0,nextTimer=null,removed=false;
+test('eye tap toggles independently of horizontal swipe and its ghost click',()=>{
+ const button=mockButton();let taps=0;const horizontal=[];
  const dispose=attachEyeGestures(button,{
-  tap:()=>tap++,hold:()=>hold++,delay:510,
-  setTimer:fn=>{nextTimer=fn;return 1},
-  clearTimer:()=>{removed=true;nextTimer=null}
+  tap:()=>taps++,swipeHorizontal:dir=>horizontal.push(dir)
  });
  button.trigger('pointerdown');button.trigger('pointerup');button.trigger('click');
- assert.equal(tap,1);assert.equal(hold,0);
- button.trigger('pointerdown');nextTimer();button.trigger('pointerup');button.trigger('click');
- assert.equal(tap,1);assert.equal(hold,1);
- button.trigger('contextmenu');
- assert.equal(hold,2,'manual right-click opens display independently');
- dispose();
- assert.equal(button.handlers.size,0);
+ assert.equal(taps,1);
+ button.trigger('pointerdown',{clientX:75,clientY:25});
+ button.trigger('pointermove',{clientX:20,clientY:25,cancelable:true});
+ button.trigger('pointerup',{clientX:20,clientY:25});
+ button.trigger('click');
+ assert.deepEqual(horizontal,['left']);assert.equal(taps,1);
+ button.trigger('pointerdown',{clientX:15,clientY:25});
+ button.trigger('pointerup',{clientX:70,clientY:25});
+ button.trigger('click');
+ assert.deepEqual(horizontal,['left','right']);assert.equal(taps,1);
+ button.trigger('pointerdown');button.trigger('pointerup');button.trigger('click');
+ assert.equal(taps,2,'next real tap must not be swallowed');
+ dispose();assert.equal(button.handlers.size,0);
 });
-test('moving finger cancels long press without invoking display menu',()=>{
- const button=mockButton();let hold=0,timer=null;
- attachEyeGestures(button,{hold:()=>hold++,setTimer:fn=>(timer=fn,1),clearTimer:()=>{timer=null}});
+test('vertical swipes open/dismiss display; long hold and iOS callout never open menu',()=>{
+ const button=mockButton();let contexts=0;const vertical=[];
+ attachEyeGestures(button,{swipeVertical:d=>vertical.push(d),context:()=>contexts++});
+ button.trigger('pointerdown',{pointerType:'touch',clientX:20,clientY:15});
+ button.trigger('pointerup',{pointerType:'touch',clientX:20,clientY:65});
+ button.trigger('click');assert.deepEqual(vertical,['down']);
+ button.trigger('pointerdown',{pointerType:'touch',clientX:20,clientY:72});
+ button.trigger('pointerup',{pointerType:'touch',clientX:20,clientY:12});
+ button.trigger('click');assert.deepEqual(vertical,['down','up']);
+ button.trigger('contextmenu',{pointerType:'touch',button:0});
+ assert.equal(contexts,0,'Safari long press must not launch display');
+ button.trigger('contextmenu',{pointerType:'mouse',button:2});
+ assert.equal(contexts,1,'desktop right-click still opens display');
+});
+test('diagonal swipe does not trigger accidental action; keyboard arrows stay accessible',()=>{
+ const button=mockButton();const horizontal=[],vertical=[];let taps=0,blocked=false;
+ attachEyeGestures(button,{tap:()=>taps++,swipeHorizontal:d=>horizontal.push(d),
+  swipeVertical:d=>vertical.push(d)});
  button.trigger('pointerdown',{clientX:10,clientY:10});
- button.trigger('pointermove',{clientX:30,clientY:30});
- assert.equal(timer,null);assert.equal(hold,0);
+ button.trigger('pointerup',{clientX:70,clientY:62});button.trigger('click');
+ assert.equal(taps,0);assert.equal(vertical.length,0);assert.equal(horizontal.length,0);
+ button.trigger('keydown',{key:'ArrowDown',preventDefault(){blocked=true},stopPropagation(){}});
+ assert.deepEqual(vertical,['down']);assert.equal(blocked,true);
+ button.trigger('keydown',{key:'ArrowLeft'});
+ assert.deepEqual(horizontal,['left']);
 });
 test('mobile layout preserves full theme name without overlapping shortcuts',()=>{
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
@@ -65,7 +87,14 @@ test('mobile layout preserves full theme name without overlapping shortcuts',()=
  assert.match(app,/applyResponsiveLayout\(\)/);
  assert.match(app,/themeAccent\(state\.theme,PALETTES,state\.previousTheme\)/);
  assert.match(app,/attachEyeGestures\(\$\('#search-toggle'\)/);
+ assert.match(app,/swipeHorizontal:direction/);
+ assert.match(app,/swipeVertical:direction/);
  assert.match(app,/data-device-layout|dataset\.deviceLayout/);
  assert.ok(app.includes("app.dataset.deviceLayout==='phone'"));
+ const moduleCSS=readFileSync(new URL('../module-dock.css',import.meta.url),'utf8');
+ assert.match(moduleCSS,/touch-action:none!important/);
+ assert.match(moduleCSS,/-webkit-user-select:none!important/);
+ assert.match(moduleCSS,/\.brand-line\{[\s\S]*?margin-top:clamp\(18px/);
+ assert.match(moduleCSS,/linear-gradient\(155deg,rgba\(28,39,57/);
  assert.equal(OFFICIAL_SUPPORT_URL,'https://apoia.se/gnarlyapp');
 });
