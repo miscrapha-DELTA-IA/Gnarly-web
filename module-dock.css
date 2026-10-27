@@ -163,8 +163,21 @@ body.gnarly-immersive{min-height:100dvh}
 .gnarly-background .photo-background{background-position:center;background-size:cover;background-repeat:no-repeat;image-rendering:auto}
 @media(max-width:380px){.app-shell .fullscreen-toggle{width:32px;height:36px;flex-basis:32px;min-width:32px}.app-shell .fullscreen-toggle [data-fullscreen-glyph]{font-size:20px}.app-shell .quick-actions{gap:4px}}
 
-/* One-tap GNARLY layer cycling, hold for the full manual selector. */
-#theme-button,#experience-button,#lyric-style-button{touch-action:manipulation;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
+/* One tap cycles. Downward drag selects precisely, without Safari native
+ * long-press text selection, loupe or callout. Scope capture to these three
+ * controls only; other scrollable app views keep normal touch behavior. */
+#theme-button,#experience-button,#lyric-style-button{
+ touch-action:none!important;
+ -webkit-touch-callout:none!important;
+ -webkit-user-select:none!important;user-select:none!important;
+ -webkit-tap-highlight-color:transparent;
+ overscroll-behavior:contain;
+}
+#theme-button *,#experience-button *,#lyric-style-button *{
+ -webkit-touch-callout:none!important;
+ -webkit-user-select:none!important;user-select:none!important;
+ pointer-events:none;
+}
 
 /* Listening Intelligence — understated memory indicators in the queue drawer */
 .smart-taste-insight{display:flex;align-items:center;flex-wrap:wrap;gap:7px 12px;
