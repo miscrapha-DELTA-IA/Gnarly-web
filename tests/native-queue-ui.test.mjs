@@ -42,6 +42,9 @@ test('automatic queue keeps manual songs and uses the exact audio source, withou
  assert.match(app,/case 'queue-play'/);
  assert.match(app,/case 'smart-refresh'/);
  assert.match(app,/class="native-queue-track"/);
+ assert.match(app,/case 'playlists':\{/);
+ assert.match(app,/case 'go-playlists':openSheet\('playlists'\)/);
+ assert.match(app,/btn\('Playlists','go-playlists','alt'\)/);
  assert.match(app,/data-original-art/);
  assert.doesNotMatch(app,/mediaList\(playlistStore\.tracks\(selectedPlaylist\),'playlist'\)\+/);
  assert.match(css,/\.native-queue-actions\{[\s\S]*?grid-template-columns:repeat\(3/);
