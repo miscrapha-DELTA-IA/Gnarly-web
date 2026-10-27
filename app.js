@@ -9,6 +9,7 @@ import {autoLyrics,cachedAutoLyrics,prefetchAutoLyrics} from './lib/lyrics-auto.
 import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
 import {trackAudioURL,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
 import {AudioDeliveryRecovery,inspectPlaybackLimit,playbackLimitMessage} from './lib/audio-delivery.js';
+import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-library.js';
 import {createMediaSessionController,configureBrowserAudioSession} from './lib/media-session-controller.js';
 import {appendUnique,commitPlaying,moveTrack,removeTrack,shuffleUpcoming,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
 import {ListeningMemory,MEMORY_KEY,recommendTracks,retainManualQueue,markAutoTracks,sameRecording,discoverySuggestions} from './lib/listening-intelligence.js';
@@ -44,6 +45,12 @@ const pads=new PerformancePads(engine);
 const midiAnalysis={busy:false,status:'MIDI estimado, sem alterar a reprodução.',notes:[],duration:0,harmony:null,abort:null,trackId:null,revision:0};
 function midiView(){return {...pads.snapshot(),intelligence:{...midiAnalysis.harmony,notes:midiAnalysis.notes.length,ready:midiAnalysis.notes.length>0,busy:midiAnalysis.busy,status:midiAnalysis.status}}}
 const audioDelivery=new AudioDeliveryRecovery();
+const offlineLibrary=createOfflineLibrary();
+const offlineURLs=new Map(); // Persistent track IDs mapped to live blob URLs.
+const offlinePending=new Set();
+let offlineLoaded=false,offlineStatus='Preparando biblioteca offline…';
+const isOffline=id=>offlineURLs.has(id);
+const offlineAudio=id=>offlineURLs.get(id)||null;
 let recoveryOperation=null;
 const icon='/assets/gnarly-icon.png';
 const artEnvironment=()=>({
@@ -327,7 +334,7 @@ function updateBadges(){
 // Same media source as Stage72's AudioDownloadManager: Render /download.
 // Do not start an external player or load a file picker as an implicit fallback.
 function prepareNativeAudio(track,attempt=0){
- const url=trackAudioURL(track,{attempt});
+ const url=offlineAudio(track.id)||trackAudioURL(track,{attempt});
  if(!url)return false;
  // Only start the native extraction when the user requests Play; once started,
  // let the media element buffer ahead instead of forcing metadata-only mode.
@@ -651,9 +658,18 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
  state.lyricStyle=lyricFonts.selected(track).style;applyLyricStyle(app,state.lyricStyle);void loadLyricTypeface(designFont(state.lyricStyle));
  state.artworkHue=.58;state.playbackError='';state.audioState='idle';
  if(track.source==='youtube'){
-   // Deferred until Play: avoids wasting a Render extraction on every tapped row.
-   audio.removeAttribute('src');audio.preload='none';audio.load();
- }else{audio.preload='metadata';audio.src=track.url;audio.load();}
+   const cached=offlineAudio(track.id);
+   if(cached){audio.preload='auto';audio.src=cached;engine.restoreSpeed();}
+   else{
+    // Play attaches the canonical URL once. Do not call load() on an empty
+    // audio element and then immediately trigger a second resource selection.
+    audio.removeAttribute('src');audio.preload='none';
+   }
+ }else{
+  audio.preload='auto';
+  audio.src=offlineAudio(track.id)||track.url;
+  engine.restoreSpeed();
+ }
  // The musical preset belongs to the session, not the selected track.
  engine.restoreSpeed();
  reportAudioStatus('');state.lastLyric=-2;updatePlayer();void loadArtworkHue(track);void enrichOfficialAlbumArt(track);void loadAutoLyrics(track);prefetchNextLyrics();
@@ -729,7 +745,7 @@ async function play(){
  state.userPaused=false;
  if(track.source==='youtube'){
   if(!prepareNativeAudio(track,audioDelivery.attempt)){reportAudioError('ID de música inválido. Escolha outro resultado.');return;}
-  state.audioState='loading';reportAudioStatus('Conectando ao backend GNARLY · preparando áudio…');
+  state.audioState='loading';reportAudioStatus(isOffline(track.id)?'Abrindo música offline…':'Conectando ao GNARLY · preparando áudio…');
  }
  try{
   // Safari/WebKit: request the native playback category *before* building
@@ -744,8 +760,8 @@ async function play(){
   state.playing=true;state.audioState='playing';state.playbackError='';reportAudioStatus('');updatePlayer();
  }catch(e){
   if(state.current!==track||state.userPaused)return;
-  if(track.source==='youtube'){await recoverNativeAudio(track,e);}
-  else{state.playing=false;updatePlayer();reportAudioError('Falha ao reproduzir este arquivo de áudio.');}
+  if(track.source==='youtube'&&!isOffline(track.id)){await recoverNativeAudio(track,e);}
+  else{state.playing=false;updatePlayer();reportAudioError('Falha ao reproduzir a cópia local. Remova-a e baixe novamente.');}
   console.warn('GNARLY WEB audio play:',e);
  }
 }
@@ -1494,7 +1510,8 @@ audio.addEventListener('play',()=>{if(stems.ready)void stems.play();state.playin
  void enrichOfficialAlbumArt(track);
 });audio.addEventListener('seeked',()=>{stems.seek();karaokeStage.tick(true)});audio.addEventListener('ended',()=>{if(state.current&&lastRecordedSelection===playbackSelection)listeningMemory.record('finish',state.current);karaokeStage.scorer.finish();karaokeStage.updateScore();state.queue.length?next():pause()});audio.addEventListener('waiting',()=>{if(state.current?.source==='youtube')reportAudioStatus('Carregando áudio…')});audio.addEventListener('playing',()=>{engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(pendingQueueId&&pendingQueueId===state.current?.id){state.queue=commitPlaying(state.queue,pendingQueueId);pendingQueueId=null;updatePlayer();if(state.sheet==='queue')renderSheet()}if(playbackStartedAt){console.debug('GNARLY startup ms',Math.round(performance.now()-playbackStartedAt));playbackStartedAt=0}void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!state.current||state.userPaused)return;state.playing=false;updatePlayer();if(state.current.source==='youtube'){
  // Ignore a late error from the previous source after another Omnibox selection.
- if(audio.hasAttribute('src')&&audio.src===trackAudioURL(state.current,{attempt:audioDelivery.attempt}))void recoverNativeAudio(state.current);
+ if(!isOffline(state.current.id)&&audio.hasAttribute('src')&&audio.src===trackAudioURL(state.current,{attempt:audioDelivery.attempt}))void recoverNativeAudio(state.current);
+  else if(isOffline(state.current.id))reportAudioError('Áudio offline indisponível. Remova e baixe novamente.');
  }else reportAudioError('Não foi possível carregar o áudio.');});
 // Source swaps can trigger an asynchronous browser reset to 1x. Repair only
 // unexpected rate changes: a user preset/slider has already changed engine.speed.
