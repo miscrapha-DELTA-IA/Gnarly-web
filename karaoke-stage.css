@@ -222,8 +222,12 @@ html.karaoke-stage-open,html.karaoke-stage-open body{overflow:hidden;overscroll-
   display:none!important;
 }
 .app-shell .compact-karaoke-slot #floating-line{
-  display:block;width:100%;min-width:0;max-width:100%;
-  height:100%;max-height:100%;min-height:0;flex:1 1 auto;
+  /* Absolutely bound to the reserved slot: percentages inside the flex row
+     allowed tall stanzas to enlarge their own scroll viewport on Safari. */
+  position:absolute;top:8px;bottom:8px;
+  left:clamp(10px,2.5vw,20px);right:clamp(41px,7.5vw,55px);
+  display:block;width:auto;min-width:0;max-width:none;
+  height:auto;max-height:none!important;min-height:0;
   align-content:safe center;
   overflow-x:hidden;overflow-y:auto;
   white-space:normal!important;text-overflow:clip!important;
@@ -247,9 +251,11 @@ html.karaoke-stage-open,html.karaoke-stage-open body{overflow:hidden;overscroll-
    flex-basis:92px;height:92px;margin-top:5px;
  }
  .app-shell .compact-karaoke-slot .floating-lyrics{padding-block:3px}
+ .app-shell .compact-karaoke-slot #floating-line{top:3px;bottom:3px}
 }
 @media(max-width:360px){
  .app-shell .compact-karaoke-slot .floating-lyrics{
    padding-right:39px;padding-left:4px;
  }
+ .app-shell .compact-karaoke-slot #floating-line{right:39px;left:4px}
 }
