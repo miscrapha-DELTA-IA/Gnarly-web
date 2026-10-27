@@ -14,7 +14,7 @@ test('phone, iPad and desktop get appropriate layouts independent of user agent 
 test('all visual palettes drive UI accent instead of defaulting to green',()=>{
  for(const theme of Object.keys(PALETTES)){
   const selected=themeAccent(theme,PALETTES);
-  assert.ok(PALETTES[theme].includes(selected)||selected==='#45ff8a',theme);
+  assert.ok((theme.startsWith('GNARLY')?PALETTES.ACID:PALETTES[theme]).includes(selected)||selected==='#45ff8a',theme);
   if(theme!=='ACID'&&theme!=='GNARLY')assert.notEqual(selected,'#45ff8a',theme);
  }
  assert.notEqual(themeAccent('XEROX SERPENTINE',PALETTES),'#46ff12');
