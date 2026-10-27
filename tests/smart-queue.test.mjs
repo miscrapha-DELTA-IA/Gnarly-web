@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {appendUnique,commitPlaying,moveTrack,removeTrack,radioQuery,chooseSmartTracks,PlaylistLibrary,AudioConnectionWarmup,effectiveMode} from '../lib/smart-queue.js';
+import {appendUnique,commitPlaying,moveTrack,removeTrack,shuffleUpcoming,radioQuery,chooseSmartTracks,PlaylistLibrary,AudioConnectionWarmup,effectiveMode} from '../lib/smart-queue.js';
 const tr=(id,artist='AURORA',album='All My Demons')=>({id:'youtube:'+id,videoId:id,source:'youtube',title:'Song '+id,artist,album,duration:220,artwork:'https://example.com/a.jpg'});
 const a=tr('AAAAAAAAAAA'),b=tr('BBBBBBBBBBB'),c=tr('CCCCCCCCCCC'),d=tr('DDDDDDDDDDD','Another Artist','Other');
 test('queue keeps manually selected order, blocks duplicates and current song',()=>{
@@ -9,6 +9,15 @@ test('queue keeps manually selected order, blocks duplicates and current song',(
  assert.deepEqual(q.map(x=>x.id),[a.id,b.id,c.id,d.id],'immutable until confirmed playback');
  assert.deepEqual(moveTrack(q,c.id,-1).map(x=>x.id),[a.id,c.id,b.id,d.id]);
  assert.deepEqual(removeTrack(q,b.id).map(x=>x.id),[a.id,c.id,d.id]);
+});
+test('shuffle randomizes only upcoming tracks and keeps audio identities/provenance intact',()=>{
+ const source=[a,b,c,d],after=shuffleUpcoming(source,()=>0);
+ assert.deepEqual(after.map(x=>x.id),[b.id,c.id,d.id,a.id]);
+ assert.deepEqual(source.map(x=>x.id),[a.id,b.id,c.id,d.id]);
+ assert.equal(shuffleUpcoming([],()=>0).length,0);
+ assert.deepEqual(shuffleUpcoming([a],()=>0),[a]);
+ const auto={...c,smartAuto:true};
+ assert.equal(shuffleUpcoming([a,auto],()=>0)[0].smartAuto,true);
 });
 test('no catalog lookup for missing/unverified artist or album',()=>{
  assert.equal(radioQuery('artist',{...a,artist:'YouTube Music'}),'');
