@@ -687,3 +687,20 @@ body{position:relative;min-height:100dvh;background:#05090a}
 /* Use animated background until an actual cover has decoded. */
 #gnarly-background.cover-bg:not(.cover-art-ready) #fluid-canvas{opacity:1}
 #gnarly-background.cover-bg.cover-art-ready #fluid-canvas{opacity:0}
+
+/* Swift CoverFill parity: original image scales to fill the entire viewport,
+   with intentional 15pt-equivalent blur. The image stays edge-to-edge even
+   when the provider has no verified album master. Custom uploaded photos and
+   animated themes remain untouched. */
+#gnarly-background.cover-bg .photo-background {
+  inset:-22px;
+  width:calc(100% + 44px);
+  height:calc(100% + 44px);
+  background-size:cover!important;
+  background-position:center center!important;
+  filter:blur(15px) saturate(1.06);
+  -webkit-filter:blur(15px) saturate(1.06);
+}
+#gnarly-background.cover-bg .visual-dim {
+  background:linear-gradient(180deg,rgba(0,0,0,.27),rgba(0,0,0,.17) 42%,rgba(0,0,0,.3));
+}

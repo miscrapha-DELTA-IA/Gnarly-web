@@ -47,15 +47,12 @@ test('Studio mode opt-in remains possible before first AudioContext has claimed 
  assert.equal(engine.setBackgroundPriority(true),true);
  assert.equal(engine.nativeTransport,true);
 });
-test('visible iOS controls are explicit about limited DSP and can return to Studio',()=>{
+test('iOS background audio is automatic with no switch in the music panel',()=>{
  const native=renderMusicPanel({backgroundAudioSupported:true,backgroundAudioEnabled:true,tab:'speedPitch'});
- const studio=renderMusicPanel({backgroundAudioSupported:true,backgroundAudioEnabled:false,tab:'speedPitch'});
- assert.match(native,/Áudio com tela bloqueada/);
- assert.match(native,/data-command="toggle-background-transport"/);
+ assert.doesNotMatch(native,/data-command="toggle-background-transport"/);
+ assert.doesNotMatch(native,/Áudio com tela bloqueada<\/strong>/);
  assert.match(native,/REVERB/);
  assert.match(native,/disabled title="Ative Áudio de estúdio para usar este efeito"/);
- assert.match(native,/Ao bloquear|bloquear|tela bloqueada/);
- assert.doesNotMatch(studio,/disabled title="Ative Áudio de estúdio para usar este efeito"/);
  const desktop=renderMusicPanel({backgroundAudioSupported:false,backgroundAudioEnabled:false});
  assert.doesNotMatch(desktop,/data-command="toggle-background-transport"/);
 });
@@ -69,8 +66,8 @@ test('one native player and an optional effects graph preserve full existing con
  assert.match(engine,/this.nativeTransport\?null:ctx\.createMediaElementSource\(this\.audio\)/);
  assert.match(stems,/resume\(\{requireGraph:true\}\)/);
  assert.match(pads,/resume\(\{requireGraph:true\}\)/);
- assert.match(app,/engine\.setBackgroundPriority\(getSetting\('backgroundAudio','yes'\)!=='no'\)/);
- assert.match(app,/case 'toggle-background-transport'/);
+ assert.match(app,/engine\.setBackgroundPriority\(true\)/);
+ assert.doesNotMatch(app,/case 'toggle-background-transport'/);
  assert.match(app,/const externalMedia=createMediaSessionController/);
  assert.equal((html.match(/<audio id="player-audio"/g)||[]).length,1);
 });
