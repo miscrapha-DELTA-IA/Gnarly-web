@@ -33,8 +33,8 @@ for(const dir of ['assets','lib','ui']){
   for(const name of readdirSync(folder)){
    const full=join(folder,name);
    if(statSync(full).isDirectory())walk(full);
-   else if(/\\.(?:js|mjs|css|png|jpe?g|webp|svg)$/.test(name))
-    shell.push('/'+full.slice(out.length+1).replaceAll('\\\\','/'));
+   else if(/\.(?:js|mjs|css|png|jpe?g|webp|svg)$/.test(name))
+    shell.push('/'+full.slice(out.length+1).replaceAll('\\','/'));
   }
  };
  walk(join(out,dir));
