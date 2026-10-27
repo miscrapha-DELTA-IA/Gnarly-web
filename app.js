@@ -324,7 +324,7 @@ function prepareNativeAudio(track,attempt=0){
  if(!url)return false;
  // Only start the native extraction when the user requests Play; once started,
  // let the media element buffer ahead instead of forcing metadata-only mode.
- if(audio.src!==url){audio.preload='auto';audio.src=url;}
+ if(audio.src!==url){audio.preload='auto';audio.src=url;engine.restoreSpeed();}
  return true;
 }
 function reportAudioError(text){
@@ -624,6 +624,8 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
    // Deferred until Play: avoids wasting a Render extraction on every tapped row.
    audio.removeAttribute('src');audio.preload='none';audio.load();
  }else{audio.preload='metadata';audio.src=track.url;audio.load();}
+ // The musical preset belongs to the session, not the selected track.
+ engine.restoreSpeed();
  reportAudioStatus('');state.lastLyric=-2;updatePlayer();void loadArtworkHue(track);void enrichOfficialAlbumArt(track);void loadAutoLyrics(track);prefetchNextLyrics();
  karaokeStage.refresh(true);
  if(track.source==='youtube')void enrichSelectedTrack(track);omnibox.record(track);state.history=omnibox.history;
@@ -658,6 +660,7 @@ async function recoverNativeAudio(track,initialError=null){
     };
     audio.addEventListener('loadedmetadata',restore,{once:true});
     try{
+     engine.restoreSpeed();
      const unlock=engine.resume(),start=audio.play();
      await Promise.all([unlock,start]);
      restore();
@@ -704,6 +707,7 @@ async function play(){
   configureBrowserAudioSession({navigatorObject:navigator,
    recording:!!(karaokeStage.mic.active||state.micStream)});
   // Both calls start synchronously within the user's click gesture (Safari).
+  engine.restoreSpeed();
   const unlock=engine.resume(),start=audio.play();
   await Promise.all([unlock,start]);
   if(state.current!==track||state.userPaused)return;
@@ -1355,15 +1359,22 @@ async function runSearch(raw){const query=String(raw||'').trim();state.searchTer
  }catch(error){if(count!==searchCounter)return;displaySearch(state.searchResults,'Falha de rede. Resultados locais mantidos.');console.warn('Omnibox',error)}
 }
 audio.addEventListener('play',()=>{if(stems.ready)void stems.play();state.playing=true;updatePlayer()});audio.addEventListener('pause',()=>{stems.pause();state.playing=false;updatePlayer()});audio.addEventListener('timeupdate',()=>{if(stems.ready)stems.sync();updateProgress();syncLyrics()});audio.addEventListener('loadedmetadata',()=>{
+ engine.restoreSpeed(); // WebKit can reset the media rate during load.
  updateProgress();const track=state.current;
  if(!track||!['youtube','local'].includes(track.source)||!Number.isFinite(audio.duration)||audio.duration<=0)return;
  if(!(Number(track.duration)>0)&&audio.duration<1200)track.duration=audio.duration;
  void enrichSelectedTrack(track,audio.duration);
  void enrichOfficialAlbumArt(track);
-});audio.addEventListener('seeked',()=>{stems.seek();karaokeStage.tick(true)});audio.addEventListener('ended',()=>{if(state.current&&lastRecordedSelection===playbackSelection)listeningMemory.record('finish',state.current);karaokeStage.scorer.finish();karaokeStage.updateScore();state.queue.length?next():pause()});audio.addEventListener('waiting',()=>{if(state.current?.source==='youtube')reportAudioStatus('Carregando áudio…')});audio.addEventListener('playing',()=>{state.audioState='playing';reportAudioStatus('');if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(pendingQueueId&&pendingQueueId===state.current?.id){state.queue=commitPlaying(state.queue,pendingQueueId);pendingQueueId=null;updatePlayer();if(state.sheet==='queue')renderSheet()}if(playbackStartedAt){console.debug('GNARLY startup ms',Math.round(performance.now()-playbackStartedAt));playbackStartedAt=0}void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!state.current||state.userPaused)return;state.playing=false;updatePlayer();if(state.current.source==='youtube'){
+});audio.addEventListener('seeked',()=>{stems.seek();karaokeStage.tick(true)});audio.addEventListener('ended',()=>{if(state.current&&lastRecordedSelection===playbackSelection)listeningMemory.record('finish',state.current);karaokeStage.scorer.finish();karaokeStage.updateScore();state.queue.length?next():pause()});audio.addEventListener('waiting',()=>{if(state.current?.source==='youtube')reportAudioStatus('Carregando áudio…')});audio.addEventListener('playing',()=>{engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(pendingQueueId&&pendingQueueId===state.current?.id){state.queue=commitPlaying(state.queue,pendingQueueId);pendingQueueId=null;updatePlayer();if(state.sheet==='queue')renderSheet()}if(playbackStartedAt){console.debug('GNARLY startup ms',Math.round(performance.now()-playbackStartedAt));playbackStartedAt=0}void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!state.current||state.userPaused)return;state.playing=false;updatePlayer();if(state.current.source==='youtube'){
  // Ignore a late error from the previous source after another Omnibox selection.
  if(audio.hasAttribute('src')&&audio.src===trackAudioURL(state.current,{attempt:audioDelivery.attempt}))void recoverNativeAudio(state.current);
  }else reportAudioError('Não foi possível carregar o áudio.');});
+// Source swaps can trigger an asynchronous browser reset to 1x. Repair only
+// unexpected rate changes: a user preset/slider has already changed engine.speed.
+audio.addEventListener('ratechange',()=>{
+ if(state.current&&(!Number.isFinite(Number(audio.playbackRate))||
+    Math.abs(Number(audio.playbackRate)-engine.speed)>0.001))engine.restoreSpeed();
+});
 // MediaSession handlers are registered exactly once by externalMedia.
 // The native media element owns the authoritative play/pause and clock.
 for(const name of ['playing','pause','ended','emptied','durationchange','ratechange','seeked']){
