@@ -34,6 +34,10 @@ const compactKaraoke=await page.evaluate(async()=>{
  const cleared=y();
  return {initial,short,medium,long,cleared,reserved,fit,extreme,readable,
   canReadEnd,lineHeight:lineRect.height,scrollRange,
+  chars:line.textContent.length,scrollHeight:line.scrollHeight,clientHeight:line.clientHeight,
+  rectHeight:line.getBoundingClientRect().height,computedFont:computed.fontSize,
+  computedDisplay:computed.display,scrollWidth:line.scrollWidth,clientWidth:line.clientWidth,
+  lineSample:line.innerText.slice(0,55),hudDisplay:getComputedStyle(hud).display,
   whiteSpace:computed.whiteSpace,textOverflow:computed.textOverflow,
   overflowY:computed.overflowY};
 });
