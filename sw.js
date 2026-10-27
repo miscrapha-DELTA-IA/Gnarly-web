@@ -7,11 +7,16 @@ const PREFIX='gnarly-web-shell-';
 const CORE=['/','/index.html','/app.js','/styles.css','/module-dock.css',
  '/performance.css','/karaoke-art.css','/karaoke-art-refined.css',
  '/karaoke-stage.css','/manifest.webmanifest','/assets/gnarly-icon.png'];
-const staticURL=url=>url.origin===self.location.origin&&(
-  url.pathname==='/'||url.pathname==='/index.html'||
-  /^\\/(?:assets|lib|ui)\\/[\\w./-]+\\.(?:js|mjs|css|png|jpg|jpeg|webp|svg)$/.test(url.pathname)||
-  /^\\/[\\w-]+\\.(?:js|mjs|css|svg|webmanifest)$/.test(url.pathname)
+const ROOT_STATIC=['/logo.svg','/sw.js','/offline-assets.json'];
+const STATIC_EXT=['.js','.mjs','.css','.png','.jpg','.jpeg','.webp','.svg'];
+const staticURL=url=>{
+ const p=url.pathname;
+ return url.origin===self.location.origin&&(
+  CORE.includes(p)||ROOT_STATIC.includes(p)||
+  (['/assets/','/lib/','/ui/'].some(prefix=>p.startsWith(prefix))&&
+   STATIC_EXT.some(ext=>p.endsWith(ext)))
  );
+};
 self.addEventListener('install',event=>{
  event.waitUntil((async()=>{
   const cache=await caches.open(SHELL);
