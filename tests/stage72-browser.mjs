@@ -605,11 +605,20 @@ const gpuColors=async()=>quick.evaluate(()=>{
 });
 await quick.waitForTimeout(100);
 const beforeColors=await gpuColors();
+const beforeBadge=await quick.locator('.build-badge').innerText();
 await quick.locator('#theme-button').click();
-await quick.waitForTimeout(125);
+await quick.waitForFunction(before=>document.querySelector('.build-badge')?.textContent!==before,beforeBadge,{timeout:5000});
+const afterBadge=await quick.locator('.build-badge').innerText();
+await quick.waitForFunction(before=>{
+ const gl=document.querySelector('#fluid-canvas').getContext('webgl2');
+ const p=gl.getParameter(gl.CURRENT_PROGRAM);
+ if(!p)return false;
+ const body=gl.getUniform(p,gl.getUniformLocation(p,'u_body'));
+ return body&&before[1].some((v,i)=>Math.abs(body[i]-v)>.015);
+},beforeColors,{timeout:6500});
 const afterColors=await gpuColors();
 assert.ok(beforeColors&&afterColors,'Real shader output must expose palette uniforms');
-assert.notDeepEqual(beforeColors,afterColors,'Palette tap must recolor the GPU wallpaper, not only CSS accents');
+assert.notDeepEqual(beforeColors,afterColors,'Palette '+beforeBadge+' → '+afterBadge+' must recolor the GPU wallpaper, not only CSS accents');
 assert.deepEqual(quickErrors,[]);
 await quick.close();
 
