@@ -385,7 +385,7 @@ await desktop.waitForFunction(()=>{
   c.width>=1800&&c.height>=1000;
 },null,{timeout:15000});
 const desk2=await inspectDesktop(1920,1080);
-assert.ok(Math.abs(desk2.root.width-1920)<2&&Math.abs(desk2.root.height-1080)<2,'Canvas must resize to fill 1920 × 1080');
+assert.ok(Math.abs(desk2.root.width-1920)<2&&desk2.root.height>=1080&&Math.abs(desk2.canvas.width-1920)<2&&Math.abs(desk2.canvas.height-1080)<2,'Viewport canvas must fill 1920 × 1080 while scrollable shell may extend beyond viewport: '+JSON.stringify(desk2));
 assert.ok(desk2.canvas.backingWidth>=1800&&desk2.canvas.backingHeight>=1000,'Full HD frame must retain crisp backing');
 assert.ok(desk2.player.x>=0&&desk2.player.right<=1920,'Desktop content should fit screen');
 await desktop.screenshot({path:'stage78-ui-desktop.png',fullPage:false});
