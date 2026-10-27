@@ -28,6 +28,7 @@ import {renderAppInstallGuide,installModeFromBrowser,installPlatform} from './li
 import {demucsStatus,prepareDemucsAudio,separateWithBestModel} from './lib/demucs-cloud.js';
 import {renderMusicPanel,mixerValue} from './ui/music-panel.js';
 import {createDisplayStore,renderDisplayPanel} from './ui/display-panel.js';
+import {deviceLayout,themeAccent,attachEyeGestures,OFFICIAL_SUPPORT_URL} from './lib/responsive-shell.js';
 import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel} from './ui/player-surface.js';
 import {artworkBudget,artworkCandidates,resolveArtworkAsset} from './lib/artwork-quality.js';
 import {requestVerifiedAlbumArtwork} from './lib/album-artwork-client.js';
@@ -305,7 +306,10 @@ pads.onStep=step=>document.querySelectorAll('[data-dj-step]').forEach(el=>el.cla
 function fmt(secs){if(!Number.isFinite(secs))return '0:00';return `${Math.floor(secs/60)}:${String(Math.floor(secs%60)).padStart(2,'0')}`}
 function titleForFile(file){const name=file.name.replace(/\.[^.]+$/,'');const parts=name.split(/\s+[—–-]\s+/);return {title:parts.length>=2?parts.slice(1).join(' - '):name,artist:parts.length>=2?parts[0]:'Arquivo local'}}
 function updateBadges(){
- document.documentElement.style.setProperty('--acid', ({'ACID':'#46ff12','CYBER NIGHT':'#35d5ff','CRIMSON':'#ff425d','CHROME':'#e6f2ef','SMOKE':'#d5c2ec','XEROX SERPENTINE':'#d5ec46','PRISM CARMINE':'#ff56ab','GNARLY':'#45ff8a'})[state.theme]||'#46ff12');
+ // Use the complete author palette from the GPU renderer, not a partial green fallback.
+ const accent=themeAccent(state.theme,PALETTES,state.previousTheme);
+ document.documentElement.style.setProperty('--acid',accent);
+ document.documentElement.style.setProperty('--gnarly-ui-glow',accent);
  $('.build-badge').textContent=`WEB · ${state.theme}`;
  visual.setTheme(state.theme);visual.setExperience(state.experience);visual.setReaction(state.reaction);
  visual.setAccentTheme(state.previousTheme);
@@ -762,7 +766,7 @@ function openSheet(which){
   $('#bottom-sheet').classList.toggle('music-sheet',which==='controls');
  $('#bottom-sheet').classList.toggle('performance-sheet',which==='performance');
  $('#sheet-title').textContent=({search:'Busca',queue:'Próximas músicas',library:'Mix / Biblioteca',favorites:'Favoritos',controls:'Música',display:'Exibição',performance:'Performance / DJ',more:'GNARLY',install:'Instalar GNARLY',export:'Exportar',theme:'Camada 1 · Tema',experience:'Camada 2 · Experiência',reaction:'Ritmo visual', 'lyric-style':'Aa · Estilo de legenda',karaoke:'Karaokê',background:'Fundo'})[which]||'GNARLY';
- $('#search-toggle').setAttribute('aria-expanded',String(which==='display'));
+ 
  $('#omnibox-toggle').setAttribute('aria-expanded',String(OMNIBOX_TABS.includes(which)));
  syncCreativeQuickActions();
  renderSheet();
@@ -772,7 +776,7 @@ function openSheet(which){
 function closeSheet(){
  state.sheet=null;$('#bottom-sheet').hidden=true;$('#panel-backdrop').hidden=true;
  $('#bottom-sheet').classList.remove('display-sheet','music-sheet','performance-sheet');
- $('#search-toggle').setAttribute('aria-expanded','false');
+ 
  $('#omnibox-toggle').setAttribute('aria-expanded','false');
  syncCreativeQuickActions();
 }
@@ -781,6 +785,25 @@ function syncCreativeQuickActions(){
   const control=$('#'+id);if(control)control.setAttribute('aria-expanded',String(state.sheet===sheet));
  }
 }
+let iconsCollapsed=false;
+function syncEyeBar(){
+ app.dataset.iconsCollapsed=String(iconsCollapsed);
+ const eye=$('#search-toggle');
+ eye.setAttribute('aria-expanded',String(!iconsCollapsed));
+ eye.setAttribute('aria-pressed',String(iconsCollapsed));
+ eye.setAttribute('aria-label',iconsCollapsed?
+  'Expandir atalhos; mantenha pressionado para editar a exibição':
+  'Recolher atalhos; mantenha pressionado para editar a exibição');
+}
+function applyResponsiveLayout(){
+ const mode=deviceLayout({width:window.innerWidth,
+  coarse:window.matchMedia?.('(pointer: coarse)').matches||false});
+ app.dataset.deviceLayout=mode;
+ const mobile=mode==='phone';
+ $('#performance-button').hidden=mobile;
+ $('#fullscreen-button').hidden=mobile;
+ return mode;
+}
 function applyPanelVisibility(){
  const visible=key=>displayStore.isVisible(key);
  app.classList.toggle('zen-mode',displayStore.zen);
@@ -788,6 +811,7 @@ function applyPanelVisibility(){
  app.dataset.playerSize=displayStore.size;
  app.dataset.playerMaterial=displayStore.material;
  $('#brand-line').hidden=!visible('header');
+ applyResponsiveLayout();syncEyeBar();
  $('#player-section').hidden=!visible('player');
  $('#omnibox-shell').hidden=!visible('search');
  $('#share-button').hidden=!visible('export');
@@ -1048,7 +1072,7 @@ function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet)
   });break;
  case 'performance':content.innerHTML=renderPerformancePanel(midiView());break;
  case 'display':content.innerHTML=renderDisplayPanel(displayStore);break;
- case 'more':content.innerHTML=`<div class="section-head">ACESSO RÁPIDO</div><div class="button-row">${btn('🎨 Temas','go-theme','alt')}${btn('⚡ Experiências','go-experience','alt')}${btn('Aa · Legendas','go-lyric-style','alt')}${btn('Ritmo visual','go-reaction','alt')}${btn('Performance · DJ','go-performance')}${btn('Música · ajustes','go-controls')}${btn('Adicionar músicas','import','alt')}${btn('Mix e biblioteca','go-library','alt')}${btn('Favoritos','go-favorites','alt')}${btn('Fila','go-queue','alt')}${btn('Karaokê','go-karaoke','alt')}${btn('Exibição','go-display','alt')}${btn('⛶ Tela cheia','toggle-fullscreen','alt')}</div><div class="section-head">MODO APLICATIVO</div><div class="button-row">${btn('↗ Abrir sem barra do Safari','go-install','alt')}</div>`;break;
+ case 'more':content.innerHTML=`<div class="section-head">ACESSO RÁPIDO</div><div class="button-row">${btn('🎨 Temas','go-theme','alt')}${btn('⚡ Experiências','go-experience','alt')}${btn('Aa · Legendas','go-lyric-style','alt')}${btn('Ritmo visual','go-reaction','alt')}${btn('Performance · DJ','go-performance')}${btn('Música · ajustes','go-controls')}${btn('Adicionar músicas','import','alt')}${btn('Mix e biblioteca','go-library','alt')}${btn('Favoritos','go-favorites','alt')}${btn('Fila','go-queue','alt')}${btn('Karaokê','go-karaoke','alt')}${btn('Exibição','go-display','alt')}${app.dataset.deviceLayout==='phone'?'':btn('⛶ Tela cheia','toggle-fullscreen','alt')}</div><div class="section-head">APOIAR O GNARLY</div><a class="support-external-link" href="${OFFICIAL_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">♡ Apoiar no Apoia.se</a><div class="section-head">MODO APLICATIVO</div><div class="button-row">${btn('↗ Abrir sem barra do Safari','go-install','alt')}</div>`;break;
   case 'install':content.innerHTML=renderAppInstallGuide({platform:installPlatform(navigator.userAgent,navigator.maxTouchPoints),standalone:installModeFromBrowser()});break;
  case 'export':content.innerHTML=`<p class="section-note">Formatos da Stage 72. Opções ainda não disponíveis não serão exportadas silenciosamente.</p><div class="export-formats">${[['image','Imagem estática'],['video','Vídeo · Story de até 15 s'],['player-audio','Player com áudio'],['lyrics-audio','Letras com áudio'],['player-noaudio','Player sem áudio'],['lyrics-noaudio','Letras sem áudio']].map(([id,name])=>`<button data-export-format="${id}" class="export-option">${name}<small>${id==='image'?'PNG · visual atual':'Requer renderização web'}</small></button>`).join('')}</div><div class="section-head">ESTILO</div><div class="chip-row">${['Clássica','Neon','Mono','Cinema','Máquina'].map(x=>`<button class="chip ${state.exportStyle===x?'selected':''}" data-export-style="${x}">${x}</button>`).join('')}</div>`;break;
  case 'theme':
@@ -1220,7 +1244,12 @@ bindQuickCreative($('#lyric-style-button'),{
  expand:()=>openSheet('lyric-style')
 });
 $('#background-button').addEventListener('click',()=>openSheet('background'));
-$('#search-toggle').addEventListener('click',()=>state.sheet==='display'?closeSheet():openSheet('display'));
+attachEyeGestures($('#search-toggle'),{
+ tap:()=>{iconsCollapsed=!iconsCollapsed;syncEyeBar()},
+ hold:()=>openSheet('display')
+});
+syncEyeBar();
+applyResponsiveLayout();
 $('#omnibox-toggle').addEventListener('click',()=>OMNIBOX_TABS.includes(state.sheet)?closeSheet():openSheet(OMNIBOX_TABS.includes(state.omniboxTab)?state.omniboxTab:'search'));
 $('#more-button').addEventListener('click',()=>openSheet('more'));
 $('#fullscreen-button').addEventListener('click',()=>{void fullscreen.toggle()});
@@ -1234,7 +1263,7 @@ $('#sheet-content').addEventListener('error',e=>{
 let artworkViewportTimer=null;
 window.addEventListener('resize',()=>{
  clearTimeout(artworkViewportTimer);
- artworkViewportTimer=setTimeout(()=>{lastCoverArt='';lastSurfaceArt='';lastBackgroundArt='';updatePlayer();},350);
+ artworkViewportTimer=setTimeout(()=>{applyResponsiveLayout();lastCoverArt='';lastSurfaceArt='';lastBackgroundArt='';updatePlayer();},350);
 });
 $('#performance-button').addEventListener('click',()=>{if(state.sheet)closeSheet();toggleModule('performance')});
 $('#music-toggle-button').addEventListener('click',()=>{if(state.sheet)closeSheet();toggleModule('controls')});
