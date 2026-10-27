@@ -789,7 +789,97 @@ function addToQueue(track,{quiet=false}={}){
  const auto=state.queue.find(q=>q._gnarlyAutoMode&&sameRecording(q,track));
  if(auto){delete auto._gnarlyAutoMode;if(!quiet)toast('Fixada manualmente na fila: '+track.title);updatePlayer();return true}
  const before=state.queue.length;state.queue=appendUnique(state.queue,[track],state.current?.id);if(before===state.queue.length){if(!quiet)toast('Esta música já está na fila ou tocando.');return false}updatePlayer();prefetchNextLyrics();if(state.sheet==='queue')renderSheet();if(!quiet)toast('Adicionado à fila: '+track.title);return true}
-function importAudio(files){const valid=[...files].filter(x=>x.type.startsWith('audio/')||/\.(mp3|m4a|aac|wav|ogg|flac)$/i.test(x.name));if(!valid.length){toast('Escolha arquivos de áudio compatíveis.');return}for(const file of valid){const names=titleForFile(file);state.tracks.push({id:`local:${crypto.randomUUID?.()||Date.now()+Math.random()}`,title:names.title,artist:names.artist,album:'Biblioteca local',artwork:icon,url:URL.createObjectURL(file),file,source:'local',duration:0})}if(!state.current){selectTrack(state.tracks[0],true);state.queue=appendUnique(state.queue,state.tracks.slice(1),state.current?.id);updatePlayer()}else if(valid.length>1)toast(`${valid.length} músicas importadas`);if(state.sheet==='library')renderSheet()}
+const offlineStatusText=()=>{
+ const count=offlineURLs.size;
+ return (offlineLoaded?'✓ ':'')+count+' música'+(count===1?'':'s')+' guardada'+(count===1?'':'s')+' neste dispositivo';
+};
+function registerOfflineURL(track,blob,{persisted=true}={}){
+ const old=offlineURLs.get(track.id);
+ if(old)URL.revokeObjectURL(old);
+ const url=URL.createObjectURL(blob);
+ offlineURLs.set(track.id,url);
+ const existing=state.tracks.find(item=>item.id===track.id);
+ if(existing){existing.offlineKey=track.id;existing.url=url;if(track.source==='local')existing.file=blob;}
+ else state.tracks.push({...track,offlineKey:track.id,url,
+  ...(track.source==='local'?{file:blob}:{})});
+ return url;
+}
+async function restoreOfflineLibrary(){
+ try{
+  const entries=await offlineLibrary.list();
+  for(const record of entries){
+   if(!record?.track||!record?.blob)continue;
+   registerOfflineURL(record.track,record.blob);
+  }
+  offlineLoaded=true;offlineStatus=offlineStatusText();
+ }catch(error){
+  offlineLoaded=true;offlineStatus='Armazenamento offline indisponível neste navegador';
+  console.warn('GNARLY offline storage:',error?.message);
+ }
+ if(state.sheet==='library')renderSheet();
+}
+async function downloadOfflineTrack(track){
+ if(!track||track.source!=='youtube')return toast('Escolha uma faixa do catálogo GNARLY');
+ if(isOffline(track.id))return toast('Esta música já está disponível offline.');
+ if(offlinePending.has(track.id))return;
+ offlinePending.add(track.id);
+ offlineStatus='Baixando '+track.title+'…';
+ if(state.sheet==='library'||state.sheet==='search')renderSheet();
+ try{
+  // The user asked for this single track. Do not download other artists'
+  // catalogs or automatically store unrequested audio.
+  const blob=await fetchFullAudio(track);
+  await offlineLibrary.save(track,blob);
+  registerOfflineURL(track,blob);
+  offlineStatus=offlineStatusText();
+  toast('✓ '+track.title+' salvo. Disponível sem internet neste dispositivo.');
+  void navigator.storage?.persist?.().catch(()=>false);
+ }catch(error){
+  offlineStatus='Download não concluído';
+  toast(error?.message||'Não foi possível guardar o áudio. Verifique conexão e espaço.');
+ }finally{
+  offlinePending.delete(track.id);
+  if(state.sheet==='library'||state.sheet==='search'||state.sheet==='queue')renderSheet();
+ }
+}
+async function deleteOfflineTrack(track){
+ if(!track||!isOffline(track.id))return;
+ if(state.current?.id===track.id&&!audio.paused)return toast('Pause ou troque de música antes de remover este arquivo.');
+ try{
+  await offlineLibrary.remove(track.id);
+  const url=offlineURLs.get(track.id);
+  offlineURLs.delete(track.id);
+  if(audio.src!==url)URL.revokeObjectURL(url);
+  state.tracks=state.tracks.filter(t=>t.id!==track.id);
+  offlineStatus=offlineStatusText();
+  if(state.sheet==='library')renderSheet();
+  toast('Cópia offline removida: '+track.title);
+ }catch(error){toast('Falha ao remover música offline: '+(error?.message||''))}
+}
+async function importAudio(files){
+ const valid=[...files].filter(x=>
+  (x.type.startsWith('audio/')||/\\.(mp3|m4a|aac|wav|ogg|flac)$/i.test(x.name))&&
+  validAudioFile(x));
+ if(!valid.length){toast('Escolha áudio compatível com até 72 MB por arquivo.');return}
+ for(const file of valid){
+  const names=titleForFile(file);
+  const track={id:'local:'+(crypto.randomUUID?.()||Date.now()+Math.random()),
+   title:names.title,artist:names.artist,album:'Biblioteca local',
+   artwork:icon,source:'local',duration:0};
+  // Make an immediate playable object URL, then persist it. A storage
+  // failure must never destroy the currently selected in-memory file.
+  registerOfflineURL(track,file);
+  try{await offlineLibrary.save(track,file)}
+  catch(error){toast('Áudio importado para esta sessão; não foi possível salvar offline: '+(error?.message||''))}
+ }
+ offlineLoaded=true;offlineStatus=offlineStatusText();
+ void navigator.storage?.persist?.().catch(()=>false);
+ if(!state.current){
+  selectTrack(state.tracks[0],true);
+  state.queue=appendUnique(state.queue,state.tracks.slice(1),state.current?.id);updatePlayer();
+ }else toast(valid.length+' música(s) adicionada(s) à biblioteca offline');
+ if(state.sheet==='library')renderSheet();
+}
 function applyPreset(id){const v=musicalPreset(id);if(!v)return;if(engine.nativeTransport&&v.reverb>0){toast('Reverb requer Áudio de estúdio. Em Música, desative primeiro Áudio com tela bloqueada.');return;}state.preset=id;state.speed=v.speed;state.reverb=v.reverb;state.pitch=v.pitch;engine.setSpeed(v.speed,v.pitch);engine.setReverb(v.reverb);for(const key of ['speed','reverb','pitch','preset'])setSetting(key,key==='pitch'?(state.pitch?'yes':'no'):state[key]);updatePresetButtons();renderModule('controls');if(stems.ready)stems.sync();toast(id==='ORIGINAL'?'Som original restaurado':id+' ativado')}
 function updatePresetButtons(){document.querySelectorAll('[data-preset]').forEach(b=>{const selected=b.dataset.preset===state.preset;b.classList.toggle('active',selected);b.setAttribute('aria-pressed',String(selected))})}
 function openYouTubePlayer(track){if(!/^[A-Za-z0-9_-]{11}$/.test(track?.videoId||''))return toast('Link do YouTube inválido');audio.pause();const dialog=$('#youtube-player-dialog'),frame=$('#youtube-player-frame');frame.src='https://www.youtube-nocookie.com/embed/'+track.videoId+'?autoplay=1&playsinline=1';$('#youtube-player-title').textContent=track.title;$('#youtube-player-link').href='https://www.youtube.com/watch?v='+track.videoId;dialog.hidden=false;dialog.setAttribute('aria-hidden','false');toast('Player oficial: Nightcore e reverb não podem alterar o áudio dentro do YouTube.');}
