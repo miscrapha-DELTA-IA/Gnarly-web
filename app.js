@@ -10,7 +10,7 @@ import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
 import {trackAudioURL,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
 import {AudioDeliveryRecovery,inspectPlaybackLimit,playbackLimitMessage} from './lib/audio-delivery.js';
 import {createMediaSessionController,configureBrowserAudioSession} from './lib/media-session-controller.js';
-import {appendUnique,commitPlaying,moveTrack,removeTrack,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
+import {appendUnique,commitPlaying,moveTrack,removeTrack,shuffleUpcoming,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
 import {ListeningMemory,MEMORY_KEY,recommendTracks,retainManualQueue,markAutoTracks,sameRecording,discoverySuggestions} from './lib/listening-intelligence.js';
 import {renderSmartQueuePanel} from './ui/smart-queue-panel.js';
 import {CLASSIC_THEMES,MATERIAL_THEMES,GNARLY_MODES,NATIVE_COLOR_THEMES,CREATIVE_COLOR_THEMES,EXPERIENCES,REACTIONS,ROLE_EXPLANATION,resolveVisual,restoredThemeAfterGnarly} from './lib/visual-selection.js';
@@ -96,8 +96,10 @@ engine.setBackgroundPriority(true); // Automatic native iOS playback; no user-fa
 const playlistStore=new PlaylistLibrary(omniboxStorage);
 let selectedPlaylist=getSetting('smartPlaylist','Meu Mix');
 if(!playlistStore.names().includes(selectedPlaylist))selectedPlaylist='Meu Mix';
-let smartMode=effectiveMode(getSetting('smartMode','off'));
-let smartStatus='Escolha um modo para complementar a fila sem substituir músicas.';
+// GNARLY native parity: smart recommendations run automatically; previously
+// saved manual mode no longer disables them on the simplified queue surface.
+let smartMode='mix';
+let smartStatus='';
 let pendingQueueId=null,smartFillEpoch=0,smartFillPending=false,lastSmartSeed='',smartRevision=0;
 let playbackSelection=0,lastRecordedSelection=-1;
 const playbackBackstack=[]; // Session-only previous track, like iOS queue navigation.
@@ -781,6 +783,7 @@ function openSheet(which){
  if(MODULE_NAMES.includes(which)){if(state.sheet)closeSheet();toggleModule(which,true);return}
  if(OMNIBOX_TABS.includes(which)){state.omniboxTab=which;setSetting('omniboxTab',which)}
  state.sheet=which;
+ if(which==='queue'&&state.current&&state.queue.length<2)void maybeFillSmartQueue();
  $('#bottom-sheet').hidden=false;$('#panel-backdrop').hidden=false;
  $('#bottom-sheet').classList.toggle('display-sheet',which==='display');
   $('#bottom-sheet').classList.toggle('music-sheet',which==='controls');
@@ -1005,11 +1008,30 @@ async function maybeFillSmartQueue({force=false}={}){
  }
 }
 function renderQueuePanel(){
- return renderSmartQueuePanel({mode:smartMode,queueCount:state.queue.length,playlistNames:playlistStore.names(),selectedPlaylist,playlistCount:playlistStore.tracks(selectedPlaylist).length,status:smartStatus,anchor:state.current,taste:listeningMemory.summary()})+
- '<div class="smart-playlist-heading"><span>Playlist · '+safe(selectedPlaylist)+'</span></div>'+
- mediaList(playlistStore.tracks(selectedPlaylist),'playlist')+
- '<div class="row-end"><p class="section-note">A seguir · arraste a ordem com ↑ ↓</p>'+btn('Limpar fila','clear-queue','alt')+'</div>'+
- mediaList(state.queue,'queue');
+ const controls=renderSmartQueuePanel({
+  queueCount:state.queue.length,status:smartStatus,anchor:state.current,
+  busy:smartFillPending,playing:state.playing
+ });
+ const rows=state.queue.map((track,i)=>{
+  const title=safe(track.title),artist=safe(displayArtist(track));
+  const art=safe(artworkCandidates(track.artwork||icon,{pixels:artPixels('thumb')})[0]||icon);
+  const fallback=safe(track.artwork||icon);
+  const attrs=' data-context="queue" data-index="'+i+'"';
+  const offline=track.source==='local'?' <span class="native-queue-offline">✓ Offline</span>':'';
+  return '<div class="native-queue-row" role="listitem">'+
+   '<button type="button" class="native-queue-track" data-action="play"'+attrs+
+   ' aria-label="Tocar '+title+'">'+
+   '<img src="'+art+'" data-original-art="'+fallback+'" data-art-context="queue" data-art-index="'+i+'" alt="" loading="lazy" decoding="async"/>'+
+   '<span class="native-queue-track-info"><strong>'+title+'</strong><small>'+artist+offline+'</small></span>'+
+   '<span class="native-queue-index" aria-hidden="true">'+(i+1)+'</span></button>'+
+   '<button type="button" class="native-queue-remove" data-action="remove"'+attrs+
+   ' aria-label="Remover '+title+' da fila" title="Remover da fila">×</button></div>';
+ }).join('');
+ const list=state.queue.length?
+  '<div class="native-queue-list" role="list" aria-label="Próximas músicas">'+rows+'</div>':
+  '<div class="native-queue-empty">'+
+   (state.current?'O Mix selecionará as próximas músicas automaticamente.':'Suas próximas músicas aparecem aqui.')+'</div>';
+ return controls+list;
 }
 function renderGnarly2Controls(){
  const toggle=(id,label,enabled)=>'<button type="button" class="gnarly2-lock '+(enabled?'active':'')+
@@ -1157,7 +1179,24 @@ function applyChosenLyricFont(id,scope=lyricScope){
 
 function resolveTracks(context){if(context==='playlist')return playlistStore.tracks(selectedPlaylist);return ({search:state.searchResults,library:state.tracks,queue:state.queue,favorites:state.favorites,history:state.history})[context]||[]}
 function handleCommand(command){switch(command){
- case 'smart-refresh':lastSmartSeed='';state.queue=retainManualQueue(state.queue);void maybeFillSmartQueue({force:true});break;
+ case 'queue-play':
+   if(!state.current&&state.queue.length)selectTrack(state.queue[0],true,{fromQueue:true});
+   else if(state.current&&audio.paused)void play();
+   else if(state.queue.length)selectTrack(state.queue[0],true,{fromQueue:true});
+   else if(state.current){void maybeFillSmartQueue({force:true});toast('Buscando próximas faixas para o Mix.')}
+   else toast('Escolha uma música na Busca para começar.');
+   break;
+  case 'queue-shuffle':
+   if(state.queue.length<2)break;
+   state.queue=shuffleUpcoming(state.queue);
+   updatePlayer();
+   if(state.sheet==='queue')renderSheet();
+   toast('Próximas músicas em ordem aleatória.');
+   break;
+  case 'smart-refresh':
+   if(!state.current){toast('Escolha uma música para atualizar o Mix.');break}
+   lastSmartSeed='';state.queue=retainManualQueue(state.queue);
+   void maybeFillSmartQueue({force:true});break;
  case 'taste-reset':listeningMemory.clear();recommendationsByMode.clear();toast('Aprendizado local reiniciado. Suas playlists e favoritos foram preservados.');renderActiveSurfaces();break;
  case 'playlist-add-current':if(!state.current){toast('Escolha uma faixa primeiro.');break}if(playlistStore.add(selectedPlaylist,state.current)){toast('Salvo em '+selectedPlaylist);if(state.sheet==='queue')renderSheet()}else toast('Faixa já salva ou não persistível.');break;
  case 'playlist-create':{const name=window.prompt('Nome da nova playlist (até 45 caracteres):');if(name===null)break;if(!playlistStore.create(name)){toast('Nome repetido ou limite de playlists atingido.');break}selectedPlaylist=name.trim().slice(0,45);setSetting('smartPlaylist',selectedPlaylist);if(state.sheet==='queue')renderSheet();break}
