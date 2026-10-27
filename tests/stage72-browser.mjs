@@ -721,12 +721,12 @@ await offlinePage.goto('http://127.0.0.1:8765/',{waitUntil:'load'});
 await offlinePage.evaluate(()=>navigator.serviceWorker?.ready);
 await offlinePage.reload({waitUntil:'load'});
 await offlinePage.waitForFunction(()=>!!navigator.serviceWorker?.controller,{timeout:12000});
-const wav=Buffer.alloc(16044);wav.write('RIFF',0);wav.writeUInt32LE(16036,4);
-wav.write('WAVE',8);wav.write('fmt ',12);wav.writeUInt32LE(16,16);
-wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);wav.writeUInt32LE(8000,24);
-wav.writeUInt32LE(16000,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);
-wav.write('data',36);wav.writeUInt32LE(16000,40);
-await offlinePage.locator('#audio-import').setInputFiles({name:'airplane-test.wav',mimeType:'audio/wav',buffer:wav});
+const offlineWav=Buffer.alloc(16044);offlineWav.write('RIFF',0);offlineWav.writeUInt32LE(16036,4);
+offlineWav.write('WAVE',8);offlineWav.write('fmt ',12);offlineWav.writeUInt32LE(16,16);
+offlineWav.writeUInt16LE(1,20);offlineWav.writeUInt16LE(1,22);offlineWav.writeUInt32LE(8000,24);
+offlineWav.writeUInt32LE(16000,28);offlineWav.writeUInt16LE(2,32);offlineWav.writeUInt16LE(16,34);
+offlineWav.write('data',36);offlineWav.writeUInt32LE(16000,40);
+await offlinePage.locator('#audio-import').setInputFiles({name:'airplane-test.offlineWav',mimeType:'audio/offlineWav',buffer:offlineWav});
 await offlinePage.waitForFunction(async()=>{
  const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('gnarly-web-offline-v1');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
  const count=await new Promise((resolve,reject)=>{const r=db.transaction('audio').objectStore('audio').count();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
