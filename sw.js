@@ -7,13 +7,11 @@ const PREFIX='gnarly-web-shell-';
 const CORE=['/','/index.html','/app.js','/styles.css','/module-dock.css',
  '/performance.css','/karaoke-art.css','/karaoke-art-refined.css',
  '/karaoke-stage.css','/manifest.webmanifest','/assets/gnarly-icon.png'];
-const staticURL=url=>url.origin===self.location.origin&&
- !url.pathname.startsWith('/api/')&&
- !url.pathname.startsWith('/functions/')&&
- !url.pathname.startsWith('/netlify/')&&
- !url.pathname.endsWith('.map')&&
- !url.pathname.startsWith('/models/')&&
- !url.pathname.startsWith('/basic-pitch-worker');
+const staticURL=url=>url.origin===self.location.origin&&(
+  url.pathname==='/'||url.pathname==='/index.html'||
+  /^\\/(?:assets|lib|ui)\\/[\\w./-]+\\.(?:js|mjs|css|png|jpg|jpeg|webp|svg)$/.test(url.pathname)||
+  /^\\/[\\w-]+\\.(?:js|mjs|css|svg|webmanifest)$/.test(url.pathname)
+ );
 self.addEventListener('install',event=>{
  event.waitUntil((async()=>{
   const cache=await caches.open(SHELL);
