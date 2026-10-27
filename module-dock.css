@@ -185,3 +185,93 @@ body.gnarly-immersive{min-height:100dvh}
  background:color-mix(in srgb,var(--acid,#46ff12) 16%,rgba(0,12,14,.8))}
 .gnarly2-lock:focus-visible{outline:2px solid var(--acid,#46ff12);outline-offset:3px}
 @media(max-width:375px){.gnarly2-lock-row{gap:6px}.gnarly2-lock{font-size:11px;padding:8px 10px}}
+
+/* GNARLY · restrained premium controls, matched to iOS concept in Figma.
+   Accent belongs to the selected theme. Never introduce a separate neon
+   palette or replace the existing music/visual architecture. */
+.app-shell .topbar{
+ min-height:82px;
+ gap:clamp(4px,1.25vw,11px);
+ padding-inline:clamp(11px,3vw,35px);
+}
+.app-shell .topbar>.icon-button{
+ display:grid;place-items:center;
+ flex:0 1 clamp(36px,10.6vw,46px);
+ width:clamp(36px,10.6vw,46px);
+ height:clamp(40px,11.3vw,46px);
+ border-radius:999px;
+ background:linear-gradient(155deg,rgba(28,39,57,.58),rgba(12,17,30,.54));
+ border:1px solid rgba(231,237,250,.22);
+ color:rgba(240,244,255,.90);
+ box-shadow:0 4px 14px rgba(0,0,0,.16),inset 0 1px 0 rgba(255,255,255,.085);
+ -webkit-backdrop-filter:blur(16px) saturate(125%);
+ backdrop-filter:blur(16px) saturate(125%);
+ transition:background-color .2s,border-color .2s,box-shadow .2s,transform .18s;
+ -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+}
+.app-shell .topbar>.icon-button .icon{
+ width:clamp(20px,5.4vw,24px);
+ height:clamp(20px,5.4vw,24px);
+ opacity:.94;
+}
+.app-shell .topbar>.palette,
+.app-shell .topbar>.bolt{
+ color:color-mix(in srgb,var(--acid) 60%,#dee3ee);
+ background:linear-gradient(155deg,rgba(28,39,57,.58),rgba(12,17,30,.54));
+}
+.app-shell .topbar>.lyric-typography-button{color:rgba(247,248,252,.95)}
+.app-shell .topbar #music-toggle-button{color:rgba(238,245,255,.86)}
+.app-shell .topbar>.icon-button[aria-expanded="true"]:not(#search-toggle){
+ border-color:color-mix(in srgb,var(--acid) 46%,rgba(245,246,255,.16));
+ background:color-mix(in srgb,var(--acid) 13%,rgba(16,24,36,.79));
+ color:color-mix(in srgb,var(--acid) 64%,white);
+}
+.app-shell .topbar>.icon-button:active{
+ transform:scale(.94);
+ background:color-mix(in srgb,var(--acid) 12%,rgba(21,27,40,.75));
+}
+.app-shell .topbar #record-button{
+ border:1px solid rgba(251,102,112,.54)!important;
+ background:linear-gradient(150deg,rgba(41,30,43,.57),rgba(16,20,34,.53));
+}
+.app-shell .topbar #record-button.recording{
+ border-color:#fc646f!important;box-shadow:0 0 0 3px rgba(252,100,111,.18);
+}
+.app-shell .topbar #record-button .record-dot{background:#f55b69}
+.app-shell .brand-line{
+ margin-top:clamp(18px,2.8vh,30px);
+}
+.app-shell .topbar #search-toggle{
+ touch-action:none!important;
+ -webkit-touch-callout:none!important;
+ -webkit-user-select:none!important;user-select:none!important;
+ overscroll-behavior:contain;
+ position:relative;
+}
+.app-shell .topbar #search-toggle,
+.app-shell .topbar #search-toggle *{
+ -webkit-touch-callout:none!important;-webkit-user-select:none!important;
+ user-select:none!important;
+}
+.app-shell .topbar #search-toggle:after{
+ content:'';position:absolute;bottom:5px;left:50%;transform:translateX(-50%);
+ width:11px;height:2px;border-radius:2px;background:rgba(232,239,250,.35);
+}
+.app-shell[data-icons-collapsed="true"] .topbar #search-toggle:after{
+ background:var(--acid);box-shadow:0 0 8px color-mix(in srgb,var(--acid) 44%,transparent);
+}
+.app-shell .topbar #search-toggle:focus-visible{
+ outline:2px solid var(--acid);outline-offset:4px;
+}
+@media(max-width:650px){
+ .app-shell .topbar{gap:clamp(3px,1.25vw,7px);padding-inline:clamp(9px,2.4vw,16px)}
+ .app-shell .brand-line{margin-top:clamp(22px,3.2vh,31px)}
+}
+@media(max-width:355px){
+ .app-shell .topbar{gap:3px;padding-inline:7px}
+ .app-shell .topbar>.icon-button{flex-basis:37px;width:37px;height:40px}
+ .app-shell .brand-line{margin-top:20px}
+}
+@media(prefers-reduced-motion:reduce){
+ .app-shell .topbar>.icon-button{transition:none}
+}
