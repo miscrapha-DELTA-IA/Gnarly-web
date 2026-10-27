@@ -90,7 +90,9 @@ test('rendering uses existing three GPU programs, no new program or texture allo
  assert.match(code,/g\.blendFunc\(g\.CONSTANT_ALPHA,g\.ONE_MINUS_CONSTANT_ALPHA\)/);
  assert.match(code,/if\(this\.theme==='GNARLY 2'\)/);
  assert.match(code,/this\.renderScale>=\.67/);
- assert.match(code,/this\.gnarlyAccentEnabled\?\.16:0/);
+ assert.match(code,/this\.gnarlyAccentEnabled\?\.28:0/);
+ assert.match(code,/this\.gnarlyAccentEnabled\?\.48:0/);
+ assert.match(code,/gnarly2ColorLock/);
  assert.doesNotMatch(code,/createFramebuffer\(/);
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(app,/data-gnarly2-lock/);
