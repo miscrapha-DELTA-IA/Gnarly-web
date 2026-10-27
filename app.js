@@ -20,6 +20,7 @@ import {renderPerformancePanel} from './ui/performance-panel.js';
 import {resolveLyricStyle,applyLyricStyle,allLyricStyles} from './lib/lyric-style.js';
 import {loadLyricTypeface,findFont} from './lib/lyric-font-catalog.js';
 import {renderLyricArtwork,findKaraokeDesign,designFont} from './lib/karaoke-art-direction.js';
+import {fitCompactLyricContent} from './lib/compact-karaoke-layout.js';
 import {LyricFontPreferences,artistKey} from './lib/lyric-font-preferences.js';
 import {renderLyricStylePanel} from './ui/lyric-style-panel.js';
 import {transcribeMidiFile,PITCH_FILE_LIMIT} from './lib/audio-midi-transcriber.js';
@@ -531,6 +532,20 @@ async function transcribeOwnLyrics(file){
  }catch{if(state.current===track)state.lyricsStatus='Sem conexão com o serviço de transcrição.'}
  finally{if(lyricsAIController===ctl){lyricsAIController=null;state.lyricsAIWorking=false;if(state.current===track&&state.sheet==='karaoke')renderSheet()}}
 }
+// The floating HUD occupies a permanently reserved slot. Fit each stanza
+// inside it without ever changing the slot height or pushing the player.
+// Very long user-supplied lines remain fully readable by scrolling only the
+// lyric text, never the page or audio controls.
+let compactLyricFrame=0;
+function fitCompactLyric(){
+ if(compactLyricFrame)cancelAnimationFrame(compactLyricFrame);
+ compactLyricFrame=requestAnimationFrame(()=>{
+  compactLyricFrame=0;
+  const hud=$('#floating-lyrics'),line=$('#floating-line');
+  if(!hud||!line||hud.hidden)return;
+  fitCompactLyricContent(hud,line);
+ });
+}
 function syncLyrics(){
  karaokeStage.tick();
  const i=lyricIndex(state.lyrics,audio.currentTime||0);
@@ -543,9 +558,14 @@ function syncLyrics(){
   state.lyricsLoading?'Buscando letra…':state.plainLyrics.length?state.plainLyrics[0]:'Karaokê · expandir para cantar';
  // The latest Aa Creative Editions renderer is kept intact, with escaped text.
  line.innerHTML=renderLyricArtwork(text,state.lyricStyle,{lineId:i,active:true});
+ fitCompactLyric();
  if(state.sheet==='karaoke')renderSheet();
 }
 function refreshLyricArtwork(){state.lastLyric=-2;syncLyrics()}
+// A newly loaded typeface can alter glyph metrics without changing the lyric
+// text. Refit inside the same stable slot, never the player layout.
+if(document.fonts?.addEventListener)document.fonts.addEventListener('loadingdone',fitCompactLyric);
+
 // The official album cover is a separate resource from a YouTube video still.
 async function verifiedAlbumAsset(track,role='background'){
  const official=await requestVerifiedAlbumArtwork(track);
@@ -1271,7 +1291,7 @@ $('#sheet-content').addEventListener('error',e=>{
 let artworkViewportTimer=null;
 window.addEventListener('resize',()=>{
  clearTimeout(artworkViewportTimer);
- artworkViewportTimer=setTimeout(()=>{applyResponsiveLayout();lastCoverArt='';lastSurfaceArt='';lastBackgroundArt='';updatePlayer();},350);
+ artworkViewportTimer=setTimeout(()=>{applyResponsiveLayout();fitCompactLyric();lastCoverArt='';lastSurfaceArt='';lastBackgroundArt='';updatePlayer();},350);
 });
 $('#performance-button').addEventListener('click',()=>{if(state.sheet)closeSheet();toggleModule('performance')});
 $('#music-toggle-button').addEventListener('click',()=>{if(state.sheet)closeSheet();toggleModule('controls')});
