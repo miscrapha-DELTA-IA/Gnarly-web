@@ -627,6 +627,10 @@ async function enrichSelectedTrack(track,knownDuration=0){
    for(const key of ['title','artist','album','artwork'])favorite[key]=track[key];
   }
   updatePlayer();void loadArtworkHue(track);void enrichOfficialAlbumArt(track);
+  // Re-attempt automatic Mix after an initially generic catalog artist is
+  // resolved; the same media source, queue and playback clock are preserved.
+  if(state.playing&&state.queue.length<2&&!isGenericArtist(track.artist))
+   void maybeFillSmartQueue();
   if(isGenericArtist(before)&&!isGenericArtist(track.artist))void loadAutoLyrics(track);
   if(state.sheet==='search')displaySearch(state.searchResults);
  }catch(error){if(error?.name!=='AbortError')console.debug('Metadata enrichment unavailable');}
@@ -960,6 +964,13 @@ function setSmartMode(mode){
 async function maybeFillSmartQueue({force=false}={}){
  const mode=smartMode,anchor=state.current;
  if(mode==='off'||!anchor||(!force&&state.queue.length>=2))return;
+ // Do not consume the recommendation seed before a verified artist is known.
+ // Otherwise provisional search credits could leave the automatic queue empty.
+ if(mode!=='playlist'&&!radioQuery(mode,anchor)){
+  smartStatus='Aguardando identificação da música para sugerir próximas faixas.';
+  if(state.sheet==='queue')renderSheet();
+  return;
+ }
  if(smartFillPending&&!force)return;
  const revision=force?++smartRevision:smartRevision;
  const seed=mode+'|'+anchor.id+'|'+selectedPlaylist+'|'+revision;
