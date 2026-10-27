@@ -20,6 +20,7 @@ import {renderPerformancePanel} from './ui/performance-panel.js';
 import {resolveLyricStyle,applyLyricStyle,allLyricStyles} from './lib/lyric-style.js';
 import {loadLyricTypeface,findFont} from './lib/lyric-font-catalog.js';
 import {renderLyricArtwork,findKaraokeDesign,designFont} from './lib/karaoke-art-direction.js';
+import {fitCompactLyricContent} from './lib/compact-karaoke-layout.js';
 import {LyricFontPreferences,artistKey} from './lib/lyric-font-preferences.js';
 import {renderLyricStylePanel} from './ui/lyric-style-panel.js';
 import {transcribeMidiFile,PITCH_FILE_LIMIT} from './lib/audio-midi-transcriber.js';
@@ -542,14 +543,7 @@ function fitCompactLyric(){
   compactLyricFrame=0;
   const hud=$('#floating-lyrics'),line=$('#floating-line');
   if(!hud||!line||hud.hidden)return;
-  hud.style.setProperty('--gnarly-hud-fit-scale','1');
-  line.scrollTop=0;
-  const minScale=.6;
-  for(const scale of [1,.93,.86,.79,.72,.66,minScale]){
-   hud.style.setProperty('--gnarly-hud-fit-scale',String(scale));
-   if(line.scrollHeight<=line.clientHeight+2&&line.scrollWidth<=line.clientWidth+2)break;
-  }
-  line.dataset.compactScrollable=String(line.scrollHeight>line.clientHeight+2);
+  fitCompactLyricContent(hud,line);
  });
 }
 function syncLyrics(){
@@ -568,6 +562,10 @@ function syncLyrics(){
  if(state.sheet==='karaoke')renderSheet();
 }
 function refreshLyricArtwork(){state.lastLyric=-2;syncLyrics()}
+// A newly loaded typeface can alter glyph metrics without changing the lyric
+// text. Refit inside the same stable slot, never the player layout.
+if(document.fonts?.addEventListener)document.fonts.addEventListener('loadingdone',fitCompactLyric);
+
 // The official album cover is a separate resource from a YouTube video still.
 async function verifiedAlbumAsset(track,role='background'){
  const official=await requestVerifiedAlbumArtwork(track);
