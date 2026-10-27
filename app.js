@@ -1640,8 +1640,17 @@ window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select
 window.addEventListener('dragover',e=>{if(e.dataTransfer?.types.includes('Files')){e.preventDefault();app.classList.add('dragover')}});window.addEventListener('dragleave',e=>{if(!e.relatedTarget)app.classList.remove('dragover')});window.addEventListener('drop',e=>{e.preventDefault();app.classList.remove('dragover');importAudio(e.dataTransfer?.files||[])});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){if(pads.running)pads.stopLoop();if(karaokeStage.mic.active){karaokeStage.mic.stop();karaokeStage.scorer.stop();karaokeStage.updateScore();}}syncSystemPlayback(true);});
 window.addEventListener('storage',event=>{if(event.key===MEMORY_KEY){listeningMemory.refresh();if(state.sheet==='search'||state.sheet==='queue')renderSheet();}});
-window.addEventListener('beforeunload',()=>{karaokeStage.destroy();fontPreviewObserver?.disconnect();midiAnalysis.abort?.abort();lyricsAIController?.abort();metadataAbort?.abort();pads.destroy();state.micRecorder?.state==='recording'&&state.micRecorder.stop();state.micStream?.getTracks()?.forEach(x=>x.stop());state.demucsAbort?.abort();stems.clear();for(const item of state.tracks)if(item.source==='local')URL.revokeObjectURL(item.url);if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL)});
+window.addEventListener('beforeunload',()=>{karaokeStage.destroy();fontPreviewObserver?.disconnect();midiAnalysis.abort?.abort();lyricsAIController?.abort();metadataAbort?.abort();pads.destroy();state.micRecorder?.state==='recording'&&state.micRecorder.stop();state.micStream?.getTracks()?.forEach(x=>x.stop());state.demucsAbort?.abort();stems.clear();for(const url of offlineURLs.values())URL.revokeObjectURL(url);if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL)});
 applyPlayerSurfaceMode(state.playerSurfaceMode,{persist:false});updatePlayer();applyPanelVisibility();
+void restoreOfflineLibrary();
+if('serviceWorker' in navigator){
+ window.addEventListener('load',()=>{
+  navigator.serviceWorker.register('/sw.js',{scope:'/'})
+   .catch(error=>console.debug('GNARLY offline shell unavailable:',error?.message));
+ },{once:true});
+}
+window.addEventListener('online',()=>{if(state.sheet==='library')renderSheet()});
+window.addEventListener('offline',()=>{if(state.sheet==='library')renderSheet()});
 
 // Direct backend playback has no separate invite login or YouTube modal on Play.
 
