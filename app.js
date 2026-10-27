@@ -531,6 +531,27 @@ async function transcribeOwnLyrics(file){
  }catch{if(state.current===track)state.lyricsStatus='Sem conexão com o serviço de transcrição.'}
  finally{if(lyricsAIController===ctl){lyricsAIController=null;state.lyricsAIWorking=false;if(state.current===track&&state.sheet==='karaoke')renderSheet()}}
 }
+// The floating HUD occupies a permanently reserved slot. Fit each stanza
+// inside it without ever changing the slot height or pushing the player.
+// Very long user-supplied lines remain fully readable by scrolling only the
+// lyric text, never the page or audio controls.
+let compactLyricFrame=0;
+function fitCompactLyric(){
+ if(compactLyricFrame)cancelAnimationFrame(compactLyricFrame);
+ compactLyricFrame=requestAnimationFrame(()=>{
+  compactLyricFrame=0;
+  const hud=$('#floating-lyrics'),line=$('#floating-line');
+  if(!hud||!line||hud.hidden)return;
+  hud.style.setProperty('--gnarly-hud-fit-scale','1');
+  line.scrollTop=0;
+  const minScale=.6;
+  for(const scale of [1,.93,.86,.79,.72,.66,minScale]){
+   hud.style.setProperty('--gnarly-hud-fit-scale',String(scale));
+   if(line.scrollHeight<=line.clientHeight+2&&line.scrollWidth<=line.clientWidth+2)break;
+  }
+  line.dataset.compactScrollable=String(line.scrollHeight>line.clientHeight+2);
+ });
+}
 function syncLyrics(){
  karaokeStage.tick();
  const i=lyricIndex(state.lyrics,audio.currentTime||0);
@@ -543,6 +564,7 @@ function syncLyrics(){
   state.lyricsLoading?'Buscando letra…':state.plainLyrics.length?state.plainLyrics[0]:'Karaokê · expandir para cantar';
  // The latest Aa Creative Editions renderer is kept intact, with escaped text.
  line.innerHTML=renderLyricArtwork(text,state.lyricStyle,{lineId:i,active:true});
+ fitCompactLyric();
  if(state.sheet==='karaoke')renderSheet();
 }
 function refreshLyricArtwork(){state.lastLyric=-2;syncLyrics()}
@@ -1271,7 +1293,7 @@ $('#sheet-content').addEventListener('error',e=>{
 let artworkViewportTimer=null;
 window.addEventListener('resize',()=>{
  clearTimeout(artworkViewportTimer);
- artworkViewportTimer=setTimeout(()=>{applyResponsiveLayout();lastCoverArt='';lastSurfaceArt='';lastBackgroundArt='';updatePlayer();},350);
+ artworkViewportTimer=setTimeout(()=>{applyResponsiveLayout();fitCompactLyric();lastCoverArt='';lastSurfaceArt='';lastBackgroundArt='';updatePlayer();},350);
 });
 $('#performance-button').addEventListener('click',()=>{if(state.sheet)closeSheet();toggleModule('performance')});
 $('#music-toggle-button').addEventListener('click',()=>{if(state.sheet)closeSheet();toggleModule('controls')});
