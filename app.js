@@ -792,8 +792,8 @@ function syncEyeBar(){
  eye.setAttribute('aria-expanded',String(!iconsCollapsed));
  eye.setAttribute('aria-pressed',String(iconsCollapsed));
  eye.setAttribute('aria-label',iconsCollapsed?
-  'Expandir atalhos; mantenha pressionado para editar a exibição':
-  'Recolher atalhos; mantenha pressionado para editar a exibição');
+  'Expandir atalhos. Deslize para a direita; deslize para baixo para editar exibição.':
+  'Recolher atalhos. Deslize para a esquerda; deslize para baixo para editar exibição.');
 }
 function applyResponsiveLayout(){
  const mode=deviceLayout({width:window.innerWidth,
@@ -1246,7 +1246,15 @@ bindQuickCreative($('#lyric-style-button'),{
 $('#background-button').addEventListener('click',()=>openSheet('background'));
 attachEyeGestures($('#search-toggle'),{
  tap:()=>{iconsCollapsed=!iconsCollapsed;syncEyeBar()},
- hold:()=>openSheet('display')
+ swipeHorizontal:direction=>{
+  const collapse=direction==='left';
+  if(iconsCollapsed!==collapse){iconsCollapsed=collapse;syncEyeBar();}
+ },
+ swipeVertical:direction=>{
+  if(direction==='up'&&state.sheet==='display')closeSheet();
+  else if(state.sheet!=='display')openSheet('display');
+ },
+ context:()=>openSheet('display')
 });
 syncEyeBar();
 applyResponsiveLayout();
