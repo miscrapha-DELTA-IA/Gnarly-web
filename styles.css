@@ -704,3 +704,93 @@ body{position:relative;min-height:100dvh;background:#05090a}
 #gnarly-background.cover-bg .visual-dim {
   background:linear-gradient(180deg,rgba(0,0,0,.27),rgba(0,0,0,.17) 42%,rgba(0,0,0,.3));
 }
+
+/* Responsive GNARLY Shell · iOS and desktop receive appropriate controls.
+   Never overlap a long material name with the action group. */
+.app-shell .brand-line{
+ display:grid;grid-template-columns:minmax(0,1fr) auto;
+ gap:clamp(9px,2vw,20px);align-items:center;min-width:0;
+}
+.app-shell .brand-identity{min-width:0;width:100%;align-items:center}
+.app-shell .brand-copy{min-width:0;max-width:100%}
+.app-shell .brand-identity h1{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.app-shell .build-badge{
+ max-width:100%;white-space:normal;overflow-wrap:anywhere;
+ font-size:clamp(9px,1.5vw,13px);line-height:1.32;
+ letter-spacing:clamp(.065em,.13vw,.17em);
+}
+.app-shell .quick-actions{min-width:0;flex:none;display:flex;align-items:center;gap:clamp(5px,1.2vw,12px)}
+.app-shell #support-button{
+ display:grid;place-items:center;flex:0 0 42px;width:42px;height:42px;
+ border:1px solid color-mix(in srgb,var(--acid) 38%,rgba(255,255,255,.22));
+ border-radius:50%;background:rgba(27,29,28,.48);color:var(--acid);
+ -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
+ box-shadow:0 0 18px color-mix(in srgb,var(--acid) 9%,transparent);
+ text-decoration:none;
+}
+.app-shell #support-button .icon{width:22px;height:22px}
+.app-shell #support-button:focus-visible,.app-shell #search-toggle:focus-visible{
+ outline:2px solid var(--acid);outline-offset:4px;
+}
+.support-external-link{
+ display:block;padding:15px 16px;border-radius:14px;margin:10px 0 14px;
+ border:1px solid color-mix(in srgb,var(--acid) 52%,transparent);
+ background:color-mix(in srgb,var(--acid) 10%,rgba(13,18,21,.9));
+ color:var(--acid);font-weight:800;text-align:center;text-decoration:none;
+}
+.app-shell[data-icons-collapsed="true"] .topbar{
+ justify-content:flex-start;min-height:70px;
+}
+.app-shell[data-icons-collapsed="true"] .topbar > :not(#search-toggle){display:none!important}
+.app-shell[data-icons-collapsed="true"] #search-toggle{
+ color:var(--acid);border-color:color-mix(in srgb,var(--acid) 60%,transparent);
+}
+.app-shell #search-toggle{touch-action:manipulation;-webkit-touch-callout:none;user-select:none}
+/* Native tint follows whichever authored material/theme is active. The GPU
+   shader remains unchanged; only the surrounding UI halo responds. */
+.app-shell .topbar>.icon-button{
+ border-color:color-mix(in srgb,var(--acid) 13%,rgba(255,255,255,.10));
+}
+.app-shell .player{
+ border-color:color-mix(in srgb,var(--acid) 21%,rgba(255,255,255,.15));
+ box-shadow:0 17px 55px rgba(0,0,0,.25),
+  0 0 44px color-mix(in srgb,var(--acid) 10%,transparent);
+}
+.app-shell .omnibox-shell{
+ box-shadow:0 9px 25px rgba(0,0,0,.22),0 0 23px color-mix(in srgb,var(--acid) 12%,transparent);
+}
+.app-shell .progress-foot .player-surface-pill{
+ border-color:color-mix(in srgb,var(--acid) 29%,rgba(255,255,255,.14));
+}
+@media(max-width:920px) and (pointer:coarse){
+ .app-shell[data-device-layout="phone"] #performance-button,
+ .app-shell[data-device-layout="phone"] #fullscreen-button{display:none!important}
+}
+.app-shell[data-device-layout="phone"] .brand-line{
+ grid-template-columns:minmax(0,1fr) auto;gap:7px;
+ align-items:start;
+}
+.app-shell[data-device-layout="phone"] .brand-identity{gap:8px;align-items:flex-start}
+.app-shell[data-device-layout="phone"] .brand-identity img{
+ width:clamp(41px,11vw,56px);height:clamp(41px,11vw,56px);
+}
+.app-shell[data-device-layout="phone"] .brand-identity h1{
+ font-size:clamp(29px,7.7vw,39px);line-height:1.03;margin-bottom:4px;
+}
+.app-shell[data-device-layout="phone"] .build-badge{
+ font-size:clamp(9px,2.45vw,11px);line-height:1.23;
+ letter-spacing:.09em;max-width:100%;
+}
+.app-shell[data-device-layout="phone"] .quick-actions{
+ gap:clamp(4px,1.4vw,9px);align-self:start;
+}
+.app-shell[data-device-layout="phone"] #support-button,
+.app-shell[data-device-layout="phone"] .more-button{
+ width:clamp(37px,10vw,42px);height:clamp(37px,10vw,42px);
+ min-width:37px;flex-basis:clamp(37px,10vw,42px);
+}
+@media(max-width:360px){
+ .app-shell[data-device-layout="phone"] .brand-identity h1{font-size:27px}
+ .app-shell[data-device-layout="phone"] .brand-line{gap:5px}
+ .app-shell[data-device-layout="phone"] .brand-identity img{width:39px;height:39px}
+}
