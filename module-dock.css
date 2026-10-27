@@ -430,3 +430,43 @@ body.gnarly-immersive{min-height:100dvh}
 @media(prefers-reduced-motion:reduce){
  #sheet-content .native-queue-action{transition:none}
 }
+
+/* Local-first GNARLY library: keep existing search/queue compact, expose
+ * on-device copies without turning the interface into a download manager. */
+#sheet-content .offline-library-head{
+ display:flex;flex-direction:column;gap:8px;margin:6px 0 14px;padding:17px;
+ border-radius:19px;border:1px solid rgba(245,245,255,.14);
+ background:linear-gradient(126deg,color-mix(in srgb,var(--acid) 10%,rgba(18,23,36,.78)),rgba(24,23,37,.76));
+}
+#sheet-content .offline-library-head strong{
+ font-size:clamp(20px,5.5vw,26px);letter-spacing:-.035em;
+}
+#sheet-content .offline-library-kicker{
+ font-size:10px;font-weight:800;letter-spacing:.19em;
+ color:color-mix(in srgb,var(--acid) 68%,white);
+}
+#sheet-content .offline-library-summary{
+ font-size:13px;font-weight:740;color:color-mix(in srgb,var(--acid) 65%,white);
+}
+#sheet-content .offline-library-head p{
+ font-size:12px;line-height:1.45;color:rgba(245,242,255,.75);
+ margin:2px 0;
+}
+#sheet-content .offline-library-head small{
+ font-size:11px;line-height:1.4;color:rgba(234,235,241,.65);
+}
+#sheet-content .offline-row-button{
+ flex:0 0 31px;min-height:38px;
+ border:1px solid color-mix(in srgb,var(--acid) 38%,rgba(245,245,255,.16));
+ border-radius:11px;background:color-mix(in srgb,var(--acid) 10%,rgba(20,20,28,.65));
+ color:color-mix(in srgb,var(--acid) 66%,white);
+ font-size:20px;font-weight:750;
+ touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+}
+#sheet-content .offline-row-button:disabled{opacity:.43;cursor:wait}
+#sheet-content .offline-row-button:focus-visible{
+ outline:2px solid var(--acid);outline-offset:2px;
+}
+@media(max-width:385px){
+ #sheet-content .media-item .offline-row-button{flex-basis:29px;padding-inline:4px}
+}

@@ -9,6 +9,7 @@ import {autoLyrics,cachedAutoLyrics,prefetchAutoLyrics} from './lib/lyrics-auto.
 import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
 import {trackAudioURL,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
 import {AudioDeliveryRecovery,inspectPlaybackLimit,playbackLimitMessage} from './lib/audio-delivery.js';
+import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-library.js';
 import {createMediaSessionController,configureBrowserAudioSession} from './lib/media-session-controller.js';
 import {appendUnique,commitPlaying,moveTrack,removeTrack,shuffleUpcoming,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
 import {ListeningMemory,MEMORY_KEY,recommendTracks,retainManualQueue,markAutoTracks,sameRecording,discoverySuggestions} from './lib/listening-intelligence.js';
@@ -44,6 +45,12 @@ const pads=new PerformancePads(engine);
 const midiAnalysis={busy:false,status:'MIDI estimado, sem alterar a reprodução.',notes:[],duration:0,harmony:null,abort:null,trackId:null,revision:0};
 function midiView(){return {...pads.snapshot(),intelligence:{...midiAnalysis.harmony,notes:midiAnalysis.notes.length,ready:midiAnalysis.notes.length>0,busy:midiAnalysis.busy,status:midiAnalysis.status}}}
 const audioDelivery=new AudioDeliveryRecovery();
+const offlineLibrary=createOfflineLibrary();
+const offlineURLs=new Map(); // Persistent track IDs mapped to live blob URLs.
+const offlinePending=new Set();
+let offlineLoaded=false,offlineStatus='Preparando biblioteca offline…';
+const isOffline=id=>offlineURLs.has(id);
+const offlineAudio=id=>offlineURLs.get(id)||null;
 let recoveryOperation=null;
 const icon='/assets/gnarly-icon.png';
 const artEnvironment=()=>({
@@ -327,7 +334,7 @@ function updateBadges(){
 // Same media source as Stage72's AudioDownloadManager: Render /download.
 // Do not start an external player or load a file picker as an implicit fallback.
 function prepareNativeAudio(track,attempt=0){
- const url=trackAudioURL(track,{attempt});
+ const url=offlineAudio(track.id)||trackAudioURL(track,{attempt});
  if(!url)return false;
  // Only start the native extraction when the user requests Play; once started,
  // let the media element buffer ahead instead of forcing metadata-only mode.
@@ -651,9 +658,18 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
  state.lyricStyle=lyricFonts.selected(track).style;applyLyricStyle(app,state.lyricStyle);void loadLyricTypeface(designFont(state.lyricStyle));
  state.artworkHue=.58;state.playbackError='';state.audioState='idle';
  if(track.source==='youtube'){
-   // Deferred until Play: avoids wasting a Render extraction on every tapped row.
-   audio.removeAttribute('src');audio.preload='none';audio.load();
- }else{audio.preload='metadata';audio.src=track.url;audio.load();}
+   const cached=offlineAudio(track.id);
+   if(cached){audio.preload='auto';audio.src=cached;engine.restoreSpeed();}
+   else{
+    // Play attaches the canonical URL once. Do not call load() on an empty
+    // audio element and then immediately trigger a second resource selection.
+    audio.removeAttribute('src');audio.preload='none';
+   }
+ }else{
+  audio.preload='auto';
+  audio.src=offlineAudio(track.id)||track.url;
+  engine.restoreSpeed();
+ }
  // The musical preset belongs to the session, not the selected track.
  engine.restoreSpeed();
  reportAudioStatus('');state.lastLyric=-2;updatePlayer();void loadArtworkHue(track);void enrichOfficialAlbumArt(track);void loadAutoLyrics(track);prefetchNextLyrics();
@@ -729,7 +745,7 @@ async function play(){
  state.userPaused=false;
  if(track.source==='youtube'){
   if(!prepareNativeAudio(track,audioDelivery.attempt)){reportAudioError('ID de música inválido. Escolha outro resultado.');return;}
-  state.audioState='loading';reportAudioStatus('Conectando ao backend GNARLY · preparando áudio…');
+  state.audioState='loading';reportAudioStatus(isOffline(track.id)?'Abrindo música offline…':'Conectando ao GNARLY · preparando áudio…');
  }
  try{
   // Safari/WebKit: request the native playback category *before* building
@@ -744,8 +760,8 @@ async function play(){
   state.playing=true;state.audioState='playing';state.playbackError='';reportAudioStatus('');updatePlayer();
  }catch(e){
   if(state.current!==track||state.userPaused)return;
-  if(track.source==='youtube'){await recoverNativeAudio(track,e);}
-  else{state.playing=false;updatePlayer();reportAudioError('Falha ao reproduzir este arquivo de áudio.');}
+  if(track.source==='youtube'&&!isOffline(track.id)){await recoverNativeAudio(track,e);}
+  else{state.playing=false;updatePlayer();reportAudioError('Falha ao reproduzir a cópia local. Remova-a e baixe novamente.');}
   console.warn('GNARLY WEB audio play:',e);
  }
 }
@@ -773,7 +789,97 @@ function addToQueue(track,{quiet=false}={}){
  const auto=state.queue.find(q=>q._gnarlyAutoMode&&sameRecording(q,track));
  if(auto){delete auto._gnarlyAutoMode;if(!quiet)toast('Fixada manualmente na fila: '+track.title);updatePlayer();return true}
  const before=state.queue.length;state.queue=appendUnique(state.queue,[track],state.current?.id);if(before===state.queue.length){if(!quiet)toast('Esta música já está na fila ou tocando.');return false}updatePlayer();prefetchNextLyrics();if(state.sheet==='queue')renderSheet();if(!quiet)toast('Adicionado à fila: '+track.title);return true}
-function importAudio(files){const valid=[...files].filter(x=>x.type.startsWith('audio/')||/\.(mp3|m4a|aac|wav|ogg|flac)$/i.test(x.name));if(!valid.length){toast('Escolha arquivos de áudio compatíveis.');return}for(const file of valid){const names=titleForFile(file);state.tracks.push({id:`local:${crypto.randomUUID?.()||Date.now()+Math.random()}`,title:names.title,artist:names.artist,album:'Biblioteca local',artwork:icon,url:URL.createObjectURL(file),file,source:'local',duration:0})}if(!state.current){selectTrack(state.tracks[0],true);state.queue=appendUnique(state.queue,state.tracks.slice(1),state.current?.id);updatePlayer()}else if(valid.length>1)toast(`${valid.length} músicas importadas`);if(state.sheet==='library')renderSheet()}
+const offlineStatusText=()=>{
+ const count=offlineURLs.size;
+ return (offlineLoaded?'✓ ':'')+count+' música'+(count===1?'':'s')+' guardada'+(count===1?'':'s')+' neste dispositivo';
+};
+function registerOfflineURL(track,blob,{persisted=true}={}){
+ const old=offlineURLs.get(track.id);
+ if(old)URL.revokeObjectURL(old);
+ const url=URL.createObjectURL(blob);
+ offlineURLs.set(track.id,url);
+ const existing=state.tracks.find(item=>item.id===track.id);
+ if(existing){existing.offlineKey=track.id;existing.url=url;if(track.source==='local')existing.file=blob;}
+ else state.tracks.push({...track,offlineKey:track.id,url,
+  ...(track.source==='local'?{file:blob}:{})});
+ return url;
+}
+async function restoreOfflineLibrary(){
+ try{
+  const entries=await offlineLibrary.list();
+  for(const record of entries){
+   if(!record?.track||!record?.blob)continue;
+   registerOfflineURL(record.track,record.blob);
+  }
+  offlineLoaded=true;offlineStatus=offlineStatusText();
+ }catch(error){
+  offlineLoaded=true;offlineStatus='Armazenamento offline indisponível neste navegador';
+  console.warn('GNARLY offline storage:',error?.message);
+ }
+ if(state.sheet==='library')renderSheet();
+}
+async function downloadOfflineTrack(track){
+ if(!track||track.source!=='youtube')return toast('Escolha uma faixa do catálogo GNARLY');
+ if(isOffline(track.id))return toast('Esta música já está disponível offline.');
+ if(offlinePending.has(track.id))return;
+ offlinePending.add(track.id);
+ offlineStatus='Baixando '+track.title+'…';
+ if(state.sheet==='library'||state.sheet==='search')renderSheet();
+ try{
+  // The user asked for this single track. Do not download other artists'
+  // catalogs or automatically store unrequested audio.
+  const blob=await fetchFullAudio(track);
+  await offlineLibrary.save(track,blob);
+  registerOfflineURL(track,blob);
+  offlineStatus=offlineStatusText();
+  toast('✓ '+track.title+' salvo. Disponível sem internet neste dispositivo.');
+  void navigator.storage?.persist?.().catch(()=>false);
+ }catch(error){
+  offlineStatus='Download não concluído';
+  toast(error?.message||'Não foi possível guardar o áudio. Verifique conexão e espaço.');
+ }finally{
+  offlinePending.delete(track.id);
+  if(state.sheet==='library'||state.sheet==='search'||state.sheet==='queue')renderSheet();
+ }
+}
+async function deleteOfflineTrack(track){
+ if(!track||!isOffline(track.id))return;
+ if(state.current?.id===track.id&&!audio.paused)return toast('Pause ou troque de música antes de remover este arquivo.');
+ try{
+  await offlineLibrary.remove(track.id);
+  const url=offlineURLs.get(track.id);
+  offlineURLs.delete(track.id);
+  if(audio.src!==url)URL.revokeObjectURL(url);
+  state.tracks=state.tracks.filter(t=>t.id!==track.id);
+  offlineStatus=offlineStatusText();
+  if(state.sheet==='library')renderSheet();
+  toast('Cópia offline removida: '+track.title);
+ }catch(error){toast('Falha ao remover música offline: '+(error?.message||''))}
+}
+async function importAudio(files){
+ const valid=[...files].filter(x=>
+  (x.type.startsWith('audio/')||/\\.(mp3|m4a|aac|wav|ogg|flac)$/i.test(x.name))&&
+  validAudioFile(x));
+ if(!valid.length){toast('Escolha áudio compatível com até 72 MB por arquivo.');return}
+ for(const file of valid){
+  const names=titleForFile(file);
+  const track={id:'local:'+(crypto.randomUUID?.()||Date.now()+Math.random()),
+   title:names.title,artist:names.artist,album:'Biblioteca local',
+   artwork:icon,source:'local',duration:0};
+  // Make an immediate playable object URL, then persist it. A storage
+  // failure must never destroy the currently selected in-memory file.
+  registerOfflineURL(track,file);
+  try{await offlineLibrary.save(track,file)}
+  catch(error){toast('Áudio importado para esta sessão; não foi possível salvar offline: '+(error?.message||''))}
+ }
+ offlineLoaded=true;offlineStatus=offlineStatusText();
+ void navigator.storage?.persist?.().catch(()=>false);
+ if(!state.current){
+  selectTrack(state.tracks[0],true);
+  state.queue=appendUnique(state.queue,state.tracks.slice(1),state.current?.id);updatePlayer();
+ }else toast(valid.length+' música(s) adicionada(s) à biblioteca offline');
+ if(state.sheet==='library')renderSheet();
+}
 function applyPreset(id){const v=musicalPreset(id);if(!v)return;if(engine.nativeTransport&&v.reverb>0){toast('Reverb requer Áudio de estúdio. Em Música, desative primeiro Áudio com tela bloqueada.');return;}state.preset=id;state.speed=v.speed;state.reverb=v.reverb;state.pitch=v.pitch;engine.setSpeed(v.speed,v.pitch);engine.setReverb(v.reverb);for(const key of ['speed','reverb','pitch','preset'])setSetting(key,key==='pitch'?(state.pitch?'yes':'no'):state[key]);updatePresetButtons();renderModule('controls');if(stems.ready)stems.sync();toast(id==='ORIGINAL'?'Som original restaurado':id+' ativado')}
 function updatePresetButtons(){document.querySelectorAll('[data-preset]').forEach(b=>{const selected=b.dataset.preset===state.preset;b.classList.toggle('active',selected);b.setAttribute('aria-pressed',String(selected))})}
 function openYouTubePlayer(track){if(!/^[A-Za-z0-9_-]{11}$/.test(track?.videoId||''))return toast('Link do YouTube inválido');audio.pause();const dialog=$('#youtube-player-dialog'),frame=$('#youtube-player-frame');frame.src='https://www.youtube-nocookie.com/embed/'+track.videoId+'?autoplay=1&playsinline=1';$('#youtube-player-title').textContent=track.title;$('#youtube-player-link').href='https://www.youtube.com/watch?v='+track.videoId;dialog.hidden=false;dialog.setAttribute('aria-hidden','false');toast('Player oficial: Nightcore e reverb não podem alterar o áudio dentro do YouTube.');}
@@ -850,14 +956,22 @@ function mediaList(tracks,context){
  if(!tracks.length)return '<p class="section-note">Nenhuma música por aqui ainda.</p>';
  return '<div class="media-list">'+tracks.map((tr,i)=>{
   const label=safe(tr.title),attrs=' data-context="'+safe(context)+'" data-index="'+i+'"';
-  const source=tr.source==='preview'?'Prévia · 30 s':tr.source==='youtube'?'GNARLY · áudio via backend':'Áudio completo · local';
+  const source=isOffline(tr.id)?'✓ Áudio offline':tr.source==='preview'?'Prévia · 30 s':tr.source==='youtube'?'GNARLY · streaming':'Arquivo local';
   const play='<button data-action="play"'+attrs+' aria-label="Reproduzir '+label+'">'+svg('play')+'</button>';
   const actions=context==='queue'
-   ? '<button data-action="up"'+attrs+' aria-label="Subir '+label+' na fila">↑</button><button data-action="down"'+attrs+' aria-label="Descer '+label+' na fila">↓</button><button data-action="remove"'+attrs+' aria-label="Remover '+label+' da fila">×</button>'
+   ? '<button data-action="remove"'+attrs+' aria-label="Remover '+label+' da fila">×</button>'
    :context==='playlist'
    ? '<button data-action="enqueue"'+attrs+' aria-label="Enfileirar '+label+'">'+svg('plus')+'</button><button data-action="playlist-remove"'+attrs+' aria-label="Remover '+label+' da playlist">×</button>'
-   : '<button data-action="enqueue"'+attrs+' aria-label="Enfileirar '+label+'">'+svg('plus')+'</button><button data-action="playlist-add"'+attrs+' aria-label="Salvar '+label+' na playlist">♫+</button>';
-  return '<div class="media-item"><img src="'+safe(artworkCandidates(tr.artwork||icon,{pixels:artPixels('thumb')})[0]||icon)+'" data-original-art="'+safe(tr.artwork||icon)+'" data-art-context="'+safe(context)+'" data-art-index="'+i+'" alt="" loading="lazy" decoding="async" /><div class="media-text"><strong>'+label+'</strong><small>'+safe(displayArtist(tr))+' · '+source+'</small></div>'+play+actions+'</div>';
+   : '<button data-action="enqueue"'+attrs+' aria-label="Enfileirar '+label+'">'+svg('plus')+'</button>'+
+    (context==='library'?'':'<button data-action="playlist-add"'+attrs+' aria-label="Salvar '+label+' na playlist">♫+</button>');
+  const offlineControl=context==='library'&&isOffline(tr.id)
+   ? '<button class="offline-row-button" data-action="offline-remove"'+attrs+' aria-label="Remover download '+label+'" title="Remover cópia offline">×</button>'
+   :tr.source==='youtube'&&!isOffline(tr.id)
+    ? '<button class="offline-row-button" data-action="download"'+attrs+
+       (offlinePending.has(tr.id)?' disabled':'')+
+       ' aria-label="Baixar '+label+' para ouvir offline" title="Guardar offline">'+
+       (offlinePending.has(tr.id)?'…':'↓')+'</button>':'';
+  return '<div class="media-item"><img src="'+safe(artworkCandidates(tr.artwork||icon,{pixels:artPixels('thumb')})[0]||icon)+'" data-original-art="'+safe(tr.artwork||icon)+'" data-art-context="'+safe(context)+'" data-art-index="'+i+'" alt="" loading="lazy" decoding="async" /><div class="media-text"><strong>'+label+'</strong><small>'+safe(displayArtist(tr))+' · '+source+'</small></div>'+play+actions+offlineControl+'</div>';
  }).join('')+'</div>';
 }
 // Only probe rows that can come into view. The old thumbnail path loaded the
@@ -1028,7 +1142,7 @@ function renderQueuePanel(){
   const art=safe(artworkCandidates(track.artwork||icon,{pixels:artPixels('thumb')})[0]||icon);
   const fallback=safe(track.artwork||icon);
   const attrs=' data-context="queue" data-index="'+i+'"';
-  const offline=track.source==='local'?' <span class="native-queue-offline">✓ Offline</span>':'';
+  const offline=isOffline(track.id)?' <span class="native-queue-offline">✓ Offline</span>':'';
   return '<div class="native-queue-row" role="listitem">'+
    '<button type="button" class="native-queue-track" data-action="play"'+attrs+
    ' aria-label="Tocar '+title+'">'+
@@ -1112,7 +1226,7 @@ function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet)
   content.innerHTML=`<form id="search-form" class="search-bar"><input id="search-term" type="search" autocomplete="off" placeholder="Buscar música ou colar link" aria-label="Omnibox GNARLY" value="${safe(state.searchTerm)}"/><button type="submit">Buscar</button></form><p class="section-note">Busque qualquer música livremente. Sem busca ativa, a Omnibox oferece descobertas do seu histórico, sem repetir a fila atual. Nada é enviado para analisar seus hábitos.</p><div class="section-head">${initial?'Para você · memória musical':'Resultados da busca'}</div><div id="search-state" class="status-text">${safe(initial?(suggestions.length?'Afinidades da sua biblioteca · sem repetir a fila':'Músicas recentes · continue descobrindo'):(state.searchError||'Busque no catálogo do GNARLY'))}</div><div id="search-results">${mediaList(display,'search')}</div>${separateRecent.length?`<div class="section-head">Ouvidas recentemente</div>${mediaList(separateRecent,'history')}`:''}`;
   break;
  }
- case 'library':content.innerHTML=`<div class="card-help">Sua <strong>biblioteca local</strong> toca arquivos do dispositivo, sem servidor e sem conta. Os arquivos importados permanecem apenas nesta sessão.</div>${btn('＋ Adicionar músicas','import')}<div class="section-head">Mix · ${state.tracks.length} músicas</div>${mediaList(state.tracks,'library')}<div class="section-head">Favoritas · ${state.favorites.length}</div>${mediaList(state.favorites,'favorites')}`;break;
+ case 'library':content.innerHTML=`<div class="offline-library-head"><div class="offline-library-kicker">NO SEU DISPOSITIVO</div><strong>Biblioteca offline</strong><span class="offline-library-summary">${safe(offlineStatusText())}</span><p>Arquivos importados e músicas baixadas ficam neste navegador e podem tocar sem internet. Não são sincronizados com outros aparelhos.</p><small role="status">${safe(offlineStatus)}</small></div>${btn('＋ Importar áudios','import')}<div class="section-head">Downloads · ${state.tracks.length} músicas</div>${mediaList(state.tracks,'library')}<div class="section-head">Favoritas · ${state.favorites.length}</div>${mediaList(state.favorites,'favorites')}`;break;
  case 'playlists':{
   const options=playlistStore.names().map(name=>'<option value="'+safe(name)+'"'+
    (name===selectedPlaylist?' selected':'')+'>'+safe(name)+'</option>').join('');
@@ -1139,7 +1253,7 @@ function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet)
   });break;
  case 'performance':content.innerHTML=renderPerformancePanel(midiView());break;
  case 'display':content.innerHTML=renderDisplayPanel(displayStore);break;
- case 'more':content.innerHTML=`<div class="section-head">ACESSO RÁPIDO</div><div class="button-row">${btn('🎨 Temas','go-theme','alt')}${btn('⚡ Experiências','go-experience','alt')}${btn('Aa · Legendas','go-lyric-style','alt')}${btn('Ritmo visual','go-reaction','alt')}${btn('Performance · DJ','go-performance')}${btn('Música · ajustes','go-controls')}${btn('Adicionar músicas','import','alt')}${btn('Mix e biblioteca','go-library','alt')}${btn('Playlists','go-playlists','alt')}${btn('Favoritos','go-favorites','alt')}${btn('Fila','go-queue','alt')}${btn('Karaokê','go-karaoke','alt')}${btn('Exibição','go-display','alt')}${app.dataset.deviceLayout==='phone'?'':btn('⛶ Tela cheia','toggle-fullscreen','alt')}</div><div class="section-head">APOIAR O GNARLY</div><a class="support-external-link" href="${OFFICIAL_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">♡ Apoiar no Apoia.se</a><div class="section-head">MODO APLICATIVO</div><div class="button-row">${btn('↗ Abrir sem barra do Safari','go-install','alt')}</div>`;break;
+ case 'more':content.innerHTML=`<div class="section-head">ACESSO RÁPIDO</div><div class="button-row">${btn('🎨 Temas','go-theme','alt')}${btn('⚡ Experiências','go-experience','alt')}${btn('Aa · Legendas','go-lyric-style','alt')}${btn('Ritmo visual','go-reaction','alt')}${btn('Performance · DJ','go-performance')}${btn('Música · ajustes','go-controls')}${btn('Adicionar músicas','import','alt')}${btn('↓ Baixar música atual','download-current','alt')}${btn('Mix e biblioteca','go-library','alt')}${btn('Playlists','go-playlists','alt')}${btn('Favoritos','go-favorites','alt')}${btn('Fila','go-queue','alt')}${btn('Karaokê','go-karaoke','alt')}${btn('Exibição','go-display','alt')}${app.dataset.deviceLayout==='phone'?'':btn('⛶ Tela cheia','toggle-fullscreen','alt')}</div><div class="section-head">APOIAR O GNARLY</div><a class="support-external-link" href="${OFFICIAL_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">♡ Apoiar no Apoia.se</a><div class="section-head">MODO APLICATIVO</div><div class="button-row">${btn('↗ Abrir sem barra do Safari','go-install','alt')}</div>`;break;
   case 'install':content.innerHTML=renderAppInstallGuide({platform:installPlatform(navigator.userAgent,navigator.maxTouchPoints),standalone:installModeFromBrowser()});break;
  case 'export':content.innerHTML=`<p class="section-note">Formatos da Stage 72. Opções ainda não disponíveis não serão exportadas silenciosamente.</p><div class="export-formats">${[['image','Imagem estática'],['video','Vídeo · Story de até 15 s'],['player-audio','Player com áudio'],['lyrics-audio','Letras com áudio'],['player-noaudio','Player sem áudio'],['lyrics-noaudio','Letras sem áudio']].map(([id,name])=>`<button data-export-format="${id}" class="export-option">${name}<small>${id==='image'?'PNG · visual atual':'Requer renderização web'}</small></button>`).join('')}</div><div class="section-head">ESTILO</div><div class="chip-row">${['Clássica','Neon','Mono','Cinema','Máquina'].map(x=>`<button class="chip ${state.exportStyle===x?'selected':''}" data-export-style="${x}">${x}</button>`).join('')}</div>`;break;
  case 'theme':
@@ -1227,7 +1341,7 @@ function handleCommand(command){switch(command){
  case 'playlist-create':{const name=window.prompt('Nome da nova playlist (até 45 caracteres):');if(name===null)break;if(!playlistStore.create(name)){toast('Nome repetido ou limite de playlists atingido.');break}selectedPlaylist=name.trim().slice(0,45);setSetting('smartPlaylist',selectedPlaylist);if(state.sheet==='queue'||state.sheet==='playlists')renderSheet();break}
  case 'playlist-load':{const items=playlistStore.tracks(selectedPlaylist);const before=state.queue.length;state.queue=appendUnique(state.queue,items,state.current?.id);updatePlayer();if(state.sheet==='queue'||state.sheet==='playlists')renderSheet();toast((state.queue.length-before)+' adicionadas · '+selectedPlaylist);break}
  case 'playlist-delete':if(playlistStore.delete(selectedPlaylist)){selectedPlaylist='Meu Mix';setSetting('smartPlaylist',selectedPlaylist);if(state.sheet==='queue'||state.sheet==='playlists')renderSheet();toast('Playlist removida.')}else toast('A playlist Meu Mix é permanente.');break;
- case 'import':$('#audio-import').click();break;case 'load-lrc':$('#lrc-import').click();break;case 'retry-lyrics':if(state.current)void loadAutoLyrics(state.current);break;case 'lyrics-ai':if(state.current&&!state.lyricsAIWorking)$('#lyrics-ai-import').click();break;case 'load-background':$('#background-import').click();break;case 'use-photo':if(state.backgroundURL){state.backgroundMode='custom';setSetting('backgroundMode','custom');applyBackground();renderActiveSurfaces()}break;case 'adjust-photo':state.photoAdjust=true;renderActiveSurfaces();break;case 'done-photo':state.photoAdjust=false;renderActiveSurfaces();break;case 'show-visual':state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();closeSheet();break;case 'show-cover':if(!state.current?.artwork){toast('Selecione uma música com capa primeiro.');break}state.backgroundMode='cover';setSetting('backgroundMode','cover');applyBackground();closeSheet();break;case 'remove-background':if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL);state.backgroundURL=null;state.photoAdjust=false;state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();toast('Tema animado restaurado');break;case 'clear-queue':state.queue.length=0;pendingQueueId=null;smartFillEpoch++;updatePlayer();renderActiveSurfaces();break;case 'play-youtube':if(state.current?.source==='youtube')openYouTubePlayer(state.current);break;case 'reset-audio':state.speed=1;state.reverb=0;state.bass=0;state.pitch=true;state.preset='ORIGINAL';engine.setSpeed(1,true);engine.setBass(0);engine.setReverb(0);for(const p of ['speed','bass','reverb','pitch','preset'])setSetting(p,p==='pitch'?'yes':p==='preset'?'ORIGINAL':p==='speed'?1:0);renderActiveSurfaces();break;case 'go-theme':openSheet('theme');break;case 'go-experience':openSheet('experience');break;case 'go-reaction':openSheet('reaction');break;case 'go-lyric-style':openSheet('lyric-style');break;case 'restore-theme':state.theme=restoredThemeAfterGnarly(state.previousTheme);setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();break;case 'reset-theme-only':state.theme='ACID';setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();break;case 'reset-experience-only':state.experience='original';setSetting('experience',state.experience);updateBadges();renderActiveSurfaces();break;case 'reset-reaction-only':state.reaction='FLUIDO';setSetting('reaction',state.reaction);updateBadges();renderActiveSurfaces();break;case 'reset-visual':state.theme='ACID';state.experience='original';state.reaction='FLUIDO';state.materialLayer='none';for(const k of ['theme','experience','reaction','materialLayer'])setSetting(k,state[k]);updateBadges();renderActiveSurfaces();break;case 'go-stems':state.musicTab='stems';openSheet('controls');void refreshCloudStemAvailability();break;case 'go-speed-pitch':state.musicTab='speedPitch';openSheet('controls');break;case 'auto-demucs':void startDemucs();break;case 'cancel-stems':state.demucsAbort?.abort();state.stemStatus='Cancelamento solicitado; o provedor pode continuar consumindo a cota.';renderActiveSurfaces();break;case 'load-stems':if(!state.current){toast('Selecione uma música antes de importar Stems.');break}$('#stems-import').click();break;case 'reset-stems':stems.applyPreset('original');renderActiveSurfaces();break;case 'clear-stems':stems.clear();state.stemModel='';state.stemStatus='Mixer desativado. Voltamos ao áudio original.';renderActiveSurfaces();break;case 'go-controls':state.musicTab='speedPitch';openSheet('controls');break;case 'go-performance':openSheet('performance');break;case 'go-library':openSheet('library');break;case 'go-playlists':openSheet('playlists');break;case 'go-favorites':openSheet('favorites');break;case 'go-queue':openSheet('queue');break;case 'go-karaoke':openSheet('karaoke');break;case 'go-display':openSheet('display');break;case 'toggle-fullscreen':closeSheet();void fullscreen.toggle();break;case 'go-install':openSheet('install');break;case 'close-display':closeSheet();break;case 'hide-display-panels':displayStore.setGroup(['search','presets','controls','header','player','export','performance'],false);applyPanelVisibility();renderActiveSurfaces();break;case 'apply-theme':closeSheet();break}}
+ case 'import':$('#audio-import').click();break;case 'load-lrc':$('#lrc-import').click();break;case 'retry-lyrics':if(state.current)void loadAutoLyrics(state.current);break;case 'lyrics-ai':if(state.current&&!state.lyricsAIWorking)$('#lyrics-ai-import').click();break;case 'load-background':$('#background-import').click();break;case 'use-photo':if(state.backgroundURL){state.backgroundMode='custom';setSetting('backgroundMode','custom');applyBackground();renderActiveSurfaces()}break;case 'adjust-photo':state.photoAdjust=true;renderActiveSurfaces();break;case 'done-photo':state.photoAdjust=false;renderActiveSurfaces();break;case 'show-visual':state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();closeSheet();break;case 'show-cover':if(!state.current?.artwork){toast('Selecione uma música com capa primeiro.');break}state.backgroundMode='cover';setSetting('backgroundMode','cover');applyBackground();closeSheet();break;case 'remove-background':if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL);state.backgroundURL=null;state.photoAdjust=false;state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();toast('Tema animado restaurado');break;case 'clear-queue':state.queue.length=0;pendingQueueId=null;smartFillEpoch++;updatePlayer();renderActiveSurfaces();break;case 'play-youtube':if(state.current?.source==='youtube')openYouTubePlayer(state.current);break;case 'reset-audio':state.speed=1;state.reverb=0;state.bass=0;state.pitch=true;state.preset='ORIGINAL';engine.setSpeed(1,true);engine.setBass(0);engine.setReverb(0);for(const p of ['speed','bass','reverb','pitch','preset'])setSetting(p,p==='pitch'?'yes':p==='preset'?'ORIGINAL':p==='speed'?1:0);renderActiveSurfaces();break;case 'go-theme':openSheet('theme');break;case 'go-experience':openSheet('experience');break;case 'go-reaction':openSheet('reaction');break;case 'go-lyric-style':openSheet('lyric-style');break;case 'restore-theme':state.theme=restoredThemeAfterGnarly(state.previousTheme);setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();break;case 'reset-theme-only':state.theme='ACID';setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();break;case 'reset-experience-only':state.experience='original';setSetting('experience',state.experience);updateBadges();renderActiveSurfaces();break;case 'reset-reaction-only':state.reaction='FLUIDO';setSetting('reaction',state.reaction);updateBadges();renderActiveSurfaces();break;case 'reset-visual':state.theme='ACID';state.experience='original';state.reaction='FLUIDO';state.materialLayer='none';for(const k of ['theme','experience','reaction','materialLayer'])setSetting(k,state[k]);updateBadges();renderActiveSurfaces();break;case 'go-stems':state.musicTab='stems';openSheet('controls');void refreshCloudStemAvailability();break;case 'go-speed-pitch':state.musicTab='speedPitch';openSheet('controls');break;case 'auto-demucs':void startDemucs();break;case 'cancel-stems':state.demucsAbort?.abort();state.stemStatus='Cancelamento solicitado; o provedor pode continuar consumindo a cota.';renderActiveSurfaces();break;case 'load-stems':if(!state.current){toast('Selecione uma música antes de importar Stems.');break}$('#stems-import').click();break;case 'reset-stems':stems.applyPreset('original');renderActiveSurfaces();break;case 'clear-stems':stems.clear();state.stemModel='';state.stemStatus='Mixer desativado. Voltamos ao áudio original.';renderActiveSurfaces();break;case 'go-controls':state.musicTab='speedPitch';openSheet('controls');break;case 'go-performance':openSheet('performance');break;case 'go-library':openSheet('library');break;case 'download-current':if(state.current)void downloadOfflineTrack(state.current);else toast('Selecione uma faixa antes de baixar');break;case 'go-playlists':openSheet('playlists');break;case 'go-favorites':openSheet('favorites');break;case 'go-queue':openSheet('queue');break;case 'go-karaoke':openSheet('karaoke');break;case 'go-display':openSheet('display');break;case 'toggle-fullscreen':closeSheet();void fullscreen.toggle();break;case 'go-install':openSheet('install');break;case 'close-display':closeSheet();break;case 'hide-display-panels':displayStore.setGroup(['search','presets','controls','header','player','export','performance'],false);applyPanelVisibility();renderActiveSurfaces();break;case 'apply-theme':closeSheet();break}}
 function syncVisual(){visual.setSong(audio.currentTime||0,Number.isFinite(audio.duration)&&state.current?.source!=='preview'?audio.duration:state.current?.duration||0,state.artworkHue);const pulse=pads.getPulse();const active=!document.hidden&&(state.playing||pads.running||pulse>.009);const signal=active?engine.sampleSpectrum():{bass:0,mid:0,treble:0,beat:0,energy:0};if(pulse>.009){signal.beat=Math.max(signal.beat,pulse);signal.energy=Math.max(signal.energy,pulse*.72);signal.bass=Math.max(signal.bass,pulse*.48)}visual.setSpectrum(signal);requestAnimationFrame(syncVisual)}requestAnimationFrame(syncVisual);
 $('#audio-import').addEventListener('change',e=>{importAudio(e.target.files||[]);e.target.value='' });
 $('#dj-midi-import').addEventListener('change',e=>{const file=e.target.files?.[0];e.target.value='';if(file)void analyzeMidi(file)});
@@ -1429,6 +1543,8 @@ function handlePanelClick(e){const target=e.target.closest('button,[data-lyric-t
   const context=target.dataset.context,list=resolveTracks(context),track=list[Number(target.dataset.index)];
   if(!track)return;
   const action=target.dataset.action;
+  if(action==='download'){void downloadOfflineTrack(track);return}
+  if(action==='offline-remove'){void deleteOfflineTrack(track);return}
   if(context==='queue'&&['remove','up','down'].includes(action)){
    if(action==='remove'){state.queue=removeTrack(state.queue,track.id);if(pendingQueueId===track.id)pendingQueueId=null;}
    else state.queue=moveTrack(state.queue,track.id,action==='up'?-1:1);
@@ -1494,7 +1610,8 @@ audio.addEventListener('play',()=>{if(stems.ready)void stems.play();state.playin
  void enrichOfficialAlbumArt(track);
 });audio.addEventListener('seeked',()=>{stems.seek();karaokeStage.tick(true)});audio.addEventListener('ended',()=>{if(state.current&&lastRecordedSelection===playbackSelection)listeningMemory.record('finish',state.current);karaokeStage.scorer.finish();karaokeStage.updateScore();state.queue.length?next():pause()});audio.addEventListener('waiting',()=>{if(state.current?.source==='youtube')reportAudioStatus('Carregando áudio…')});audio.addEventListener('playing',()=>{engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(pendingQueueId&&pendingQueueId===state.current?.id){state.queue=commitPlaying(state.queue,pendingQueueId);pendingQueueId=null;updatePlayer();if(state.sheet==='queue')renderSheet()}if(playbackStartedAt){console.debug('GNARLY startup ms',Math.round(performance.now()-playbackStartedAt));playbackStartedAt=0}void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!state.current||state.userPaused)return;state.playing=false;updatePlayer();if(state.current.source==='youtube'){
  // Ignore a late error from the previous source after another Omnibox selection.
- if(audio.hasAttribute('src')&&audio.src===trackAudioURL(state.current,{attempt:audioDelivery.attempt}))void recoverNativeAudio(state.current);
+ if(!isOffline(state.current.id)&&audio.hasAttribute('src')&&audio.src===trackAudioURL(state.current,{attempt:audioDelivery.attempt}))void recoverNativeAudio(state.current);
+  else if(isOffline(state.current.id))reportAudioError('Áudio offline indisponível. Remova e baixe novamente.');
  }else reportAudioError('Não foi possível carregar o áudio.');});
 // Source swaps can trigger an asynchronous browser reset to 1x. Repair only
 // unexpected rate changes: a user preset/slider has already changed engine.speed.
@@ -1523,8 +1640,17 @@ window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select
 window.addEventListener('dragover',e=>{if(e.dataTransfer?.types.includes('Files')){e.preventDefault();app.classList.add('dragover')}});window.addEventListener('dragleave',e=>{if(!e.relatedTarget)app.classList.remove('dragover')});window.addEventListener('drop',e=>{e.preventDefault();app.classList.remove('dragover');importAudio(e.dataTransfer?.files||[])});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){if(pads.running)pads.stopLoop();if(karaokeStage.mic.active){karaokeStage.mic.stop();karaokeStage.scorer.stop();karaokeStage.updateScore();}}syncSystemPlayback(true);});
 window.addEventListener('storage',event=>{if(event.key===MEMORY_KEY){listeningMemory.refresh();if(state.sheet==='search'||state.sheet==='queue')renderSheet();}});
-window.addEventListener('beforeunload',()=>{karaokeStage.destroy();fontPreviewObserver?.disconnect();midiAnalysis.abort?.abort();lyricsAIController?.abort();metadataAbort?.abort();pads.destroy();state.micRecorder?.state==='recording'&&state.micRecorder.stop();state.micStream?.getTracks()?.forEach(x=>x.stop());state.demucsAbort?.abort();stems.clear();for(const item of state.tracks)if(item.source==='local')URL.revokeObjectURL(item.url);if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL)});
+window.addEventListener('beforeunload',()=>{karaokeStage.destroy();fontPreviewObserver?.disconnect();midiAnalysis.abort?.abort();lyricsAIController?.abort();metadataAbort?.abort();pads.destroy();state.micRecorder?.state==='recording'&&state.micRecorder.stop();state.micStream?.getTracks()?.forEach(x=>x.stop());state.demucsAbort?.abort();stems.clear();for(const url of offlineURLs.values())URL.revokeObjectURL(url);if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL)});
 applyPlayerSurfaceMode(state.playerSurfaceMode,{persist:false});updatePlayer();applyPanelVisibility();
+void restoreOfflineLibrary();
+if('serviceWorker' in navigator){
+ window.addEventListener('load',()=>{
+  navigator.serviceWorker.register('/sw.js',{scope:'/'})
+   .catch(error=>console.debug('GNARLY offline shell unavailable:',error?.message));
+ },{once:true});
+}
+window.addEventListener('online',()=>{if(state.sheet==='library')renderSheet()});
+window.addEventListener('offline',()=>{if(state.sheet==='library')renderSheet()});
 
 // Direct backend playback has no separate invite login or YouTube modal on Play.
 

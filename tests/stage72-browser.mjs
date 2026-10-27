@@ -711,4 +711,46 @@ assert.equal(artworkSizes.stage,'cover');
 assert.deepEqual(bleedErrors,[]);
 await bleed.close();
 
+// PWA offline acceptance: persist a user-imported WAV, remove the network,
+// reopen the app shell, and play the SAME blob without the Render backend.
+// Isolate this profile from all other UI tests.
+const offlineContext=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+const offlinePage=await offlineContext.newPage(),offlineErrors=[];
+offlinePage.on('pageerror',e=>offlineErrors.push(e.message));
+await offlinePage.goto('http://127.0.0.1:8765/',{waitUntil:'load'});
+await offlinePage.evaluate(()=>navigator.serviceWorker?.ready);
+await offlinePage.reload({waitUntil:'load'});
+await offlinePage.waitForFunction(()=>!!navigator.serviceWorker?.controller,{timeout:12000});
+const offlineWav=Buffer.alloc(16044);offlineWav.write('RIFF',0);offlineWav.writeUInt32LE(16036,4);
+offlineWav.write('WAVE',8);offlineWav.write('fmt ',12);offlineWav.writeUInt32LE(16,16);
+offlineWav.writeUInt16LE(1,20);offlineWav.writeUInt16LE(1,22);offlineWav.writeUInt32LE(8000,24);
+offlineWav.writeUInt32LE(16000,28);offlineWav.writeUInt16LE(2,32);offlineWav.writeUInt16LE(16,34);
+offlineWav.write('data',36);offlineWav.writeUInt32LE(16000,40);
+await offlinePage.locator('#audio-import').setInputFiles({name:'airplane-test.wav',mimeType:'audio/wav',buffer:offlineWav});
+await offlinePage.waitForFunction(async()=>{
+ const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('gnarly-web-offline-v1');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
+ const count=await new Promise((resolve,reject)=>{const r=db.transaction('audio').objectStore('audio').count();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
+ db.close();return count>0;
+},null,{timeout:12000});
+await offlinePage.locator('#omnibox-toggle').click();
+await offlinePage.locator('[data-omnibox-tab="library"]').click();
+assert.match(await offlinePage.locator('#sheet-content').innerText(),/airplane-test/i);
+await offlineContext.setOffline(true);
+await offlinePage.reload({waitUntil:'domcontentloaded'});
+await offlinePage.waitForSelector('#omnibox-toggle',{timeout:15000});
+await offlinePage.locator('#omnibox-toggle').click();
+await offlinePage.locator('[data-omnibox-tab="library"]').click();
+await offlinePage.waitForFunction(()=>
+ document.querySelector('#sheet-content')?.textContent.includes('airplane-test'),null,{timeout:9000});
+assert.match(await offlinePage.locator('#sheet-content').innerText(),/✓ Áudio offline/);
+await offlinePage.locator('[data-context="library"][data-action="play"]').first().click();
+await offlinePage.waitForFunction(()=>{
+ const a=document.getElementById('player-audio');
+ return a.currentSrc.startsWith('blob:')&&a.readyState>=2;
+},null,{timeout:12000});
+assert.ok(await offlinePage.evaluate(()=>document.querySelector('#player-audio').currentSrc.startsWith('blob:')),
+ 'Offline playback must never request the Render backend');
+assert.deepEqual(offlineErrors,[],'Offline shell and IndexedDB audio must not crash');
+await offlineContext.close();
+
 await browser.close();
