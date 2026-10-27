@@ -10,7 +10,7 @@ import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
 import {trackAudioURL,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
 import {AudioDeliveryRecovery,inspectPlaybackLimit,playbackLimitMessage} from './lib/audio-delivery.js';
 import {createMediaSessionController,configureBrowserAudioSession} from './lib/media-session-controller.js';
-import {appendUnique,commitPlaying,moveTrack,removeTrack,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
+import {appendUnique,commitPlaying,moveTrack,removeTrack,shuffleUpcoming,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
 import {ListeningMemory,MEMORY_KEY,recommendTracks,retainManualQueue,markAutoTracks,sameRecording,discoverySuggestions} from './lib/listening-intelligence.js';
 import {renderSmartQueuePanel} from './ui/smart-queue-panel.js';
 import {CLASSIC_THEMES,MATERIAL_THEMES,GNARLY_MODES,NATIVE_COLOR_THEMES,CREATIVE_COLOR_THEMES,EXPERIENCES,REACTIONS,ROLE_EXPLANATION,resolveVisual,restoredThemeAfterGnarly} from './lib/visual-selection.js';
@@ -96,8 +96,10 @@ engine.setBackgroundPriority(true); // Automatic native iOS playback; no user-fa
 const playlistStore=new PlaylistLibrary(omniboxStorage);
 let selectedPlaylist=getSetting('smartPlaylist','Meu Mix');
 if(!playlistStore.names().includes(selectedPlaylist))selectedPlaylist='Meu Mix';
-let smartMode=effectiveMode(getSetting('smartMode','off'));
-let smartStatus='Escolha um modo para complementar a fila sem substituir músicas.';
+// GNARLY native parity: smart recommendations run automatically; previously
+// saved manual mode no longer disables them on the simplified queue surface.
+let smartMode='mix';
+let smartStatus='';
 let pendingQueueId=null,smartFillEpoch=0,smartFillPending=false,lastSmartSeed='',smartRevision=0;
 let playbackSelection=0,lastRecordedSelection=-1;
 const playbackBackstack=[]; // Session-only previous track, like iOS queue navigation.
@@ -625,6 +627,10 @@ async function enrichSelectedTrack(track,knownDuration=0){
    for(const key of ['title','artist','album','artwork'])favorite[key]=track[key];
   }
   updatePlayer();void loadArtworkHue(track);void enrichOfficialAlbumArt(track);
+  // Re-attempt automatic Mix after an initially generic catalog artist is
+  // resolved; the same media source, queue and playback clock are preserved.
+  if(state.playing&&state.queue.length<2&&!isGenericArtist(track.artist))
+   void maybeFillSmartQueue();
   if(isGenericArtist(before)&&!isGenericArtist(track.artist))void loadAutoLyrics(track);
   if(state.sheet==='search')displaySearch(state.searchResults);
  }catch(error){if(error?.name!=='AbortError')console.debug('Metadata enrichment unavailable');}
@@ -781,11 +787,12 @@ function openSheet(which){
  if(MODULE_NAMES.includes(which)){if(state.sheet)closeSheet();toggleModule(which,true);return}
  if(OMNIBOX_TABS.includes(which)){state.omniboxTab=which;setSetting('omniboxTab',which)}
  state.sheet=which;
+ if(which==='queue'&&state.current&&state.queue.length<2)void maybeFillSmartQueue();
  $('#bottom-sheet').hidden=false;$('#panel-backdrop').hidden=false;
  $('#bottom-sheet').classList.toggle('display-sheet',which==='display');
   $('#bottom-sheet').classList.toggle('music-sheet',which==='controls');
  $('#bottom-sheet').classList.toggle('performance-sheet',which==='performance');
- $('#sheet-title').textContent=({search:'Busca',queue:'Próximas músicas',library:'Mix / Biblioteca',favorites:'Favoritos',controls:'Música',display:'Exibição',performance:'Performance / DJ',more:'GNARLY',install:'Instalar GNARLY',export:'Exportar',theme:'Camada 1 · Tema',experience:'Camada 2 · Experiência',reaction:'Ritmo visual', 'lyric-style':'Aa · Estilo de legenda',karaoke:'Karaokê',background:'Fundo'})[which]||'GNARLY';
+ $('#sheet-title').textContent=({search:'Busca',queue:'Próximas músicas',library:'Mix / Biblioteca',playlists:'Playlists',favorites:'Favoritos',controls:'Música',display:'Exibição',performance:'Performance / DJ',more:'GNARLY',install:'Instalar GNARLY',export:'Exportar',theme:'Camada 1 · Tema',experience:'Camada 2 · Experiência',reaction:'Ritmo visual', 'lyric-style':'Aa · Estilo de legenda',karaoke:'Karaokê',background:'Fundo'})[which]||'GNARLY';
  
  $('#omnibox-toggle').setAttribute('aria-expanded',String(OMNIBOX_TABS.includes(which)));
  syncCreativeQuickActions();
@@ -957,6 +964,13 @@ function setSmartMode(mode){
 async function maybeFillSmartQueue({force=false}={}){
  const mode=smartMode,anchor=state.current;
  if(mode==='off'||!anchor||(!force&&state.queue.length>=2))return;
+ // Do not consume the recommendation seed before a verified artist is known.
+ // Otherwise provisional search credits could leave the automatic queue empty.
+ if(mode!=='playlist'&&!radioQuery(mode,anchor)){
+  smartStatus='Aguardando identificação da música para sugerir próximas faixas.';
+  if(state.sheet==='queue')renderSheet();
+  return;
+ }
  if(smartFillPending&&!force)return;
  const revision=force?++smartRevision:smartRevision;
  const seed=mode+'|'+anchor.id+'|'+selectedPlaylist+'|'+revision;
@@ -1005,11 +1019,30 @@ async function maybeFillSmartQueue({force=false}={}){
  }
 }
 function renderQueuePanel(){
- return renderSmartQueuePanel({mode:smartMode,queueCount:state.queue.length,playlistNames:playlistStore.names(),selectedPlaylist,playlistCount:playlistStore.tracks(selectedPlaylist).length,status:smartStatus,anchor:state.current,taste:listeningMemory.summary()})+
- '<div class="smart-playlist-heading"><span>Playlist · '+safe(selectedPlaylist)+'</span></div>'+
- mediaList(playlistStore.tracks(selectedPlaylist),'playlist')+
- '<div class="row-end"><p class="section-note">A seguir · arraste a ordem com ↑ ↓</p>'+btn('Limpar fila','clear-queue','alt')+'</div>'+
- mediaList(state.queue,'queue');
+ const controls=renderSmartQueuePanel({
+  queueCount:state.queue.length,status:smartStatus,anchor:state.current,
+  busy:smartFillPending,playing:state.playing
+ });
+ const rows=state.queue.map((track,i)=>{
+  const title=safe(track.title),artist=safe(displayArtist(track));
+  const art=safe(artworkCandidates(track.artwork||icon,{pixels:artPixels('thumb')})[0]||icon);
+  const fallback=safe(track.artwork||icon);
+  const attrs=' data-context="queue" data-index="'+i+'"';
+  const offline=track.source==='local'?' <span class="native-queue-offline">✓ Offline</span>':'';
+  return '<div class="native-queue-row" role="listitem">'+
+   '<button type="button" class="native-queue-track" data-action="play"'+attrs+
+   ' aria-label="Tocar '+title+'">'+
+   '<img src="'+art+'" data-original-art="'+fallback+'" data-art-context="queue" data-art-index="'+i+'" alt="" loading="lazy" decoding="async"/>'+
+   '<span class="native-queue-track-info"><strong>'+title+'</strong><small>'+artist+offline+'</small></span>'+
+   '<span class="native-queue-index" aria-hidden="true">'+(i+1)+'</span></button>'+
+   '<button type="button" class="native-queue-remove" data-action="remove"'+attrs+
+   ' aria-label="Remover '+title+' da fila" title="Remover da fila">×</button></div>';
+ }).join('');
+ const list=state.queue.length?
+  '<div class="native-queue-list" role="list" aria-label="Próximas músicas">'+rows+'</div>':
+  '<div class="native-queue-empty">'+
+   (state.current?'O Mix selecionará as próximas músicas automaticamente.':'Suas próximas músicas aparecem aqui.')+'</div>';
+ return controls+list;
 }
 function renderGnarly2Controls(){
  const toggle=(id,label,enabled)=>'<button type="button" class="gnarly2-lock '+(enabled?'active':'')+
@@ -1080,6 +1113,20 @@ function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet)
   break;
  }
  case 'library':content.innerHTML=`<div class="card-help">Sua <strong>biblioteca local</strong> toca arquivos do dispositivo, sem servidor e sem conta. Os arquivos importados permanecem apenas nesta sessão.</div>${btn('＋ Adicionar músicas','import')}<div class="section-head">Mix · ${state.tracks.length} músicas</div>${mediaList(state.tracks,'library')}<div class="section-head">Favoritas · ${state.favorites.length}</div>${mediaList(state.favorites,'favorites')}`;break;
+ case 'playlists':{
+  const options=playlistStore.names().map(name=>'<option value="'+safe(name)+'"'+
+   (name===selectedPlaylist?' selected':'')+'>'+safe(name)+'</option>').join('');
+  const tracks=playlistStore.tracks(selectedPlaylist);
+  content.innerHTML='<div class="section-head">SUAS PLAYLISTS</div>'+
+   '<div class="smart-playlist-controls"><label for="smart-playlist-select" class="smart-playlist-name">Playlist</label>'+
+   '<select id="smart-playlist-select" data-smart-playlist aria-label="Playlist selecionada">'+options+'</select>'+
+   btn('+ Nova','playlist-create','alt')+btn('Enfileirar '+tracks.length,'playlist-load','alt')+'</div>'+
+   '<div class="smart-playlist-controls">'+btn('Salvar música atual','playlist-add-current','alt')+
+   btn('Excluir playlist','playlist-delete','alt')+'</div>'+
+   '<div class="smart-playlist-heading">'+safe(selectedPlaylist)+' · '+tracks.length+' músicas</div>'+
+   mediaList(tracks,'playlist');
+  break;
+ }
  case 'favorites':content.innerHTML=`<div class="section-head">Favoritos</div>${mediaList(state.favorites,'favorites')}`;break;
  case 'queue':content.innerHTML=renderQueuePanel();break;
  case 'controls':
@@ -1092,7 +1139,7 @@ function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet)
   });break;
  case 'performance':content.innerHTML=renderPerformancePanel(midiView());break;
  case 'display':content.innerHTML=renderDisplayPanel(displayStore);break;
- case 'more':content.innerHTML=`<div class="section-head">ACESSO RÁPIDO</div><div class="button-row">${btn('🎨 Temas','go-theme','alt')}${btn('⚡ Experiências','go-experience','alt')}${btn('Aa · Legendas','go-lyric-style','alt')}${btn('Ritmo visual','go-reaction','alt')}${btn('Performance · DJ','go-performance')}${btn('Música · ajustes','go-controls')}${btn('Adicionar músicas','import','alt')}${btn('Mix e biblioteca','go-library','alt')}${btn('Favoritos','go-favorites','alt')}${btn('Fila','go-queue','alt')}${btn('Karaokê','go-karaoke','alt')}${btn('Exibição','go-display','alt')}${app.dataset.deviceLayout==='phone'?'':btn('⛶ Tela cheia','toggle-fullscreen','alt')}</div><div class="section-head">APOIAR O GNARLY</div><a class="support-external-link" href="${OFFICIAL_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">♡ Apoiar no Apoia.se</a><div class="section-head">MODO APLICATIVO</div><div class="button-row">${btn('↗ Abrir sem barra do Safari','go-install','alt')}</div>`;break;
+ case 'more':content.innerHTML=`<div class="section-head">ACESSO RÁPIDO</div><div class="button-row">${btn('🎨 Temas','go-theme','alt')}${btn('⚡ Experiências','go-experience','alt')}${btn('Aa · Legendas','go-lyric-style','alt')}${btn('Ritmo visual','go-reaction','alt')}${btn('Performance · DJ','go-performance')}${btn('Música · ajustes','go-controls')}${btn('Adicionar músicas','import','alt')}${btn('Mix e biblioteca','go-library','alt')}${btn('Playlists','go-playlists','alt')}${btn('Favoritos','go-favorites','alt')}${btn('Fila','go-queue','alt')}${btn('Karaokê','go-karaoke','alt')}${btn('Exibição','go-display','alt')}${app.dataset.deviceLayout==='phone'?'':btn('⛶ Tela cheia','toggle-fullscreen','alt')}</div><div class="section-head">APOIAR O GNARLY</div><a class="support-external-link" href="${OFFICIAL_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">♡ Apoiar no Apoia.se</a><div class="section-head">MODO APLICATIVO</div><div class="button-row">${btn('↗ Abrir sem barra do Safari','go-install','alt')}</div>`;break;
   case 'install':content.innerHTML=renderAppInstallGuide({platform:installPlatform(navigator.userAgent,navigator.maxTouchPoints),standalone:installModeFromBrowser()});break;
  case 'export':content.innerHTML=`<p class="section-note">Formatos da Stage 72. Opções ainda não disponíveis não serão exportadas silenciosamente.</p><div class="export-formats">${[['image','Imagem estática'],['video','Vídeo · Story de até 15 s'],['player-audio','Player com áudio'],['lyrics-audio','Letras com áudio'],['player-noaudio','Player sem áudio'],['lyrics-noaudio','Letras sem áudio']].map(([id,name])=>`<button data-export-format="${id}" class="export-option">${name}<small>${id==='image'?'PNG · visual atual':'Requer renderização web'}</small></button>`).join('')}</div><div class="section-head">ESTILO</div><div class="chip-row">${['Clássica','Neon','Mono','Cinema','Máquina'].map(x=>`<button class="chip ${state.exportStyle===x?'selected':''}" data-export-style="${x}">${x}</button>`).join('')}</div>`;break;
  case 'theme':
@@ -1157,13 +1204,30 @@ function applyChosenLyricFont(id,scope=lyricScope){
 
 function resolveTracks(context){if(context==='playlist')return playlistStore.tracks(selectedPlaylist);return ({search:state.searchResults,library:state.tracks,queue:state.queue,favorites:state.favorites,history:state.history})[context]||[]}
 function handleCommand(command){switch(command){
- case 'smart-refresh':lastSmartSeed='';state.queue=retainManualQueue(state.queue);void maybeFillSmartQueue({force:true});break;
+ case 'queue-play':
+   if(!state.current&&state.queue.length)selectTrack(state.queue[0],true,{fromQueue:true});
+   else if(state.current&&audio.paused)void play();
+   else if(state.queue.length)selectTrack(state.queue[0],true,{fromQueue:true});
+   else if(state.current){void maybeFillSmartQueue({force:true});toast('Buscando próximas faixas para o Mix.')}
+   else toast('Escolha uma música na Busca para começar.');
+   break;
+  case 'queue-shuffle':
+   if(state.queue.length<2)break;
+   state.queue=shuffleUpcoming(state.queue);
+   updatePlayer();
+   if(state.sheet==='queue')renderSheet();
+   toast('Próximas músicas em ordem aleatória.');
+   break;
+  case 'smart-refresh':
+   if(!state.current){toast('Escolha uma música para atualizar o Mix.');break}
+   lastSmartSeed='';state.queue=retainManualQueue(state.queue);
+   void maybeFillSmartQueue({force:true});break;
  case 'taste-reset':listeningMemory.clear();recommendationsByMode.clear();toast('Aprendizado local reiniciado. Suas playlists e favoritos foram preservados.');renderActiveSurfaces();break;
- case 'playlist-add-current':if(!state.current){toast('Escolha uma faixa primeiro.');break}if(playlistStore.add(selectedPlaylist,state.current)){toast('Salvo em '+selectedPlaylist);if(state.sheet==='queue')renderSheet()}else toast('Faixa já salva ou não persistível.');break;
- case 'playlist-create':{const name=window.prompt('Nome da nova playlist (até 45 caracteres):');if(name===null)break;if(!playlistStore.create(name)){toast('Nome repetido ou limite de playlists atingido.');break}selectedPlaylist=name.trim().slice(0,45);setSetting('smartPlaylist',selectedPlaylist);if(state.sheet==='queue')renderSheet();break}
- case 'playlist-load':{const items=playlistStore.tracks(selectedPlaylist);const before=state.queue.length;state.queue=appendUnique(state.queue,items,state.current?.id);updatePlayer();if(state.sheet==='queue')renderSheet();toast((state.queue.length-before)+' adicionadas · '+selectedPlaylist);break}
- case 'playlist-delete':if(playlistStore.delete(selectedPlaylist)){selectedPlaylist='Meu Mix';setSetting('smartPlaylist',selectedPlaylist);if(state.sheet==='queue')renderSheet();toast('Playlist removida.')}else toast('A playlist Meu Mix é permanente.');break;
- case 'import':$('#audio-import').click();break;case 'load-lrc':$('#lrc-import').click();break;case 'retry-lyrics':if(state.current)void loadAutoLyrics(state.current);break;case 'lyrics-ai':if(state.current&&!state.lyricsAIWorking)$('#lyrics-ai-import').click();break;case 'load-background':$('#background-import').click();break;case 'use-photo':if(state.backgroundURL){state.backgroundMode='custom';setSetting('backgroundMode','custom');applyBackground();renderActiveSurfaces()}break;case 'adjust-photo':state.photoAdjust=true;renderActiveSurfaces();break;case 'done-photo':state.photoAdjust=false;renderActiveSurfaces();break;case 'show-visual':state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();closeSheet();break;case 'show-cover':if(!state.current?.artwork){toast('Selecione uma música com capa primeiro.');break}state.backgroundMode='cover';setSetting('backgroundMode','cover');applyBackground();closeSheet();break;case 'remove-background':if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL);state.backgroundURL=null;state.photoAdjust=false;state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();toast('Tema animado restaurado');break;case 'clear-queue':state.queue.length=0;pendingQueueId=null;smartFillEpoch++;updatePlayer();renderActiveSurfaces();break;case 'play-youtube':if(state.current?.source==='youtube')openYouTubePlayer(state.current);break;case 'reset-audio':state.speed=1;state.reverb=0;state.bass=0;state.pitch=true;state.preset='ORIGINAL';engine.setSpeed(1,true);engine.setBass(0);engine.setReverb(0);for(const p of ['speed','bass','reverb','pitch','preset'])setSetting(p,p==='pitch'?'yes':p==='preset'?'ORIGINAL':p==='speed'?1:0);renderActiveSurfaces();break;case 'go-theme':openSheet('theme');break;case 'go-experience':openSheet('experience');break;case 'go-reaction':openSheet('reaction');break;case 'go-lyric-style':openSheet('lyric-style');break;case 'restore-theme':state.theme=restoredThemeAfterGnarly(state.previousTheme);setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();break;case 'reset-theme-only':state.theme='ACID';setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();break;case 'reset-experience-only':state.experience='original';setSetting('experience',state.experience);updateBadges();renderActiveSurfaces();break;case 'reset-reaction-only':state.reaction='FLUIDO';setSetting('reaction',state.reaction);updateBadges();renderActiveSurfaces();break;case 'reset-visual':state.theme='ACID';state.experience='original';state.reaction='FLUIDO';state.materialLayer='none';for(const k of ['theme','experience','reaction','materialLayer'])setSetting(k,state[k]);updateBadges();renderActiveSurfaces();break;case 'go-stems':state.musicTab='stems';openSheet('controls');void refreshCloudStemAvailability();break;case 'go-speed-pitch':state.musicTab='speedPitch';openSheet('controls');break;case 'auto-demucs':void startDemucs();break;case 'cancel-stems':state.demucsAbort?.abort();state.stemStatus='Cancelamento solicitado; o provedor pode continuar consumindo a cota.';renderActiveSurfaces();break;case 'load-stems':if(!state.current){toast('Selecione uma música antes de importar Stems.');break}$('#stems-import').click();break;case 'reset-stems':stems.applyPreset('original');renderActiveSurfaces();break;case 'clear-stems':stems.clear();state.stemModel='';state.stemStatus='Mixer desativado. Voltamos ao áudio original.';renderActiveSurfaces();break;case 'go-controls':state.musicTab='speedPitch';openSheet('controls');break;case 'go-performance':openSheet('performance');break;case 'go-library':openSheet('library');break;case 'go-favorites':openSheet('favorites');break;case 'go-queue':openSheet('queue');break;case 'go-karaoke':openSheet('karaoke');break;case 'go-display':openSheet('display');break;case 'toggle-fullscreen':closeSheet();void fullscreen.toggle();break;case 'go-install':openSheet('install');break;case 'close-display':closeSheet();break;case 'hide-display-panels':displayStore.setGroup(['search','presets','controls','header','player','export','performance'],false);applyPanelVisibility();renderActiveSurfaces();break;case 'apply-theme':closeSheet();break}}
+ case 'playlist-add-current':if(!state.current){toast('Escolha uma faixa primeiro.');break}if(playlistStore.add(selectedPlaylist,state.current)){toast('Salvo em '+selectedPlaylist);if(state.sheet==='queue'||state.sheet==='playlists')renderSheet()}else toast('Faixa já salva ou não persistível.');break;
+ case 'playlist-create':{const name=window.prompt('Nome da nova playlist (até 45 caracteres):');if(name===null)break;if(!playlistStore.create(name)){toast('Nome repetido ou limite de playlists atingido.');break}selectedPlaylist=name.trim().slice(0,45);setSetting('smartPlaylist',selectedPlaylist);if(state.sheet==='queue'||state.sheet==='playlists')renderSheet();break}
+ case 'playlist-load':{const items=playlistStore.tracks(selectedPlaylist);const before=state.queue.length;state.queue=appendUnique(state.queue,items,state.current?.id);updatePlayer();if(state.sheet==='queue'||state.sheet==='playlists')renderSheet();toast((state.queue.length-before)+' adicionadas · '+selectedPlaylist);break}
+ case 'playlist-delete':if(playlistStore.delete(selectedPlaylist)){selectedPlaylist='Meu Mix';setSetting('smartPlaylist',selectedPlaylist);if(state.sheet==='queue'||state.sheet==='playlists')renderSheet();toast('Playlist removida.')}else toast('A playlist Meu Mix é permanente.');break;
+ case 'import':$('#audio-import').click();break;case 'load-lrc':$('#lrc-import').click();break;case 'retry-lyrics':if(state.current)void loadAutoLyrics(state.current);break;case 'lyrics-ai':if(state.current&&!state.lyricsAIWorking)$('#lyrics-ai-import').click();break;case 'load-background':$('#background-import').click();break;case 'use-photo':if(state.backgroundURL){state.backgroundMode='custom';setSetting('backgroundMode','custom');applyBackground();renderActiveSurfaces()}break;case 'adjust-photo':state.photoAdjust=true;renderActiveSurfaces();break;case 'done-photo':state.photoAdjust=false;renderActiveSurfaces();break;case 'show-visual':state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();closeSheet();break;case 'show-cover':if(!state.current?.artwork){toast('Selecione uma música com capa primeiro.');break}state.backgroundMode='cover';setSetting('backgroundMode','cover');applyBackground();closeSheet();break;case 'remove-background':if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL);state.backgroundURL=null;state.photoAdjust=false;state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();toast('Tema animado restaurado');break;case 'clear-queue':state.queue.length=0;pendingQueueId=null;smartFillEpoch++;updatePlayer();renderActiveSurfaces();break;case 'play-youtube':if(state.current?.source==='youtube')openYouTubePlayer(state.current);break;case 'reset-audio':state.speed=1;state.reverb=0;state.bass=0;state.pitch=true;state.preset='ORIGINAL';engine.setSpeed(1,true);engine.setBass(0);engine.setReverb(0);for(const p of ['speed','bass','reverb','pitch','preset'])setSetting(p,p==='pitch'?'yes':p==='preset'?'ORIGINAL':p==='speed'?1:0);renderActiveSurfaces();break;case 'go-theme':openSheet('theme');break;case 'go-experience':openSheet('experience');break;case 'go-reaction':openSheet('reaction');break;case 'go-lyric-style':openSheet('lyric-style');break;case 'restore-theme':state.theme=restoredThemeAfterGnarly(state.previousTheme);setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();break;case 'reset-theme-only':state.theme='ACID';setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();break;case 'reset-experience-only':state.experience='original';setSetting('experience',state.experience);updateBadges();renderActiveSurfaces();break;case 'reset-reaction-only':state.reaction='FLUIDO';setSetting('reaction',state.reaction);updateBadges();renderActiveSurfaces();break;case 'reset-visual':state.theme='ACID';state.experience='original';state.reaction='FLUIDO';state.materialLayer='none';for(const k of ['theme','experience','reaction','materialLayer'])setSetting(k,state[k]);updateBadges();renderActiveSurfaces();break;case 'go-stems':state.musicTab='stems';openSheet('controls');void refreshCloudStemAvailability();break;case 'go-speed-pitch':state.musicTab='speedPitch';openSheet('controls');break;case 'auto-demucs':void startDemucs();break;case 'cancel-stems':state.demucsAbort?.abort();state.stemStatus='Cancelamento solicitado; o provedor pode continuar consumindo a cota.';renderActiveSurfaces();break;case 'load-stems':if(!state.current){toast('Selecione uma música antes de importar Stems.');break}$('#stems-import').click();break;case 'reset-stems':stems.applyPreset('original');renderActiveSurfaces();break;case 'clear-stems':stems.clear();state.stemModel='';state.stemStatus='Mixer desativado. Voltamos ao áudio original.';renderActiveSurfaces();break;case 'go-controls':state.musicTab='speedPitch';openSheet('controls');break;case 'go-performance':openSheet('performance');break;case 'go-library':openSheet('library');break;case 'go-playlists':openSheet('playlists');break;case 'go-favorites':openSheet('favorites');break;case 'go-queue':openSheet('queue');break;case 'go-karaoke':openSheet('karaoke');break;case 'go-display':openSheet('display');break;case 'toggle-fullscreen':closeSheet();void fullscreen.toggle();break;case 'go-install':openSheet('install');break;case 'close-display':closeSheet();break;case 'hide-display-panels':displayStore.setGroup(['search','presets','controls','header','player','export','performance'],false);applyPanelVisibility();renderActiveSurfaces();break;case 'apply-theme':closeSheet();break}}
 function syncVisual(){visual.setSong(audio.currentTime||0,Number.isFinite(audio.duration)&&state.current?.source!=='preview'?audio.duration:state.current?.duration||0,state.artworkHue);const pulse=pads.getPulse();const active=!document.hidden&&(state.playing||pads.running||pulse>.009);const signal=active?engine.sampleSpectrum():{bass:0,mid:0,treble:0,beat:0,energy:0};if(pulse>.009){signal.beat=Math.max(signal.beat,pulse);signal.energy=Math.max(signal.energy,pulse*.72);signal.bass=Math.max(signal.bass,pulse*.48)}visual.setSpectrum(signal);requestAnimationFrame(syncVisual)}requestAnimationFrame(syncVisual);
 $('#audio-import').addEventListener('change',e=>{importAudio(e.target.files||[]);e.target.value='' });
 $('#dj-midi-import').addEventListener('change',e=>{const file=e.target.files?.[0];e.target.value='';if(file)void analyzeMidi(file)});

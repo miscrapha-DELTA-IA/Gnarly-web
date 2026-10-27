@@ -583,26 +583,37 @@ await quick.locator('#close-sheet').click();
 assert.deepEqual(quickErrors,[]);
 await quick.close();
 
-// Smart Queue / Omnibox: all four tabs share one taste memory without leaking
-// their suggestions or requiring the playback engine to start without a track.
+// Native-inspired automatic queue: only three principal actions and
+// song rows, not a five-mode form, memory inspector or playlist tools.
 const tastePage=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
 const tasteErrors=[];tastePage.on('pageerror',error=>tasteErrors.push(error.message));
 await tastePage.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
 await tastePage.locator('#omnibox-toggle').click();
 await tastePage.locator('[data-omnibox-tab="queue"]').click();
-assert.equal(await tastePage.locator('.smart-queue-panel').count(),1);
-assert.match(await tastePage.locator('.smart-queue-explain').innerText(),/Cada modo tem sua própria lógica/);
-assert.equal(await tastePage.locator('.smart-taste-clear').count(),1);
-for(const mode of ['artist','album','mix','playlist']){
- await tastePage.locator('[data-smart-mode="'+mode+'"]').click();
- assert.equal(await tastePage.locator('[data-smart-mode="'+mode+'"]').getAttribute('aria-pressed'),'true');
- assert.equal(await tastePage.locator('[data-smart-mode="'+mode+'"]').count(),1);
-}
-await tastePage.locator('.smart-taste-clear').click();
-assert.match(await tastePage.locator('.smart-taste-insight').innerText(),/0 sinais locais/);
+assert.equal(await tastePage.locator('.native-queue').count(),1);
+assert.equal(await tastePage.locator('.native-queue-action').count(),3);
+for(const action of ['queue-play','queue-shuffle','smart-refresh'])
+ assert.equal(await tastePage.locator('[data-command="'+action+'"]').count(),1);
+assert.equal(await tastePage.locator('.smart-chip').count(),0);
+assert.equal(await tastePage.locator('.smart-queue-explain').count(),0);
+assert.equal(await tastePage.locator('.smart-taste-insight').count(),0);
+assert.equal(await tastePage.locator('.smart-playlist-controls').count(),0);
+assert.equal(await tastePage.locator('#smart-playlist-select').count(),0);
+assert.match(await tastePage.locator('.native-queue-auto').innerText(),/Mix inteligente/);
+assert.equal(await tastePage.locator('.native-queue-track').count(),0);
+for(const command of ['queue-play','queue-shuffle','smart-refresh'])
+ assert.equal(await tastePage.locator('[data-command="'+command+'"]').isDisabled(),true);
 await tastePage.locator('[data-omnibox-tab="search"]').click();
 assert.match(await tastePage.locator('.section-head').first().innerText(),/para você/i);
-assert.deepEqual(tasteErrors,[],'Queue mode/taste reset and Omnibox must not throw');
+await tastePage.locator('#close-sheet').click();
+await tastePage.locator('#more-button').click();
+assert.equal(await tastePage.locator('[data-command="go-playlists"]').count(),1,
+ 'Saved playlist management is tucked away in More, not lost');
+await tastePage.locator('[data-command="go-playlists"]').click();
+assert.match(await tastePage.locator('#sheet-title').innerText(),/Playlists/);
+assert.equal(await tastePage.locator('#smart-playlist-select').count(),1);
+assert.equal(await tastePage.locator('[data-command="playlist-create"]').count(),1);
+assert.deepEqual(tasteErrors,[],'Automatic queue/Omnibox/Playlists must not throw');
 await tastePage.close();
 
 // GNARLY 2: manual material/color lock, independent material and experience

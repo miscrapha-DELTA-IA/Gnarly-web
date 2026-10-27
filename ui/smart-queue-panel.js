@@ -1,20 +1,23 @@
-import {SMART_MODES,SMART_LABELS} from '../lib/smart-queue.js';
+/** Three-action queue chrome. Smart radio, taste memory, verified candidate
+ * selection and playlists remain in the engine rather than crowding the sheet.
+ * Modelled after the compact Mix / Queue surface in native GNARLY.
+ */
 const esc=s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
-export function renderSmartQueuePanel({mode='off',queueCount=0,playlistNames=['Meu Mix'],selectedPlaylist='Meu Mix',playlistCount=0,status='',anchor=null,taste=null}={}){
- const modes=SMART_MODES.map(m=>'<button type="button" class="smart-chip '+(mode===m?'active':'')+'" data-smart-mode="'+m+'" aria-pressed="'+(mode===m)+'">'+SMART_LABELS[m]+'</button>').join('');
- const options=playlistNames.map(name=>'<option value="'+esc(name)+'" '+(name===selectedPlaylist?'selected':'')+'>'+esc(name)+'</option>').join('');
- const seed=anchor?'<span class="smart-anchor">'+esc(anchor.artist||'')+' · '+esc(anchor.album||anchor.title||'')+'</span>':'<span class="smart-anchor">Escolha uma música para orientar o mix</span>';
- return '<div class="smart-queue-panel"><div class="section-head">FILA INTELIGENTE · '+queueCount+' a seguir</div>'+
-   '<div class="smart-chip-row" role="group" aria-label="Tipo de fila">'+modes+'</div>'+
-   '<div class="smart-queue-explain">Cada modo tem sua própria lógica: Artista explora faixas verificadas do intérprete; Álbum fica na gravação/álbum confirmado; Mix combina seu gosto e alterna artistas/álbuns; Playlist respeita sua ordem salva. Ao mudar de modo, apenas sugestões automáticas antigas são trocadas — músicas adicionadas manualmente permanecem.</div>'+
-   '<div class="smart-taste-insight" role="note">MEMÓRIA MUSICAL · '+(taste?.signals||0)+' sinais locais'+(taste?.artists?.length?' · afinidades: '+esc(taste.artists.join(', ')):' · seu gosto será aprendido enquanto escuta')+
-   ' <button type="button" class="smart-taste-clear" data-command="taste-reset" aria-label="Limpar aprendizado local, sem apagar favoritos ou playlists">Reiniciar aprendizado</button></div>'+
-   seed+'<div class="smart-queue-actions"><button type="button" class="action-button alt" data-command="smart-refresh">Completar fila</button>'+
-   '<button type="button" class="action-button alt" data-command="playlist-add-current">Salvar atual</button></div>'+
-   '<p class="status-text" role="status">'+esc(status)+'</p>'+
-   '<div class="smart-playlist-controls"><label class="smart-playlist-name" for="smart-playlist-select">PLAYLIST</label>'+
-   '<select id="smart-playlist-select" data-smart-playlist aria-label="Playlist selecionada">'+options+'</select>'+
-   '<button class="action-button alt" data-command="playlist-create" type="button">+ Nova</button>'+
-   '<button class="action-button alt" data-command="playlist-load" type="button">Enfileirar '+playlistCount+'</button></div>'+
-   '<div class="smart-playlist-subactions"><button type="button" class="action-button alt" data-command="playlist-delete">Excluir playlist selecionada</button></div></div>';
+export function renderSmartQueuePanel({queueCount=0,status='',anchor=null,busy=false,playing=false}={}){
+ const ready=Boolean(anchor),count=Math.max(0,Number(queueCount)||0);
+ const activity=busy?'Buscando próximas músicas…':
+  status&&(/Sem novas|Não há|Falha|indisponível|preservada/i.test(status))?status:'';
+ return `<section class="smart-queue-panel native-queue" aria-label="Fila inteligente automática">
+   <div class="native-queue-top"><div>
+    <strong class="native-queue-name">A seguir <span class="native-queue-number">${count}</span></strong>
+    <span class="native-queue-auto"><span aria-hidden="true" class="native-queue-pulse"></span>Mix inteligente</span>
+   </div></div>
+   <div class="native-queue-actions" role="group" aria-label="Ações da fila">
+    <button type="button" data-command="queue-play" class="native-queue-action primary" ${!ready&&!count?'disabled':''} aria-label="${playing?'Continuar reprodução':'Tocar músicas da fila'}"><span aria-hidden="true">▶</span><span>Tocar</span></button>
+    <button type="button" data-command="queue-shuffle" class="native-queue-action" ${count<2?'disabled':''} aria-label="Misturar ordem das próximas músicas"><span aria-hidden="true">⇄</span><span>Aleatório</span></button>
+    <button type="button" data-command="smart-refresh" class="native-queue-action" ${!ready||busy?'disabled':''} aria-label="Atualizar sugestões automáticas"><span aria-hidden="true">↻</span><span>Atualizar</span></button>
+   </div>
+   ${activity?'<p class="native-queue-status" role="status">'+esc(activity)+'</p>':''}
+   ${!ready?'<p class="native-queue-hint">Escolha uma música em Busca para o Mix continuar automaticamente.</p>':''}
+  </section>`;
 }
