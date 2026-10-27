@@ -10,6 +10,14 @@ assert.equal(await page.locator('#karaoke-stage-fullscreen').count(),1);
 assert.equal(await page.locator('#fullscreen-button').isVisible(),false,'Phone does not need desktop fullscreen shortcut');
 assert.equal(await page.locator('#performance-button').isVisible(),false,'DJ remains in More and the module drawer');
 assert.equal(await page.locator('#support-button').getAttribute('href'),'https://apoia.se/gnarlyapp');
+const headerMetrics=await page.evaluate(()=>{
+ const top=document.querySelector('#topbar').getBoundingClientRect(),brand=document.querySelector('#brand-line').getBoundingClientRect();
+ const eye=document.querySelector('#search-toggle'),cs=getComputedStyle(eye);
+ return {gap:brand.top-top.bottom,touchAction:cs.touchAction,userSelect:cs.webkitUserSelect||cs.userSelect};
+});
+assert.ok(headerMetrics.gap>=14,'Brand needs breathing space below eye row: '+JSON.stringify(headerMetrics));
+assert.equal(headerMetrics.touchAction,'none','Eye must own gestures without Safari scrolling/text selection');
+assert.equal(headerMetrics.userSelect,'none','Long-touch native text selection must be disabled');
 assert.equal(await page.locator('#app-shell').getAttribute('data-device-layout'),'phone');
 
 async function assertAppearanceControlFits(label){
@@ -216,7 +224,12 @@ assert.equal(await page.locator('#module-performance-body').isVisible(),false);
 await page.locator('#search-toggle').click();
 assert.equal(await page.locator('#app-shell').getAttribute('data-icons-collapsed'),'true');
 assert.equal(await page.locator('#theme-button').isVisible(),false);
-await page.locator('#search-toggle').click({button:'right'});
+await page.locator('#search-toggle').evaluate(el=>{
+ const init={bubbles:true,cancelable:true,pointerId:9,pointerType:'touch',button:0,clientX:25};
+ el.dispatchEvent(new PointerEvent('pointerdown',{...init,clientY:18}));
+ el.dispatchEvent(new PointerEvent('pointermove',{...init,clientY:69}));
+ el.dispatchEvent(new PointerEvent('pointerup',{...init,clientY:75}));
+});
 assert.equal(await page.locator('#sheet-title').innerText(),'Exibição');
 assert.equal(await page.locator('#app-shell').getAttribute('data-player-size'),'compact');
 assert.equal(await page.locator('#app-shell').getAttribute('data-player-material'),'clear');
@@ -248,7 +261,12 @@ assert.equal(await page.locator('#player-surface-menu').isVisible(),false);
 await page.locator('#player-surface-button').click();
 await page.locator('[data-player-surface="turbulent"]').click();
 assert.equal(await page.locator('#app-shell').getAttribute('data-player-surface-mode'),'turbulent');
-await page.locator('#search-toggle').click({button:'right'});
+await page.locator('#search-toggle').evaluate(el=>{
+ const init={bubbles:true,cancelable:true,pointerId:9,pointerType:'touch',button:0,clientX:25};
+ el.dispatchEvent(new PointerEvent('pointerdown',{...init,clientY:18}));
+ el.dispatchEvent(new PointerEvent('pointermove',{...init,clientY:69}));
+ el.dispatchEvent(new PointerEvent('pointerup',{...init,clientY:75}));
+});
 await page.locator('button[data-player-size="compact"]').click();
 await page.locator('[data-layout="listening"]').click();
 assert.equal(await page.locator('#brand-line').isVisible(),false);
