@@ -1,0 +1,86 @@
+{
+  "baseline": null,
+  "browser": "chromium",
+  "fixture": "synthetic AAC; simulated edge/origin latency; no provider",
+  "scenarios": {
+    "offline": {
+      "samples": 20,
+      "p50": 42.4,
+      "p95": 80.3,
+      "p99": 1106.3,
+      "mediaRequests": 0,
+      "originRequests": 0,
+      "firstByteSamples": 0,
+      "firstByteP50": null
+    },
+    "r2-hit": {
+      "samples": 20,
+      "p50": 67.2,
+      "p95": 103.8,
+      "p99": 109,
+      "mediaRequests": 20,
+      "originRequests": 0,
+      "firstByteSamples": 18,
+      "firstByteP50": 39
+    },
+    "prepared-next": {
+      "samples": 20,
+      "p50": 82.1,
+      "p95": 105,
+      "p99": 106.4,
+      "mediaRequests": 20,
+      "originRequests": 0,
+      "firstByteSamples": 20,
+      "firstByteP50": 69.6
+    },
+    "cold-progressive": {
+      "samples": 20,
+      "p50": 133.2,
+      "p95": 175.5,
+      "p99": 179,
+      "mediaRequests": 20,
+      "originRequests": 20,
+      "firstByteSamples": 19,
+      "firstByteP50": 115.7
+    },
+    "cold-fallback": {
+      "samples": 20,
+      "p50": 301.6,
+      "p95": 347.5,
+      "p99": 350,
+      "mediaRequests": 20,
+      "originRequests": 40,
+      "firstByteSamples": 19,
+      "firstByteP50": 291.8
+    },
+    "high-latency": {
+      "samples": 20,
+      "p50": 286.3,
+      "p95": 363.2,
+      "p99": 377.3,
+      "mediaRequests": 20,
+      "originRequests": 20,
+      "firstByteSamples": 20,
+      "firstByteP50": 274.5
+    },
+    "resume": {
+      "samples": 20,
+      "p50": 1.9,
+      "p95": 23,
+      "p99": 43.8,
+      "mediaRequests": 20,
+      "originRequests": 0,
+      "firstByteSamples": 0,
+      "firstByteP50": null
+    }
+  },
+  "regressions": {
+    "rapidNext": true,
+    "karaoke": true,
+    "headphoneTransport": true,
+    "automaticEnd": true,
+    "offlineWithoutNetwork": true,
+    "resumeKeepsSource": true,
+    "uncaughtErrors": 0
+  }
+}

@@ -99,3 +99,10 @@ test('offline shell caches static resources but refuses remote audio, APIs, and 
  assert.match(app,/data-action="download"/);
  assert.match(app,/case 'library':content.innerHTML=/);
 });
+
+test('download never persists a truncated complete-file response',async()=>{
+ const track={source:'youtube',id:'youtube:ABCDEFGHIJK',videoId:'ABCDEFGHIJK',title:'Fixture'};
+ await assert.rejects(fetchFullAudio(track,{fetcher:async()=>new Response(new Uint8Array(2048),{
+  headers:{'Content-Type':'audio/mp4','Content-Length':'4096'}
+ })}),/incompleta/);
+});
