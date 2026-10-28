@@ -29,7 +29,7 @@ export default {
     const url=new URL(request.url);
     // Pairing uses the standalone Cloudflare Worker, not the Pages HTML origin.
     // Only short voice-analysis frames and playback clock are relayed.
-    const karaoke=/^\\/karaoke-relay\\/([^/]+)$/.exec(url.pathname);
+    const karaoke=/^\/karaoke-relay\/([^/]+)$/.exec(url.pathname);
     if(karaoke){
       if(request.method!=='GET'||request.headers.get('Upgrade')?.toLowerCase()!=='websocket')
         return new Response('WebSocket required',{status:426});
@@ -39,7 +39,7 @@ export default {
       try{
         const o=new URL(origin);
         trusted=o.protocol==='https:'&&(
-          /^(?:[a-z0-9-]+\\.)?(?:gnarly-web-pages|gnarly-web-stage72)\\.pages\\.dev$/i.test(o.hostname)||
+          /^(?:[a-z0-9-]+\.)?(?:gnarly-web-pages|gnarly-web-stage72)\.pages\.dev$/i.test(o.hostname)||
           o.hostname==='gnarly-web.miscrapha.workers.dev')||
           o.protocol==='http:'&&['localhost','127.0.0.1'].includes(o.hostname);
       }catch{}
