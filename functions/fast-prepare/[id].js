@@ -4,11 +4,19 @@
  */
 const ID=/^[A-Za-z0-9_-]{11}$/;
 const HOST='https://nightcorelab.onrender.com';
-export async function onRequestPost({params,request},fetcher=fetch){
+export async function onRequestPost({params,request,env},fetcher=fetch){
  const id=params?.id;
  if(!ID.test(id||''))return new Response('Invalid track ID',{status:400});
  const contentLength=Number(request.headers.get('content-length')||0);
  if(contentLength>512)return new Response('Body too large',{status:413});
+ // A ready R2 object needs no Render wakeup or redundant S3 HEAD at origin.
+ if(env?.GNARLY_AUDIO_R2){
+  try{
+   const hit=await env.GNARLY_AUDIO_R2.head(id+'/audio.m4a');
+   if(hit&&Number.isSafeInteger(hit.size)&&hit.size>0)return new Response(
+    JSON.stringify({status:'cached'}),{headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
+  }catch{/* Preserve the existing origin fallback on an R2 outage. */}
+ }
  // Deliberately ignore untrusted body: only the validated URL path ID is sent upstream.
  const origin=new URL('/prepare',HOST);
  try{

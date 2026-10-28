@@ -6,6 +6,7 @@ import {fastPrepareURL,trackAudioURL,isGnarlyPagesHost} from '../lib/playback-so
 import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from '../lib/queue-audio-warmup.js';
 
 const audio=new Uint8Array(4096).fill(7);
+audio.set([0,0,0,24,0x66,0x74,0x79,0x70,0x4d,0x34,0x41,0x20]);
 const track={source:'youtube',id:'youtube:ABCDEFGHIJK',videoId:'ABCDEFGHIJK'};
 const request=(path,options={})=>new Request('https://gnarly-web-pages.pages.dev'+path,options);
 function mockBucket({present=true,range=false}={}){
@@ -179,4 +180,78 @@ test('partial or oversized origin media is never promoted into a complete R2 obj
  assert.equal(completeAudioLength(new Response(null,{status:206,headers:{
   'Content-Length':'4096','Content-Range':'bytes 0-4095/4096'
  }})),4096);
+});
+
+test('R2 prepared next track does not contact Render',async()=>{
+ const {bucket,calls}=mockBucket();
+ const result=await prepare({request:request('/fast-prepare/ABCDEFGHIJK',{method:'POST'}),
+  params:{id:'ABCDEFGHIJK'},env:{GNARLY_AUDIO_R2:bucket}},()=>{throw Error('Must not wake Render')});
+ assert.equal(result.status,200);assert.equal((await result.json()).status,'cached');
+ assert.equal(calls.length,1);
+});
+test('provider cooldown is preserved without a duplicate extraction request',async()=>{
+ let calls=0,canceled=0;
+ const result=await handleFastAudio({request:request('/fast-audio/ABCDEFGHIJK'),env:{},params:{id:'ABCDEFGHIJK'}},async()=>{
+  calls++;return new Response(new ReadableStream({cancel(){canceled++}}),{status:429,headers:{'Retry-After':'180'}});
+ });
+ assert.equal(result.status,429);assert.equal(result.headers.get('retry-after'),'180');
+ assert.equal(calls,1);assert.equal(canceled,1);
+});
+test('malformed partial upstream is closed before extraction fallback',async()=>{
+ let calls=0,canceled=0;
+ const result=await handleFastAudio({request:request('/fast-audio/ABCDEFGHIJK'),env:{},params:{id:'ABCDEFGHIJK'}},async()=>{
+  calls++;
+  if(calls===1)return new Response(new ReadableStream({cancel(){canceled++}}),{
+   status:206,headers:{'Content-Type':'audio/mp4','Content-Length':'100','Content-Range':'bytes 0-100/100'}});
+  return new Response(audio,{headers:{'Content-Type':'audio/mp4'}});
+ });
+ assert.equal(result.status,200);assert.equal(canceled,1);assert.equal(calls,2);
+});
+test('truncated, excessive and interrupted streams cannot poison R2',async()=>{
+ for(const mode of ['short','long','error']){
+  let writes=0;const pending=[];
+  const body=mode==='error'?new ReadableStream({start(c){c.error(Error('network interruption'))}}):audio.slice(0,mode==='short'?2048:4096);
+  const result=await handleFastAudio({request:request('/fast-audio/ABCDEFGHIJK'),
+   env:{GNARLY_AUDIO_R2:{get:async()=>null,put:async()=>writes++}},params:{id:'ABCDEFGHIJK'},waitUntil:p=>pending.push(p)
+  },async()=>new Response(body,{headers:{'Content-Type':'audio/mp4','Content-Length':mode==='long'?'2048':'4096'}}));
+  await result.arrayBuffer().catch(()=>{});await Promise.all(pending);assert.equal(writes,0,mode);
+ }
+});
+test('failed warmup retries after bounded backoff and retains accepted work across navigation',async()=>{
+ let now=0,calls=0;
+ const w=new QueueAudioWarmup({now:()=>now,fetcher:async()=>({status:++calls===1?503:202})});
+ assert.equal(await w.start(track),false);assert.equal(await w.start(track),false);
+ now=16000;assert.equal(await w.start(track),true);w.cancel();
+ assert.equal(await w.start(track),false);
+ const other={...track,id:'youtube:BBBBBBBBBBB',videoId:'BBBBBBBBBBB'};
+ assert.equal(await w.start(other),false,'one accepted speculative extraction at a time');
+ now+=31000;assert.equal(await w.start(other),true);
+ assert.equal(calls,3);
+ assert.equal(canWarmImmediately({current:track,next:other,effectiveType:'3g'}),false);
+});
+test('progressive header deadline falls back once and cancels the slow waiter',async()=>{
+ let calls=0,aborted=false;
+ const result=await handleFastAudio({request:request('/fast-audio/ABCDEFGHIJK'),env:{},params:{id:'ABCDEFGHIJK'}},
+  async(url,{signal})=>{
+   if(++calls===1)return new Promise((_,reject)=>signal.addEventListener('abort',()=>{aborted=true;reject(signal.reason)},{once:true}));
+   return new Response(audio,{headers:{'Content-Type':'audio/mp4'}});
+  },{progressiveDeadlineMs:5});
+ assert.equal(result.status,200);assert.equal(calls,2);assert.equal(aborted,true);
+});
+test('first progressive bytes arrive before the upstream completes or R2 promotion finishes',async()=>{
+ let finish;let written=false;const work=[];
+ const stream=new ReadableStream({start(c){c.enqueue(audio.slice(0,1024));finish=()=>{c.enqueue(audio.slice(1024));c.close()}}});
+ const response=await handleFastAudio({request:request('/fast-audio/ABCDEFGHIJK'),
+  env:{GNARLY_AUDIO_R2:{get:async()=>null,put:async()=>{written=true}}},params:{id:'ABCDEFGHIJK'},waitUntil:p=>work.push(p)},
+  async()=>new Response(stream,{headers:{'Content-Type':'audio/mp4','Content-Length':'4096'}}));
+ const reader=response.body.getReader();const first=await reader.read();
+ assert.equal(first.value.byteLength,1024);assert.equal(written,false);
+ finish();while(!(await reader.read()).done){}await Promise.all(work);assert.equal(written,true);
+});
+test('mislabeled corrupt media is never promoted as M4A',async()=>{
+ let writes=0;const pending=[];
+ const result=await handleFastAudio({request:request('/fast-audio/ABCDEFGHIJK'),params:{id:'ABCDEFGHIJK'},
+  env:{GNARLY_AUDIO_R2:{get:async()=>null,put:async()=>writes++}},waitUntil:p=>pending.push(p)},
+  async()=>new Response(new Uint8Array(4096),{headers:{'Content-Type':'audio/mp4','Content-Length':'4096'}}));
+ await result.arrayBuffer();await Promise.all(pending);assert.equal(writes,0);
 });
