@@ -25,7 +25,7 @@ const server=createServer(async(req,res)=>{
   if(file==='app.js'){
    const app=await read(file);
    res.setHeader('Content-Type','text/javascript');
-   res.end(app+`\nglobalThis.__playerTest={selectTrack,next,play,pause,state,audio,engine,queueAudioWarmup,offlineURLs,openSheet,prepareUpcomingAudio,recoverNativeAudio,setDiscovery:fn=>{const old=maybeFillSmartQueue;maybeFillSmartQueue=fn;return old},setMode:value=>smartMode=value};`);return;
+   res.end(app+`\nglobalThis.__playerTest={selectTrack,next,play,pause,state,audio,engine,queueAudioWarmup,offlineURLs,openSheet,prepareUpcomingAudio,recoverNativeAudio,syncSystemPlayback,setDiscovery:fn=>{const old=maybeFillSmartQueue;maybeFillSmartQueue=fn;return old},setMode:value=>smartMode=value};`);return;
   }
   if(file==='lib/playback-source.js'){
    res.setHeader('Content-Type','text/javascript');
@@ -54,6 +54,10 @@ try{
  const errors=[];
  await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
+  if(url.hostname==='nightcorelab.onrender.com'&&url.pathname==='/download'){
+   requests++;originRequests++;
+   await route.fulfill({status:200,contentType:'audio/mp4',body:bytes});return;
+  }
   if(url.pathname.startsWith('/fast-audio/')){
    requests++;
    const range=route.request().headers()['range'];
@@ -66,6 +70,8 @@ try{
    }};
    const result=await handleFastAudio({request:new Request(url,{headers:range?{Range:range}:{}}),env:{GNARLY_AUDIO_R2:bucket},params:{id:url.pathname.split('/').pop()}},async origin=>{
     originRequests++;
+    if(scenario==='network-recovery')throw Error('synthetic network interruption');
+    if(scenario==='low-bandwidth')await delay(bytes.length/65536*1000);
     await delay(scenario==='high-latency'?250:scenario==='cold-fallback'?120:90);
     if(origin.includes('/stream')&&scenario==='cold-fallback')return new Response('Unavailable',{status:415});
     return new Response(bytes,{headers:{'Content-Type':'audio/mp4','Content-Length':String(bytes.length)}});
@@ -140,7 +146,7 @@ try{
  await page.waitForFunction(()=>__playerTest.state.current.videoId==='HHHHHHHHHHH'&&__playerTest.state.audioState==='playing');
  // Exercise the handlers registered with the real MediaSession API.
  await page.evaluate(track=>{
-  __playerTest.state.queue=[track];
+  __playerTest.state.queue=[track];__playerTest.syncSystemPlayback(true);
   if(typeof __mediaActions.nexttrack!=='function')throw Error('MediaSession next handler missing');
   __mediaActions.nexttrack();
  },song('OOOOOOOOOOO'));
@@ -148,6 +154,14 @@ try{
  // Ended transition stays native; seeking near end exercises real Range handling.
  await page.evaluate(track=>{__playerTest.state.queue=[track];__playerTest.audio.currentTime=11.85},song('IIIIIIIIIII'));
  await page.waitForFunction(()=>__playerTest.state.current.videoId==='IIIIIIIIIII'&&__playerTest.state.audioState==='playing');
+ // A failed initial media request recovers the same ID via the native fallback.
+ scenario='network-recovery';await start(song('PPPPPPPPPPP'));
+ assert.equal(await page.evaluate(()=>__playerTest.state.current.videoId),'PPPPPPPPPPP');
+ assert.equal(await page.evaluate(()=>__playerTest.state.playbackError),'');
+ // Low-bandwidth fixture: impose a 64KiB/s-equivalent complete-body transfer cost.
+ // This verifies a slow startup survives; it is not sustained streaming throughput.
+ scenario='low-bandwidth';await start(song('QQQQQQQQQQQ'));
+ assert.equal(await page.evaluate(()=>__playerTest.state.audioState),'playing');
  // Pending smart discovery consumes every Next intent in order.
  await page.evaluate(async tracks=>{
   const api=__playerTest;api.setMode('mix');api.state.queue=[];
@@ -172,7 +186,7 @@ try{
  },song('JJJJJJJJJJJ'));
  await context.setOffline(true);await start(song('JJJJJJJJJJJ'));await context.setOffline(false);
  assert.deepEqual(errors,[]);
- report.regressions={rapidNext:true,karaoke:true,headphoneTransport:true,mediaSessionHandler:true,automaticEnd:true,offlineWithoutNetwork:true,resumeKeepsSource:!baseline,uncaughtErrors:errors.length};
+ report.regressions={rapidNext:true,karaoke:true,headphoneTransport:true,mediaSessionHandler:true,networkRecovery:true,lowBandwidthStartup:true,automaticEnd:true,offlineWithoutNetwork:true,resumeKeepsSource:!baseline,uncaughtErrors:errors.length};
  await context.close();
  console.log(JSON.stringify(report,null,2));
  if(process.env.REPORT_PATH)await writeFile(process.env.REPORT_PATH,JSON.stringify(report,null,2)+'\n');
