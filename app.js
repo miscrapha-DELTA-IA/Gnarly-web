@@ -36,6 +36,7 @@ import {renderMusicPanel,mixerValue} from './ui/music-panel.js';
 import {createDisplayStore,renderDisplayPanel} from './ui/display-panel.js';
 import {deviceLayout,themeAccent,attachEyeGestures,OFFICIAL_SUPPORT_URL} from './lib/responsive-shell.js';
 import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel} from './ui/player-surface.js';
+import {createIPodTransport} from './ui/ipod-transport.js';
 import {createIPodSkinStore,ipodSourceLabel} from './ui/ipod-mode.js';
 import {artworkBudget,artworkCandidates,resolveArtworkAsset} from './lib/artwork-quality.js';
 import {requestVerifiedAlbumArtwork} from './lib/album-artwork-client.js';
@@ -73,7 +74,7 @@ function prepareUpcomingAudio(){
 
 const offlineLibrary=createOfflineLibrary();
 const ipodSkinStore=createIPodSkinStore();
-let ipodSkinURL=null,ipodHardwarePromise=null;
+let ipodSkinURL=null,ipodHardwarePromise=null,ipodTransport=null;
 const offlineURLs=new Map(); // Persistent track IDs mapped to live blob URLs.
 const offlinePending=new Set();
 let offlineLoaded=false,offlineStatus='Preparando biblioteca offline…';
@@ -167,8 +168,10 @@ function externalSeek(seconds,{fastSeek=false}={}){
  if(!(duration>0))return;
  const position=Math.max(0,Math.min(duration,Number(seconds)));
  try{if(fastSeek&&typeof audio.fastSeek==='function')audio.fastSeek(position);else audio.currentTime=position}catch{return}
+ updateProgress();syncLyrics();
  externalMedia.position({track:state.current,force:true});
 }
+function seekFromIPod(seconds){externalSeek(seconds)}
 const externalMedia=createMediaSessionController({
  audio,session:navigator.mediaSession||null,
  MediaMetadataCtor:typeof MediaMetadata==='function'?MediaMetadata:null,
@@ -465,7 +468,7 @@ function updatePlayer(){
  updateBadges(); updateProgress();
  syncSystemPlayback(true);
 }
-function updateProgress(){const d=audio.duration||0,t=audio.currentTime||0,p=d?Math.min(1000,1000*t/d):0;const slider=$('#seek-slider');slider.value=String(p);slider.style.setProperty('--progress',`${p/10}%`);$('#elapsed-label').textContent=fmt(t);if(state.current?.source!=='preview')$('#duration-label').textContent=fmt(d||state.current?.duration||0);$('#ipod-screen-elapsed').textContent=fmt(t);$('#ipod-screen-duration').textContent=fmt(d||state.current?.duration||0);$('#ipod-screen-progress').style.width=(p/10)+'%';externalMedia.position({track:state.current})}
+function updateProgress(){const d=audio.duration||0,t=audio.currentTime||0,p=d?Math.min(1000,1000*t/d):0;const slider=$('#seek-slider');slider.value=String(p);slider.style.setProperty('--progress',`${p/10}%`);$('#elapsed-label').textContent=fmt(t);if(state.current?.source!=='preview')$('#duration-label').textContent=fmt(d||state.current?.duration||0);ipodTransport?.sync();externalMedia.position({track:state.current})}
 // Internal artwork uses a separate layer, never the app's backgroundMode.
 // Repeating two identical tiles produces a cyclic lateral loop with no reset jump.
 function safeSurfaceArtwork(raw){
@@ -509,6 +512,7 @@ function openPlayerSurfaceMenu(){
 }
 function applyPlayerSurfaceMode(next,{persist=true}={}){
  const mode=normalizePlayerSurfaceMode(next);
+ if(mode!=='ipod')ipodTransport?.cancel();
  state.playerSurfaceMode=mode;
  app.dataset.playerSurfaceMode=mode;
  $('#ipod-device').hidden=mode!=='ipod';
@@ -740,6 +744,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
   playbackBackstack.push(state.current);
   if(playbackBackstack.length>30)playbackBackstack.shift();
  }
+ ipodTransport?.cancel();
  playbackSelection++;
  queueAudioWarmup.reset();closeQuickPlaylist();
  // Commit queue navigation at selection time. The old 'playing' callback
@@ -1593,6 +1598,7 @@ document.addEventListener('keydown',event=>{
   closeQuickPlaylist();$('#quick-playlist-button').focus({preventScroll:true});
  }
 });
+ipodTransport=createIPodTransport({device:$('#ipod-device'),audio,onSeek:seekFromIPod,getTrack:()=>state.current,isVisible:()=>state.playerSurfaceMode==='ipod'});
 $('#ipod-menu-button').addEventListener('click',()=>{
  if($('#player-surface-menu').hidden)openPlayerSurfaceMenu();
  else closePlayerSurfaceMenu(true);

@@ -84,13 +84,15 @@
               <span id="ipod-screen-source" class="ipod-screen-source">GNARLY · iPOD</span>
               <strong id="ipod-screen-title">Sua música. Seu universo.</strong>
               <small id="ipod-screen-artist">Selecione uma música para começar</small>
-              <div class="ipod-screen-time"><span id="ipod-screen-elapsed">0:00</span><span id="ipod-screen-duration">0:00</span></div>
-              <div class="ipod-screen-progress" aria-hidden="true"><span id="ipod-screen-progress"></span></div>
+              <div class="ipod-screen-time"><span id="ipod-screen-elapsed">0:00</span><button type="button" id="ipod-screen-duration" aria-label="Mostrar tempo restante" aria-pressed="false">0:00</button></div>
+              <div class="ipod-timeline"><div class="ipod-screen-progress" aria-hidden="true"><span id="ipod-screen-progress"></span></div><input type="range" id="ipod-seek-slider" min="0" max="1" step="0.1" value="0" aria-label="Posição da música" aria-valuetext="Navegação indisponível" disabled /></div>
+              <div class="ipod-seek-feedback" id="ipod-seek-status" role="status" hidden></div><output id="ipod-seek-delta" class="ipod-seek-delta" aria-hidden="true"></output>
             </div>
           </div>
           <div class="ipod-fallback-brand" aria-hidden="true">Gnarly</div>
           <div class="ipod-edition" aria-hidden="true">PORTABLE AUDIO<br/>SERIES / 072</div>
           <span class="ipod-port" aria-hidden="true"></span><span class="ipod-rivet left" aria-hidden="true"></span><span class="ipod-rivet right" aria-hidden="true"></span>
+          <p id="ipod-seek-help" class="ipod-sr-only">Segure G por meio segundo para navegar. Gire a roda ou use as setas; Shift ajusta um segundo. G confirma, MENU ou Escape sai. A barra também permite navegar.</p>
           <div class="ipod-wheel" role="group" aria-label="Roda de navegação iPod">
             <button class="ipod-wheel-menu" id="ipod-menu-button" type="button" aria-label="Abrir opções do modo iPod" aria-haspopup="menu" aria-controls="player-surface-menu" aria-expanded="false"><span>MENU</span></button>
             <button class="ipod-wheel-prev" id="ipod-previous-button" type="button" aria-label="Música anterior"><svg class="icon" aria-hidden="true"><use href="#i-prev" /></svg></button>
