@@ -19,9 +19,10 @@ export function renderPlayerSurfaceMenu(selected,{skinInstalled=false}={}){
     `<button type="button" class="player-surface-option ${id===mode?'selected':''}" role="menuitemradio" data-player-surface="${id}" aria-checked="${String(id===mode)}"><span>${label}</span><span class="surface-option-glyph" aria-hidden="true">${mode===id?'✓':glyph}</span></button>`
   ).join('');
   if(mode!=='ipod')return base;
-  return base+
-    '<button type="button" class="player-surface-option ipod-skin-option" role="menuitem" data-player-surface-action="import-ipod-skin"><span>Importar arte do Canva</span><span class="surface-option-glyph" aria-hidden="true">＋</span></button>'+
-    (skinInstalled?'<button type="button" class="player-surface-option ipod-skin-option" role="menuitem" data-player-surface-action="reset-ipod-skin"><span>Voltar à carcaça padrão</span><span class="surface-option-glyph" aria-hidden="true">↺</span></button>':'');
+  // Existing locally saved shells remain readable/resettable, but the Canva
+  // upload option is intentionally removed. A native material editor will
+  // replace it in a separate design-focused change.
+  return base+(skinInstalled?'<button type="button" class="player-surface-option ipod-skin-option" role="menuitem" data-player-surface-action="reset-ipod-skin"><span>Voltar à carcaça padrão</span><span class="surface-option-glyph" aria-hidden="true">↺</span></button>':'');
 }
 
 /** Upgrade only recognized Apple Music artwork URLs to an actually available
