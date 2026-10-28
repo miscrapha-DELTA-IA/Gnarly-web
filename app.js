@@ -379,10 +379,12 @@ function reportAudioError(text){
  coverCharge.hide();
  state.audioState='error';state.playbackError=text;
  const status=$('#player-status');if(status){status.textContent=text;status.hidden=false;}
+ const ipodStatus=$('#ipod-audio-status');if(ipodStatus)ipodStatus.textContent=text;
  toast(text);
 }
 function reportAudioStatus(text){
  const status=$('#player-status');if(status){status.textContent=text;status.hidden=!text;}
+ const ipodStatus=$('#ipod-audio-status');if(ipodStatus)ipodStatus.textContent=text;
 }
 function setIPodSkin(blob){
  if(ipodSkinURL){URL.revokeObjectURL(ipodSkinURL);ipodSkinURL=null}
