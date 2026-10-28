@@ -51,19 +51,22 @@ test('micro playlist saves avoid extra player buttons and escape titles',()=>{
  assert.match(app,/playlistStore\.create\(name\)/);
  assert.match(app,/closeQuickPlaylist\(\)/);
 });
-test('iPhone tells the truth about native EQ and exposes one explicit studio mode',()=>{
+test('both effects are always enabled in UI and automatically attach studio DSP on first adjustment',()=>{
  const native=renderMusicPanel({backgroundAudioSupported:true,backgroundAudioEnabled:true});
- assert.match(native,/data-command="enable-studio-effects"/);
- assert.match(native,/id="bass"[^>]*disabled/);
- assert.match(native,/id="reverb"[^>]*disabled/);
  const studio=renderMusicPanel({backgroundAudioSupported:true,backgroundAudioEnabled:false});
- assert.doesNotMatch(studio,/enable-studio-effects/);
- assert.doesNotMatch(studio,/id="bass"[^>]*disabled/);
- assert.doesNotMatch(studio,/id="reverb"[^>]*disabled/);
+ for(const panel of [native,studio]){
+  assert.doesNotMatch(panel,/enable-studio-effects|Ativar efeitos de estúdio/);
+  assert.doesNotMatch(panel,/id="bass"[^>]*disabled/);
+  assert.doesNotMatch(panel,/id="reverb"[^>]*disabled/);
+ }
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
- assert.match(app,/case 'enable-studio-effects'/);
+ assert.match(app,/function autoEnableStudioEffects\(\)/);
+ assert.match(app,/engine\.enableStudioEffects\(\)/);
+ assert.match(app,/if\(audioEffectsRequested\(\)\)void autoEnableStudioEffects\(\)/);
+ assert.match(app,/if\(\(id==='bass'\|\|id==='reverb'\)\&\&audioEffectsRequested\(\)\)void autoEnableStudioEffects\(\)/);
  assert.match(app,/backgroundAudioEnabled:engine.nativeTransport/);
- assert.match(app,/const start=audio\.play\(\),unlock=engine\.resume\(\)/);
+ assert.match(app,/const start=audio\.play\(\),unlock=resumePlayerAudio\(\)/);
+ assert.doesNotMatch(app,/case 'enable-studio-effects'/);
 });
 test('enabling studio creates exactly one real WebAudio source; EQ changes live gain',async()=>{
  const previous=globalThis.window;
