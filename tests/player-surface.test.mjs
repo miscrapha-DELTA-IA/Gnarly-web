@@ -22,7 +22,7 @@ test('popover has five radio options, with an extra iPod device option in refere
  assert.ok(output.indexOf('Nítido')<output.indexOf('Em movimento'));
  assert.ok(output.indexOf('Em movimento')<output.indexOf('Turbulent Displacement'));
  assert.ok(output.indexOf('Turbulent Displacement')<output.indexOf('iPod · GNARLY'));
- assert.match(renderPlayerSurfaceMenu('ipod',{skinInstalled:true}),/Importar arte do Canva/);
+ assert.doesNotMatch(renderPlayerSurfaceMenu('ipod',{skinInstalled:true}),/Importar arte do Canva|import-ipod-skin/);
  assert.match(renderPlayerSurfaceMenu('ipod',{skinInstalled:true}),/Voltar à carcaça padrão/);
  assert.equal((renderPlayerSurfaceMenu('ipod').match(/role="menuitemradio"/g)||[]).length,5);
  assert.match(output,/data-player-surface="moving" aria-checked="true"/);
