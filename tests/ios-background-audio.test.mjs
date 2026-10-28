@@ -47,14 +47,18 @@ test('Studio mode opt-in remains possible before first AudioContext has claimed 
  assert.equal(engine.setBackgroundPriority(true),true);
  assert.equal(engine.nativeTransport,true);
 });
-test('iOS background audio is automatic with no switch in the music panel',()=>{
+test('bass and reverb are immediately adjustable while iOS transport remains native until needed',()=>{
  const native=renderMusicPanel({backgroundAudioSupported:true,backgroundAudioEnabled:true,tab:'speedPitch'});
  assert.doesNotMatch(native,/data-command="toggle-background-transport"/);
  assert.doesNotMatch(native,/Áudio com tela bloqueada<\/strong>/);
- assert.match(native,/REVERB/);
- assert.match(native,/disabled title="Ative Áudio de estúdio para usar este efeito"/);
+ for(const id of ['bass','reverb'])
+  assert.doesNotMatch(native,new RegExp('id="'+id+'"[^>]*disabled'));
+ assert.doesNotMatch(native,/enable-studio-effects|Ativar efeitos de estúdio/);
+ assert.doesNotMatch(native,/data-preset="SLOWED \+ REVERB"[^>]*disabled/);
+ assert.match(native,/processamento é ativado automaticamente/);
  const desktop=renderMusicPanel({backgroundAudioSupported:false,backgroundAudioEnabled:false});
- assert.doesNotMatch(desktop,/data-command="toggle-background-transport"/);
+ for(const id of ['bass','reverb'])
+  assert.doesNotMatch(desktop,new RegExp('id="'+id+'"[^>]*disabled'));
 });
 test('one native player and an optional effects graph preserve full existing controls',()=>{
  const engine=readFileSync(new URL('../lib/audio-engine.js',import.meta.url),'utf8');
