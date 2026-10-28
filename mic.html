@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#08120d"><meta name="robots" content="noindex,nofollow">
+<title>GNARLY · Microfone do Karaokê</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",Arial,sans-serif;color:#f8fff9;background:#07100b;--accent:#46ff12}
+*{box-sizing:border-box}body{margin:0;min-height:100dvh;background:radial-gradient(circle at 50% 25%,#20562a,#08120b 58%,#040905);padding:max(22px,env(safe-area-inset-top)) 22px max(24px,env(safe-area-inset-bottom));display:grid;place-items:center}
+main{width:min(100%,420px);padding:28px;border:1px solid #ffffff29;background:#131d18ea;box-shadow:0 24px 60px #0008;border-radius:30px;text-align:center}
+h1{font-size:30px;letter-spacing:-.06em;line-height:1.05;margin:9px 0 8px}.subtitle{color:#b0bdb3;font-size:14px;margin:0 0 23px}
+.orb{display:grid;place-items:center;width:138px;height:138px;border:2px solid #5a8963;margin:16px auto 22px;border-radius:50%;background:radial-gradient(circle at 32% 25%,#4c7d53,#152a19 70%);font-size:65px;box-shadow:0 0 40px #47ff1222,inset 0 0 16px #fff2;transform:scale(var(--pulse,1));transition:transform .1s ease}
+.orb.active{border-color:var(--accent);box-shadow:0 0 50px #47ff1277,inset 0 0 26px #52ff1240}
+button{width:100%;border:0;border-radius:18px;min-height:56px;background:var(--accent);color:#0b180b;font-weight:900;font-size:17px;cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}
+p{overflow-wrap:anywhere}#status{font-size:14px;min-height:25px;color:#dbefda}#song{font-size:16px;font-weight:700;min-height:20px;margin:17px 0 5px}
+small{display:block;color:#a8bfa9;line-height:1.55;margin-top:19px}#meter{height:7px;overflow:hidden;border-radius:100px;background:#ffffff24;margin:20px 0 0}#meter span{display:block;height:100%;width:0;background:var(--accent);transition:width .14s linear}
+@media(prefers-reduced-motion:reduce){.orb,#meter span{transition:none}}
+</style></head><body><main>
+<div aria-hidden="true" class="orb" id="orb">🎤</div>
+<p class="subtitle">GNARLY WEB · MICROFONE REMOTO</p>
+<h1>Seu celular é o microfone.</h1>
+<p id="status" role="status" aria-live="polite">Conectando ao karaokê do desktop…</p>
+<p id="song"></p>
+<div id="meter" aria-label="Intensidade da voz"><span id="meter-bar"></span></div>
+<button id="mic-toggle" type="button" disabled>Ativar microfone</button>
+<small>A música e as letras continuam no computador. Apenas intensidade, frequência e presença vocal são enviadas. Nenhum áudio bruto é transmitido ou gravado. Use fones para evitar retorno.</small>
+</main><script type="module" src="./mic.js"></script></body></html>
