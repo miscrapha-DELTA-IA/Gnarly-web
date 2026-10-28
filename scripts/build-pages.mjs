@@ -4,7 +4,7 @@ import {resolve,join} from 'node:path';
 import {buildSync} from 'esbuild';
 const root=resolve(import.meta.dirname,'..'),out=join(root,'dist');
 rmSync(out,{recursive:true,force:true});mkdirSync(out,{recursive:true});
-for(const file of ['index.html','styles.css','performance.css','module-dock.css','ipod-mode.css', 'karaoke-art.css','karaoke-art-refined.css','karaoke-stage.css','app.js','mic.html','mic.js','manifest.webmanifest','logo.svg','sw.js','_headers']){
+for(const file of ['index.html','styles.css','performance.css','module-dock.css','ipod-mode.css','cover-charge.css', 'karaoke-art.css','karaoke-art-refined.css','karaoke-stage.css','app.js','mic.html','mic.js','manifest.webmanifest','logo.svg','sw.js','_headers']){
  const p=join(root,file);if(!existsSync(p))throw Error('Missing static file: '+file);
  copyFileSync(p,join(out,file));
 }
@@ -26,7 +26,7 @@ buildSync({entryPoints:[join(root,'lib','basic-pitch-worker.js')],bundle:true,pl
 // Precache the entire import graph for a genuine first-visit offline PWA,
 // without storing model weights, backend audio or third-party requests.
 const shell=['/','/index.html','/app.js','/sw.js','/manifest.webmanifest',
- '/mic.html','/mic.js','/styles.css','/performance.css','/module-dock.css','/ipod-mode.css','/karaoke-art.css',
+ '/mic.html','/mic.js','/styles.css','/performance.css','/module-dock.css','/ipod-mode.css','/cover-charge.css','/karaoke-art.css',
  '/karaoke-art-refined.css','/karaoke-stage.css','/logo.svg'];
 for(const dir of ['assets','lib','ui']){
  const walk=folder=>{
