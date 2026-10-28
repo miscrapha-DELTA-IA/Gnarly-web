@@ -66,5 +66,5 @@ test('session preset is restored in selection, Play, new URL, media metadata and
  assert.match(app,/audio\.addEventListener\('ratechange',\(\)=>\{/);
  assert.match(app,/preset:getSetting\('preset','ORIGINAL'\)/);
  assert.match(app,/engine\.setSpeed\(state\.speed,state\.pitch\)/);
- assert.match(app,/for\(const key of \['speed','reverb','pitch','preset'\]\)setSetting/);
+ assert.match(app,/for\(const key of \['speed','reverb','pitch','preset'\]\)\s*setSetting/);
 });
