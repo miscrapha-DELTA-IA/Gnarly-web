@@ -1,0 +1,37 @@
+name: iPod Hardware Studio acceptance
+on:
+  pull_request:
+    paths: ['app.js', 'index.html', 'ipod-mode.css', 'lib/ipod-*.js', 'ui/ipod-*.js', 'ui/player-surface.js', 'tests/ipod-*', '.github/workflows/ipod-hardware.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  hardware:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install test prerequisites
+        run: |
+          npm install --no-audit --no-fund
+          npm install --no-save playwright@1.56.1
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+      - name: Unit and build checks
+        run: |
+          npm test
+          npm run build
+      - name: Native playback and responsive hardware acceptance
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+          IPOD_ARTIFACT_DIR: ipod-hardware-artifacts
+        run: node tests/ipod-hardware.browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ipod-hardware-visual-acceptance
+          path: ipod-hardware-artifacts
+          if-no-files-found: ignore

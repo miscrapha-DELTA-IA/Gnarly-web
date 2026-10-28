@@ -73,7 +73,7 @@ function prepareUpcomingAudio(){
 
 const offlineLibrary=createOfflineLibrary();
 const ipodSkinStore=createIPodSkinStore();
-let ipodSkinURL=null;
+let ipodSkinURL=null,ipodHardwarePromise=null;
 const offlineURLs=new Map(); // Persistent track IDs mapped to live blob URLs.
 const offlinePending=new Set();
 let offlineLoaded=false,offlineStatus='Preparando biblioteca offline…';
@@ -392,6 +392,24 @@ async function hydrateIPodSkin(){
   if(blob instanceof Blob&&blob.size>0)setIPodSkin(blob);
  }catch(error){console.debug('GNARLY iPod: arte local indisponível',error?.message)}
 }
+function ensureIPodHardware(){
+ if(!ipodHardwarePromise)ipodHardwarePromise=import('./ui/ipod-hardware-studio.js')
+  .then(module=>module.createHardwareStudio({device:$('#ipod-device'),storage:omniboxStorage}))
+  .catch(error=>{ipodHardwarePromise=null;throw error});
+ return ipodHardwarePromise;
+}
+// Cap the display at actual source pixels. A missing larger CDN asset is
+// letterboxed on the glass, never stretched or sharpened into fictitious detail.
+function fitIPodArtwork(){
+ const image=$('#ipod-cover-image'),density=Math.max(1,window.devicePixelRatio||1);
+ if(image.naturalWidth&&image.naturalHeight){
+  image.style.setProperty('--ipod-art-width',Math.floor(image.naturalWidth/density)+'px');
+  image.style.setProperty('--ipod-art-height',Math.floor(image.naturalHeight/density)+'px');
+ }
+}
+$('#ipod-cover-image').addEventListener('load',fitIPodArtwork);
+if($('#ipod-cover-image').complete)fitIPodArtwork();
+window.addEventListener('resize',fitIPodArtwork,{passive:true});
 let ipodArtVersion=0;
 function updateIPodScreen(){
  const track=state.current,cover=track?.backgroundArtwork||track?.artwork||icon;
@@ -504,6 +522,8 @@ function applyPlayerSurfaceMode(next,{persist=true}={}){
  state.playerSurfaceMode=mode;
  app.dataset.playerSurfaceMode=mode;
  $('#ipod-device').hidden=mode!=='ipod';
+ if(mode==='ipod')void ensureIPodHardware().catch(()=>{/* CSS shell and native buttons remain usable offline. */});
+ else if(ipodHardwarePromise)void ipodHardwarePromise.then(studio=>studio.close()).catch(()=>{});
  $('#player-surface-label').textContent=playerSurfaceShortLabel(mode);
  if(persist)setSetting('playerSurfaceMode',mode);
  updatePlayerSurfaceArtwork();
@@ -1580,9 +1600,17 @@ $('#player-surface-button').addEventListener('click',()=>{
 $('#player-surface-menu').addEventListener('click',e=>{
  const action=e.target.closest('[data-player-surface-action]');
  if(action){
-  if(action.dataset.playerSurfaceAction==='reset-ipod-skin'){
+  if(action.dataset.playerSurfaceAction==='customize-ipod'){
+   action.disabled=true;
+   void ensureIPodHardware().then(studio=>{closePlayerSurfaceMenu();studio.open()}).catch(()=>{
+    action.disabled=false;
+    let status=$('#ipod-studio-load-error');
+    if(!status){status=document.createElement('p');status.id='ipod-studio-load-error';status.setAttribute('role','status');$('#player-surface-menu').append(status)}
+    status.textContent='Não foi possível abrir a personalização. Confira sua conexão e tente novamente.';
+   });
+  }else if(action.dataset.playerSurfaceAction==='reset-ipod-skin'){
    void ipodSkinStore.remove().then(()=>{
-    setIPodSkin(null);closePlayerSurfaceMenu();toast('Carcaça padrão do iPod restaurada.');
+    setIPodSkin(null);if(ipodHardwarePromise)void ipodHardwarePromise.then(studio=>studio.store.reset());closePlayerSurfaceMenu();toast('Carcaça padrão do iPod restaurada.');
    }).catch(error=>toast('Não foi possível remover a arte: '+(error?.message||'')));
   }
   return;

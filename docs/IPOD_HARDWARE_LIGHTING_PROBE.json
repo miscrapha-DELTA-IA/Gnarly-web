@@ -1,0 +1,26 @@
+{
+  "samples": 20,
+  "note": "Isolated 330px shell. Update to next rAF includes software-GPU scheduling; not audio latency or real-device FPS. Variant order and environment can affect results.",
+  "variants": {
+    "unpromoted": {
+      "idleMs": {
+        "p50": 16.600000001490116,
+        "p95": 130.40000000037253
+      },
+      "updateMs": {
+        "p50": 673.5,
+        "p95": 726.9000000003725
+      }
+    },
+    "cachedLight": {
+      "idleMs": {
+        "p50": 16.699999999254942,
+        "p95": 43.29999999888241
+      },
+      "updateMs": {
+        "p50": 212,
+        "p95": 272.80000000074506
+      }
+    }
+  }
+}
