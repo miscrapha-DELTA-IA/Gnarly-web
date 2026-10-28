@@ -362,8 +362,11 @@ function updateBadges(){
 // Same media source as Stage72's AudioDownloadManager: Render /download.
 // Do not start an external player or load a file picker as an implicit fallback.
 function prepareNativeAudio(track,attempt=0){
- const url=offlineAudio(track.id)||trackAudioURL(track,{attempt});
- if(!url)return false;
+ const source=offlineAudio(track.id)||trackAudioURL(track,{attempt});
+ if(!source)return false;
+ // HTMLMediaElement.src is absolute, including when assigned /fast-audio/… .
+ // Comparing it with a relative path restarts the same resource on every Play.
+ const url=new URL(source,location.href).href;
  // Only start the native extraction when the user requests Play; once started,
  // let the media element buffer ahead instead of forcing metadata-only mode.
  if(audio.src!==url){audio.preload='auto';audio.src=url;engine.restoreSpeed();}
@@ -844,11 +847,16 @@ async function play(){
  const track=state.current,selection=playbackSelection;
  const stillSelected=()=>state.current===track&&playbackSelection===selection&&!state.userPaused;
  playbackStartedAt=performance.now();
- if(state.audioState==='error'||state.userPaused)audioDelivery.select(track); // Manual retry starts a new bounded session.
+ const reuseSource=audio.hasAttribute('src')&&!audio.error&&state.audioState!=='error';
+ // Pause cancels pending recovery, but preserves its successful source/attempt.
+ // Only an actual failure starts a fresh bounded retry session.
+ if(state.audioState==='error'||audio.error)audioDelivery.select(track);
  state.userPaused=false;
  if(track.source==='youtube'){
-  if(!prepareNativeAudio(track,audioDelivery.attempt)){reportAudioError('ID de música inválido. Escolha outro resultado.');return;}
-  state.audioState='loading';reportAudioStatus(isOffline(track.id)?'Abrindo música offline…':'Conectando ao GNARLY · preparando áudio…');
+  if(!reuseSource&&!prepareNativeAudio(track,audioDelivery.attempt)){reportAudioError('ID de música inválido. Escolha outro resultado.');return;}
+  if(!reuseSource||audio.readyState<2){
+   state.audioState='loading';reportAudioStatus(isOffline(track.id)?'Abrindo música offline…':'Conectando ao GNARLY · preparando áudio…');
+  }else reportAudioStatus('');
  }
  try{
   // Safari/WebKit: request the native playback category *before* building
