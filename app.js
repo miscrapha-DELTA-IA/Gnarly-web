@@ -714,7 +714,7 @@ async function recoverNativeAudio(track,initialError=null){
     audio.addEventListener('loadedmetadata',restore,{once:true});
     try{
      engine.restoreSpeed();
-     const unlock=engine.resume(),start=audio.play();
+     const start=audio.play(),unlock=engine.resume();
      await Promise.all([unlock,start]);
      restore();
      return true;
@@ -761,7 +761,7 @@ async function play(){
    recording:!!(karaokeStage.mic.active||state.micStream)});
   // Both calls start synchronously within the user's click gesture (Safari).
   engine.restoreSpeed();
-  const unlock=engine.resume(),start=audio.play();
+  const start=audio.play(),unlock=engine.resume();
   await Promise.all([unlock,start]);
   if(state.current!==track||state.userPaused)return;
   state.playing=true;state.audioState='playing';state.playbackError='';reportAudioStatus('');updatePlayer();
