@@ -9,7 +9,7 @@
 .module-glyph{display:grid;place-items:center;flex:none;width:31px;height:31px;border-radius:10px;color:var(--module-tint);font-size:20px;background:color-mix(in srgb,var(--module-tint) 11%,transparent);border:1px solid color-mix(in srgb,var(--module-tint) 27%,transparent)}
 .module-handle-label strong{display:block;color:var(--module-tint);font-size:11px;letter-spacing:.16em;font-weight:900}
 .module-handle-label small{display:block;color:rgba(245,246,244,.65);font-size:11px;margin-top:3px}
-.module-chevron{flex:none;opacity:.9;transition:transform .22s ease}
+.app-shell .module-handle .module-chevron{width:16px;height:16px;flex:0 0 16px;stroke-width:2;opacity:.8;transition:transform .18s ease}
 .module-drawer.is-open .module-chevron{transform:rotate(180deg);color:var(--module-tint)}
 .module-body{border-top:1px solid rgba(255,255,255,.13);padding:clamp(14px,3vw,21px);overflow-x:hidden;max-height:none;overscroll-behavior:contain}
 .module-body .music-panel{padding-bottom:0}
@@ -266,13 +266,8 @@ body.gnarly-immersive{min-height:100dvh}
  -webkit-touch-callout:none!important;-webkit-user-select:none!important;
  user-select:none!important;
 }
-.app-shell .topbar #search-toggle:after{
- content:'';position:absolute;bottom:5px;left:50%;transform:translateX(-50%);
- width:11px;height:2px;border-radius:2px;background:rgba(232,239,250,.35);
-}
-.app-shell[data-icons-collapsed="true"] .topbar #search-toggle:after{
- background:var(--acid);box-shadow:0 0 8px color-mix(in srgb,var(--acid) 44%,transparent);
-}
+/* The SVG hint replaces the older underline; never stack both affordances. */
+.app-shell .topbar #search-toggle:after{content:none}
 .app-shell .topbar #search-toggle:focus-visible{
  outline:2px solid var(--acid);outline-offset:4px;
 }
@@ -539,3 +534,6 @@ body.gnarly-immersive{min-height:100dvh}
  background:color-mix(in srgb,var(--acid) 14%,rgba(19,23,28,.8));
  color:#fff;font-size:13px;font-weight:760;
 }
+
+.module-handle:focus-visible{outline:2px solid var(--module-tint,var(--acid));outline-offset:-4px;border-radius:inherit}
+@media(hover:hover){.module-handle:hover{background:rgba(255,255,255,.035)}}
