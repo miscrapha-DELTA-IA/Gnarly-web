@@ -34,5 +34,5 @@ test('Next looks up an eligible smart queue candidate without stopping the curre
  assert.match(block,/if\(state\.current!==startingTrack\)return/);
  assert.match(block,/else toast\('Fila vazia\. Adicione outra música para avançar\.'\)/);
  assert.match(app,/nexttrack:\(\)=>\{void next\(\)\}/);
- assert.match(app,/id==='MediaTrackNext'\)void next\(\)/);
+ assert.match(app,/e\.key==='MediaTrackNext'\)void next\(\)/);
 });
