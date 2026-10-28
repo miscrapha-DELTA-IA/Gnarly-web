@@ -195,7 +195,7 @@ const externalMedia=createMediaSessionController({
 });
 function syncSystemPlayback(forcePosition=false){
  const track=state.current;
- externalMedia.sync({track,artist:track?displayArtist(track):'',canNext:state.queue.length>0,
+ externalMedia.sync({track,artist:track?displayArtist(track):'',canNext:state.queue.length>0||smartMode!=='off',
   playing:!!track&&!audio.paused&&!audio.ended,
   forcePosition});
 }
@@ -2101,7 +2101,7 @@ audio.addEventListener('loadedmetadata',()=>{
   const origin=audio.currentSrc.startsWith('blob:')?'offline':audio.currentSrc.includes('/fast-audio/')?'fast-edge':'render';
   if(location.hostname==='localhost'||location.hostname==='127.0.0.1')console.debug('GNARLY startup ms',ms,'origin',origin);
   playbackStartedAt=0;
- }prepareUpcomingAudio();void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!state.current||state.userPaused)return;state.playing=false;updatePlayer();if(state.current.source==='youtube'){
+ }prepareUpcomingAudio();void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!audio.error||!state.current||state.userPaused)return;state.playing=false;updatePlayer();if(state.current.source==='youtube'){
  // Ignore a late error from the previous source after another Omnibox selection.
  if(!isOffline(state.current.id)&&audio.hasAttribute('src')&&audio.src===new URL(trackAudioURL(state.current,{attempt:audioDelivery.attempt}),location.href).href)void recoverNativeAudio(state.current);
   else if(isOffline(state.current.id))reportAudioError('Áudio offline indisponível. Remova e baixe novamente.');

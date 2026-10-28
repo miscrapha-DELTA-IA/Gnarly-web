@@ -191,3 +191,11 @@ on the strength of synthetic timings alone.
   Wrangler 4.154.0 dry-run pass. Worker bundle: 37.81KiB / 10.61KiB gzip.
 - Remote Actions status is available from each PR. Neither PR is merged and no
   deployment is claimed; physical iOS/background acceptance remains outstanding.
+- The complete Stage72 suite also reproduces the identical line-646 assertion failure
+  on clean baseline `d631ebb` (not just the focused heading reproduction).
+- Final transport hardening keeps the system Next handler available while Smart Queue
+  discovers an empty queue, and ignores late `error` events after native MediaError
+  has been cleared by a source swap. Native browser regressions exercise both cases.
+- Remote CI at `260bfba`: integrity/build and the new native playback workflow passed.
+  Backend `f67831b`: unit and playback foundation workflows passed. Follow subsequent
+  commit status on the PR; these results do not claim physical iOS device acceptance.

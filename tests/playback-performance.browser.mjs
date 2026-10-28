@@ -163,14 +163,14 @@ try{
  scenario='low-bandwidth';await start(song('QQQQQQQQQQQ'));
  assert.equal(await page.evaluate(()=>__playerTest.state.audioState),'playing');
  // Pending smart discovery consumes every Next intent in order.
- await page.evaluate(async tracks=>{
-  const api=__playerTest;api.setMode('mix');api.state.queue=[];
+ await page.evaluate(async({tracks,baseline})=>{
+  const api=__playerTest;api.setMode('mix');api.state.queue=[];api.syncSystemPlayback(true);
   let done;const waiting=new Promise(resolve=>done=resolve);
   const original=api.setDiscovery(()=>waiting);
-  const a=api.next(),b=api.next(),c=api.next();
+  const a=baseline?api.next():__mediaActions.nexttrack(),b=api.next(),c=api.next();
   api.state.queue=tracks;done();await Promise.all([a,b,c]);
   api.setDiscovery(original);api.setMode('off');
- },['KKKKKKKKKKK','LLLLLLLLLLL','MMMMMMMMMMM'].map(song));
+ },{tracks:['KKKKKKKKKKK','LLLLLLLLLLL','MMMMMMMMMMM'].map(song),baseline:!!baseline});
  await page.waitForFunction(()=>__playerTest.state.audioState==='playing');
  if(!baseline)assert.equal(await page.evaluate(()=>__playerTest.state.current.videoId),'MMMMMMMMMMM');
  // Recovery for an old selection may not restart the new recording.
@@ -180,6 +180,11 @@ try{
  },song('NNNNNNNNNNN'));
  await page.waitForFunction(()=>__playerTest.state.current.videoId==='NNNNNNNNNNN'&&__playerTest.state.audioState==='playing');
  assert.equal(await page.evaluate(()=>__playerTest.state.playbackError),'');
+ // Late errors whose MediaError was cleared by a source swap are stale.
+ if(!baseline){
+  await page.evaluate(()=>__playerTest.audio.dispatchEvent(new Event('error')));
+  assert.equal(await page.evaluate(()=>__playerTest.state.playing),true);
+ }
  // Offline playback with every network request rejected.
  await page.evaluate(track=>{
   __playerTest.offlineURLs.set(track.id,URL.createObjectURL(__testAudioBlob));
