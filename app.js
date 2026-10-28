@@ -2021,7 +2021,10 @@ async function loadMoreSearchResults(manual=false){
 async function runSearch(raw,{live=false}={}){
  const query=String(raw||'').trim();
  const existing=searchPaging;
- if(existing?.query===query&&existing.started&&state.sheet==='search')return;
+ if(existing?.query===query&&existing.started&&state.sheet==='search'){
+  if(!query&&existing.kind==='discovery')refreshSearchDiscovery(existing);
+  return;
+ }
  state.searchTerm=query;
  omnibox.setQuery(query);
  stopSearchRequests();
