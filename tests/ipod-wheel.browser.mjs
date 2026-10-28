@@ -82,6 +82,8 @@ try{
  });assert.equal(await page.evaluate(()=>__ipodQA.transport().active()),true);
  // A captured G tap confirms; it must not pause/play or select another track.
  await page.waitForTimeout(550);await center.click();await active(false);assert.equal(await page.evaluate(()=>__ipodQA.audio.paused),true);
+ // A fresh press immediately after confirmation must not be swallowed.
+ await center.click();assert.equal(await page.evaluate(()=>__ipodQA.audio.paused),false);await center.click();assert.equal(await page.evaluate(()=>__ipodQA.audio.paused),true);
  // Native range keys and timeline pointer drag, preserving paused state.
  await slider.focus();await page.keyboard.press('End');await page.waitForFunction(()=>__ipodQA.audio.currentTime>599);
  await page.keyboard.press('Home');await page.waitForFunction(()=>__ipodQA.audio.currentTime<1);

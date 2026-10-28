@@ -61,6 +61,8 @@ export function createIPodTransport({device,audio,onSeek,getTrack=()=>null,isVis
  function capture(event){try{wheel.setPointerCapture(event.pointerId)}catch{}}
  listen(device,'pointerdown',event=>{
   if(event.button!==0||event.isPrimary===false||!event.target.closest('.ipod-wheel')||!isVisible())return;
+  // A new intentional press is independent of the preceding compatibility click.
+  if(skipClickUntil!==Infinity)skipClickUntil=0;
   if(active){
    event.preventDefault();armIdle();const p=point(event);
    gesture={id:event.pointerId,angle:p.radius>.27?p.angle:null,time:performance.now(),sum:0,moved:false,button:event.target.closest('button')?.id};capture(event);
@@ -106,6 +108,7 @@ export function createIPodTransport({device,audio,onSeek,getTrack=()=>null,isVis
   if(event.target!==center&&!active)return;
   if(event.key==='Escape'&&active){event.preventDefault();event.stopPropagation();exit();return}
   if(event.target===center&&[' ','Enter'].includes(event.key)){
+   if(!event.repeat&&skipClickUntil!==Infinity)skipClickUntil=0;
    event.stopPropagation();if(event.repeat){event.preventDefault();return}
    if(active){event.preventDefault();skipClickUntil=performance.now()+500;exit();return}
    if(event.key===' '){clearHold();holdTimer=setTimeout(()=>{skipClickUntil=Infinity;activate()},holdMs)}
