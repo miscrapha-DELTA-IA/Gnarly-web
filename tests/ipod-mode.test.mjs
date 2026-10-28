@@ -77,7 +77,8 @@ test('screen and functional wheel belong to one existing audio player',()=>{
  assert.match(app,/addEventListener\('click',\(\)=>void next\(\)\)/);
  assert.match(app,/state\.playing\?pause\(\):void play\(\)/);
  assert.match(app,/updateIPodScreen\(\)/);
- assert.match(app,/updateProgress\(\)/);\n assert.doesNotMatch(html,/id="ipod-skin-import"/);
+ assert.match(app,/updateProgress\(\)/);
+ assert.doesNotMatch(html,/id="ipod-skin-import"/);
  assert.doesNotMatch(app,/new Audio\(.*ipod/i);
 });
 test('live cover fills only screen, and shell responds to selected GNARLY palette',()=>{
