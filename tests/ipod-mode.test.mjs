@@ -72,7 +72,7 @@ test('screen and functional wheel belong to one existing audio player',()=>{
  }
  assert.match(app,/\['ipod-play-button','ipod-center-button'\]/);
  assert.match(app,/addEventListener\('click',\(\)=>previous\(\)\)/);
- assert.match(app,/addEventListener\('click',\(\)=>\{if\(state\.queue\.length\)next\(\)\}\)/);
+ assert.match(app,/addEventListener\('click',\(\)=>void next\(\)\)/);
  assert.match(app,/state\.playing\?pause\(\):void play\(\)/);
  assert.match(app,/updateIPodScreen\(\)/);
  assert.match(app,/updateProgress\(\)/);
