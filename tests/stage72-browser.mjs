@@ -753,4 +753,35 @@ assert.ok(await offlinePage.evaluate(()=>document.querySelector('#player-audio')
 assert.deepEqual(offlineErrors,[],'Offline shell and IndexedDB audio must not crash');
 await offlineContext.close();
 
+// iPhone micro-save: keep the playhead stationary, create a playlist
+// without leaving the player, and persist the chosen canonical recording.
+const savePage=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+const saveErrors=[];savePage.on('pageerror',e=>saveErrors.push(e.message));
+await savePage.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
+assert.equal(await savePage.locator('#quick-playlist-button').isDisabled(),true);
+await savePage.locator('#omnibox-toggle').click();
+await savePage.locator('#search-term').fill('https://www.youtube.com/watch?v=AAAAAAAAAAA');
+await savePage.locator('#search-form button[type="submit"]').click();
+await savePage.waitForFunction(()=>document.querySelector('#quick-playlist-button')?.disabled===false);
+await savePage.locator('#close-sheet').click();
+const beforeTimeline=await savePage.locator('#seek-slider').evaluate(el=>el.getBoundingClientRect().top);
+const position=await savePage.locator('#quick-playlist-button').evaluate(el=>({
+ plus:el.getBoundingClientRect().bottom,duration:document.getElementById('duration-label').getBoundingClientRect().top
+}));
+assert.ok(position.plus<position.duration+2,'Playlist plus belongs immediately above duration');
+await savePage.locator('#quick-playlist-button').click();
+assert.equal(await savePage.locator('#quick-playlist-popover').isVisible(),true);
+assert.equal(await savePage.locator('#quick-playlist-button').getAttribute('aria-expanded'),'true');
+await savePage.locator('#quick-playlist-name').fill('Amigos');
+await savePage.locator('#quick-playlist-create button[type="submit"]').click();
+assert.equal(await savePage.locator('#quick-playlist-popover').isVisible(),false);
+assert.equal(await savePage.locator('#quick-playlist-button').getAttribute('aria-expanded'),'false');
+const saved=await savePage.evaluate(()=>JSON.parse(localStorage.getItem('gnarly.web.playlists.v1')));
+assert.equal(saved.Amigos?.length,1);
+assert.equal(saved.Amigos[0].videoId,'AAAAAAAAAAA');
+const afterTimeline=await savePage.locator('#seek-slider').evaluate(el=>el.getBoundingClientRect().top);
+assert.ok(Math.abs(afterTimeline-beforeTimeline)<1,'Playlist popover must not move the player timeline');
+assert.deepEqual(saveErrors,[],'Quick playlist picker must not trigger runtime errors');
+await savePage.close();
+
 await browser.close();

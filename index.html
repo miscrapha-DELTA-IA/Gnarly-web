@@ -82,7 +82,8 @@
           <button id="next-button" class="transport-btn" aria-label="Próxima" disabled><svg class="icon"><use href="#i-next" /></svg></button>
         </div>
         <div class="progress-block">
-          <div class="progress-label"><span>POSIÇÃO</span><span id="duration-label">0:00</span></div>
+          <div class="progress-label"><span>POSIÇÃO</span><span class="duration-stack"><button type="button" id="quick-playlist-button" class="quick-playlist-plus" aria-label="Adicionar música atual a uma playlist" title="Salvar em playlist" aria-haspopup="true" aria-expanded="false" aria-controls="quick-playlist-popover" disabled>+</button><span id="duration-label">0:00</span></span></div>
+           <div id="quick-playlist-popover" class="quick-playlist-popover" role="dialog" aria-label="Salvar música em playlist" hidden></div>
           <input id="seek-slider" aria-label="Posição da música" type="range" min="0" max="1000" value="0" step="1" />
           <div class="progress-foot"><span id="elapsed-label">0:00</span><button class="player-surface-pill" id="player-surface-button" type="button" aria-label="Aparência do player" title="Aparência do player" aria-haspopup="menu" aria-controls="player-surface-menu" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-grid" /></svg><span id="player-surface-label" aria-hidden="true">PLAYER</span></button></div>
         </div>
