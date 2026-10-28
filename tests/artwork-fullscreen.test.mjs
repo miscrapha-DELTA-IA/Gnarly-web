@@ -177,6 +177,6 @@ test('search rows lazily inspect real decoded thumbnails rather than trust the f
  assert.match(app,/const thumbnailObserver=typeof IntersectionObserver/);
  assert.match(app,/async function upgradeThumbnail\(image\)/);
  assert.match(app,/image\.dataset\.artQuality=asset\.quality/);
- assert.match(app,/upgradeMediaArtwork\(resultsEl\)/);
+ assert.match(app,/upgradeMediaArtwork\((?:resultsEl|list)\)/);
  assert.match(app,/function renderSheet\(\)[^\n]*upgradeMediaArtwork\(\)/);
 });
