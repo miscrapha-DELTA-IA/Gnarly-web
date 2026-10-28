@@ -1,3 +1,4 @@
+import {playbackMetrics} from './lib/playback-metrics.js';
 import {FluidVisual,PALETTES} from './lib/visual-engine.js';
 import {WebAudioEngine,isIOSWebKitAudioDevice} from './lib/audio-engine.js';
 import {parseLRC,lyricIndex} from './lib/lrc.js';
@@ -12,7 +13,7 @@ import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
 import {trackAudioURL,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
 import {AudioDeliveryRecovery,inspectPlaybackLimit,playbackLimitMessage} from './lib/audio-delivery.js';
 import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-library.js';
-import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from './lib/queue-audio-warmup.js';
+import {QueueAudioWarmup,canWarmImmediately} from './lib/queue-audio-warmup.js';
 import {quickPlaylistMarkup} from './ui/quick-playlist.js';
 import {createMediaSessionController,configureBrowserAudioSession} from './lib/media-session-controller.js';
 import {appendUnique,commitPlaying,moveTrack,removeTrack,shuffleUpcoming,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
@@ -51,6 +52,13 @@ const midiAnalysis={busy:false,status:'MIDI estimado, sem alterar a reprodução
 function midiView(){return {...pads.snapshot(),intelligence:{...midiAnalysis.harmony,notes:midiAnalysis.notes.length,ready:midiAnalysis.notes.length>0,busy:midiAnalysis.busy,status:midiAnalysis.status}}}
 const audioDelivery=new AudioDeliveryRecovery();
 const queueAudioWarmup=new QueueAudioWarmup();
+// Cross-origin timings may be hidden without Timing-Allow-Origin. Leave those
+// first-byte measurements absent rather than inventing values from 'playing'.
+if(typeof PerformanceObserver!=='undefined'){
+ try{new PerformanceObserver(list=>{
+  for(const entry of list.getEntries())if(entry.name===audio.currentSrc)playbackMetrics.resource(entry);
+ }).observe({type:'resource'});}catch{/* Optional on older WebKit. */}
+}
 /** Avoid competing with the active song's first buffer. Once at least eight
  * seconds are available, prepare precisely ONE next song in the background.
  * The backend keeps accepted work alive even if the browser changes tracks.
@@ -65,7 +73,8 @@ function bufferedAudioAhead(element){
 }
 function prepareUpcomingAudio(){
  const next=state.queue[0];
- if(!next||audio.paused||state.userPaused||bufferedAudioAhead(audio)<8)return;
+ queueAudioWarmup.retain(next);
+ if(!next||isOffline(next.id)||audio.paused||state.userPaused||state.audioState!=='playing'||bufferedAudioAhead(audio)<8)return;
  if(canWarmImmediately({current:state.current,next,online:navigator.onLine,
   saveData:navigator.connection?.saveData,effectiveType:navigator.connection?.effectiveType
  }))void queueAudioWarmup.start(next);
@@ -366,10 +375,11 @@ function prepareNativeAudio(track,attempt=0){
  if(!url)return false;
  // Only start the native extraction when the user requests Play; once started,
  // let the media element buffer ahead instead of forcing metadata-only mode.
- if(audio.src!==url){audio.preload='auto';audio.src=url;engine.restoreSpeed();}
+ if(audio.src!==new URL(url,location.href).href){audio.preload='auto';audio.src=url;engine.restoreSpeed();}
  return true;
 }
 function reportAudioError(text){
+ playbackMetrics.failure();
  state.audioState='error';state.playbackError=text;
  const status=$('#player-status');if(status){status.textContent=text;status.hidden=false;}
  toast(text);
@@ -730,8 +740,9 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
   playbackBackstack.push(state.current);
   if(playbackBackstack.length>30)playbackBackstack.shift();
  }
- playbackSelection++;
- queueAudioWarmup.reset();closeQuickPlaylist();
+ playbackMetrics.begin(fromQueue?'next':'select',offlineAudio(track.id)||track.source==='local'?'offline':'remote');
+ playbackSelection++;nextDiscovery=null;
+ queueAudioWarmup.cancel();closeQuickPlaylist();
  // Commit queue navigation at selection time. The old 'playing' callback
  // left the next item at queue[0] while buffering, so rapid Next taps
  // selected the same object and aborted its first play() promise.
@@ -786,7 +797,7 @@ async function recoverNativeAudio(track,initialError=null){
   const recovered=await audioDelivery.retry({
    track,error:initialError,mediaError:audio.error,
    isCurrent:current,
-   onRetry:(attempt,total)=>{state.audioState='recovering';reportAudioStatus(`Restabelecendo áudio · tentativa ${attempt}/${total}…`);},
+   onRetry:(attempt,total)=>{playbackMetrics.recovery();state.audioState='recovering';reportAudioStatus(`Restabelecendo áudio · tentativa ${attempt}/${total}…`);},
    restart:async attempt=>{
     if(!current())return false;
     const position=Number(audio.currentTime)||0;
@@ -831,6 +842,7 @@ async function recoverNativeAudio(track,initialError=null){
 async function play(){
  if(!state.current){openSheet('search');toast('Escolha uma música na Busca ou adicione seu áudio pelo botão +.');return;}
  if(recoveryOperation)return recoveryOperation;
+ if(!audio.paused&&(state.audioState==='loading'||state.audioState==='playing'))return;
  const track=state.current,selection=playbackSelection;
  const stillSelected=()=>state.current===track&&playbackSelection===selection&&!state.userPaused;
  playbackStartedAt=performance.now();
@@ -882,26 +894,36 @@ async function play(){
   if(stillSelected())console.warn('GNARLY WEB audio play:',e);
  }
 }
-function pause(){state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
+function pause(){playbackMetrics.pause();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
 let nextDiscovery=null;
 async function next(){
- const startingTrack=state.current;
+ const startingTrack=state.current,startingSelection=playbackSelection;
  let candidate=state.queue[0];
  if(!candidate&&smartMode!=='off'&&startingTrack){
-  if(nextDiscovery)return nextDiscovery;
+  if(nextDiscovery){nextDiscovery.presses++;return nextDiscovery.run;}
+  const discovery={presses:1,run:null};
+  nextDiscovery=discovery;
   const request=(async()=>{
    reportAudioStatus('Buscando a próxima música…');
    try{await maybeFillSmartQueue({force:true})}
    catch(error){console.debug('GNARLY next-song discovery unavailable',error?.name||'unknown')}
-   finally{if(state.current===startingTrack)reportAudioStatus('')}
+   finally{if(state.current===startingTrack&&playbackSelection===startingSelection)reportAudioStatus('')}
    if(state.current!==startingTrack)return;
+   if(playbackSelection!==startingSelection)return;
    const found=state.queue[0];
-   if(found)advanceToNext(found);
+   if(found){
+    // Consume each intent in order, even when discovery was shared.
+    let chosen=found;
+    while(discovery.presses-->0&&state.queue.length){
+     chosen=state.queue[0];state.queue=commitPlaying(state.queue,chosen.id);
+    }
+    advanceToNext(chosen);
+   }
    else if(audio.ended){pause();toast('Fim da fila')}
    else toast('Nenhuma próxima música encontrada. A reprodução atual continua.');
   })();
-  nextDiscovery=request;
-  try{return await request}finally{if(nextDiscovery===request)nextDiscovery=null}
+  discovery.run=request;
+  try{return await request}finally{if(nextDiscovery===discovery)nextDiscovery=null}
  }
  if(candidate)advanceToNext(candidate);
  else if(audio.ended){pause();toast('Fim da fila')}
@@ -2063,16 +2085,9 @@ async function runSearch(raw,{live=false}={}){
  if(delay)searchDebounce=setTimeout(()=>{searchDebounce=null;void fetchLiveSearch(page)},delay);
  else void fetchLiveSearch(page);
 }
-audio.addEventListener('play',()=>{if(stems.ready)void stems.play();state.playing=true;updatePlayer()});audio.addEventListener('pause',()=>{stems.pause();state.playing=false;updatePlayer()});audio.addEventListener('timeupdate',()=>{
+audio.addEventListener('play',()=>{if(stems.ready)void stems.play();state.playing=true;updatePlayer()});audio.addEventListener('pause',()=>{playbackMetrics.pause();stems.pause();state.playing=false;updatePlayer()});audio.addEventListener('timeupdate',()=>{
  if(stems.ready)stems.sync();updateProgress();syncLyrics();
- // Warm one upcoming recording in the last 75 seconds, never full playlists.
- const nextTrack=state.queue[0];
- if(state.playing&&!audio.paused&&!isOffline(nextTrack?.id)&&canWarmNext({
-  current:state.current,next:nextTrack,
-  remaining:(Number.isFinite(audio.duration)?audio.duration:Infinity)-(audio.currentTime||0),
-  online:navigator.onLine,saveData:navigator.connection?.saveData,
-  effectiveType:navigator.connection?.effectiveType
- }))void queueAudioWarmup.start(nextTrack);
+ prepareUpcomingAudio();
 });audio.addEventListener('progress',prepareUpcomingAudio);
 audio.addEventListener('loadedmetadata',()=>{
  engine.restoreSpeed(); // WebKit can reset the media rate during load.
@@ -2081,10 +2096,10 @@ audio.addEventListener('loadedmetadata',()=>{
  if(!(Number(track.duration)>0)&&audio.duration<1200)track.duration=audio.duration;
  void enrichSelectedTrack(track,audio.duration);
  void enrichOfficialAlbumArt(track);
-});audio.addEventListener('seeked',()=>{stems.seek();karaokeStage.tick(true)});audio.addEventListener('ended',()=>{if(state.current&&lastRecordedSelection===playbackSelection)listeningMemory.record('finish',state.current);karaokeStage.scorer.finish();karaokeStage.updateScore();(state.queue.length||smartMode!=='off')?void next():pause()});audio.addEventListener('waiting',()=>{if(state.current?.source==='youtube')reportAudioStatus('Carregando áudio…')});audio.addEventListener('playing',()=>{engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
+});audio.addEventListener('seeked',()=>{stems.seek();karaokeStage.tick(true)});audio.addEventListener('ended',()=>{playbackMetrics.pause();if(state.current&&lastRecordedSelection===playbackSelection)listeningMemory.record('finish',state.current);karaokeStage.scorer.finish();karaokeStage.updateScore();(state.queue.length||smartMode!=='off')?void next():pause()});audio.addEventListener('waiting',()=>{if(!audio.paused)playbackMetrics.waiting();if(state.current?.source==='youtube')reportAudioStatus('Carregando áudio…')});audio.addEventListener('playing',()=>{playbackMetrics.playing();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
   const ms=Math.round(performance.now()-playbackStartedAt);
   const origin=audio.currentSrc.startsWith('blob:')?'offline':audio.currentSrc.includes('/fast-audio/')?'fast-edge':'render';
-  console.debug('GNARLY startup ms',ms,'origin',origin);
+  if(location.hostname==='localhost'||location.hostname==='127.0.0.1')console.debug('GNARLY startup ms',ms,'origin',origin);
   playbackStartedAt=0;
  }prepareUpcomingAudio();void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!state.current||state.userPaused)return;state.playing=false;updatePlayer();if(state.current.source==='youtube'){
  // Ignore a late error from the previous source after another Omnibox selection.
