@@ -2,7 +2,7 @@
 // Keep the Pages-compatible handlers as the single source of truth for APIs.
 // Requests for real music stay on the existing Render backend; never proxy
 // full tracks or GPU stem outputs through the edge.
-import {ROOM_PATTERN} from './karaoke-relay.js';
+import {ROOM_PATTERN} from '../lib/karaoke-relay-protocol.js';
 export {KaraokeRoom} from './karaoke-relay.js';
 import {onRequestGet as catalog} from '../functions/api/catalog.js';
 import {onRequestGet as omnibox} from '../functions/api/omnibox.js';
