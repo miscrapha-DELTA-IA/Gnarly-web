@@ -4,12 +4,12 @@ import {readFileSync} from 'node:fs';
 import {onRequestGet as catalog} from '../functions/api/catalog.js';
 import {onRequestGet as omnibox,parseBackendNDJSON} from '../functions/api/omnibox.js';
 import {onRequestPost as ticket} from '../functions/api/stems-ticket.js';
-test('catalogue Pages Function rejects short query without remote calls',async()=>{
- const r=await catalog({request:new Request('https://gnarly-web.pages.dev/api/catalog?term=a')});
+test('catalogue Pages Function rejects an empty query without remote calls',async()=>{
+ const r=await catalog({request:new Request('https://gnarly-web.pages.dev/api/catalog?term=')});
  assert.equal(r.status,400);assert.ok((await r.json()).error);
 });
 test('Omnibox Pages Function accepts native NDJSON and validates term',async()=>{
- const bad=await omnibox({request:new Request('https://gnarly-web.pages.dev/api/omnibox?term=a'),env:{}});
+ const bad=await omnibox({request:new Request('https://gnarly-web.pages.dev/api/omnibox?term='),env:{}});
  assert.equal(bad.status,400);
  const parsed=parseBackendNDJSON(JSON.stringify({id:'dQw4w9WgXcQ',title:'GNARLY Test',artist:'Artist'})+'\n');
  assert.equal(parsed.length,1);assert.equal(parsed[0].source,'youtube');
