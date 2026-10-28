@@ -783,13 +783,13 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
  if(state.sheet&&['library','queue','search','lyric-style'].includes(state.sheet))renderSheet();
 }
 async function recoverNativeAudio(track,initialError=null){
- const selection=playbackSelection;
+ const selection=playbackSelection,generation=audioDelivery.generation;
  if(!track||track.source!=='youtube'||state.current!==track||state.userPaused)return false;
  if(recoveryOperation)return recoveryOperation;
  const operation=(async()=>{
   // HTMLMediaElement hides HTTP status codes. Read-only backend diagnosis
   // avoids repeatedly hammering a provider currently returning HTTP 429.
-  const current=()=>state.current===track&&playbackSelection===selection&&!state.userPaused;
+  const current=()=>state.current===track&&playbackSelection===selection&&audioDelivery.generation===generation&&!state.userPaused;
   let rateLimit=await inspectPlaybackLimit();
   if(!current())return false;
   if(rateLimit){

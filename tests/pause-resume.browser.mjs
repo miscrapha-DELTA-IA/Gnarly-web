@@ -10,11 +10,12 @@ await mkdir(out,{recursive:true});const temp=await mkdtemp(path.join(tmpdir(),'g
 execFileSync('ffmpeg',['-loglevel','error','-f','lavfi','-i','sine=frequency=330:duration=180','-c:a','aac','-b:a','64k','-movflags','+faststart',path.join(temp,'tone.m4a')]);
 const media=await readFile(path.join(temp,'tone.m4a'));
 const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox','--autoplay-policy=no-user-gesture-required','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
-const base='https://gnarly-web.miscrapha.workers.dev',results=[],errors=[];
+const base='https://gnarly-web.miscrapha.workers.dev',results=[],errors=[];let statusStarted=null,releaseStatus;
 try{
  const context=await browser.newContext({viewport:{width:1100,height:1000},serviceWorkers:'block'});
  await context.route('**/*',async route=>{
   const u=new URL(route.request().url());
+  if(u.pathname==='/playback-status'&&statusStarted){const started=statusStarted;statusStarted=null;started();await new Promise(resolve=>releaseStatus=resolve);await route.fulfill({contentType:'application/json',body:'{"status":"upstream_rate_limited","retry_after":60}'});return}
   if(u.pathname.startsWith('/fast-audio/')||u.pathname==='/download'){
    await route.fulfill({contentType:'audio/mp4',body:media,headers:{'Content-Length':String(media.length),'Accept-Ranges':'bytes','Access-Control-Allow-Origin':'*'}});return;
   }
@@ -22,7 +23,7 @@ try{
   try{
    const file=u.pathname==='/'?'index.html':u.pathname.slice(1),ext=path.extname(file);
    let body=await readFile(path.join(root,file));
-   if(file==='app.js')body=Buffer.from(body+'\nglobalThis.__pauseQA={audio,state,selectTrack,play,pause,prepareNativeAudio,audioDelivery,applyPlayerSurfaceMode,engine,offlineURLs,applyPreset,freeze:()=>{visual.paused=true;visual.setPaused=()=>{}},smartOff:()=>smartMode="off"};');
+   if(file==='app.js')body=Buffer.from(body+'\nglobalThis.__pauseQA={audio,state,selectTrack,play,pause,recoverNativeAudio,prepareNativeAudio,audioDelivery,applyPlayerSurfaceMode,engine,offlineURLs,applyPreset,freeze:()=>{visual.paused=true;visual.setPaused=()=>{}},smartOff:()=>smartMode="off"};');
    await route.fulfill({contentType:({'.js':'text/javascript','.css':'text/css','.html':'text/html','.png':'image/png','.svg':'image/svg+xml','.json':'application/json'})[ext]||'application/octet-stream',body});
   }catch{await route.fulfill({status:404,body:''})}
  });
@@ -71,6 +72,13 @@ try{
  await page.evaluate(async()=>{__pauseQA.audio.pause();__pauseQA.audioDelivery.attempt=1;__pauseQA.prepareNativeAudio(qaTrack,1);await __pauseQA.audio.play()});
  await page.waitForFunction(()=>!__pauseQA.audio.paused&&__pauseQA.audio.readyState>=2);
  await cycle('recovered origin retry source','#ipod-play-button');
+ // A canceled recovery can finish AFTER a quick Pause/Play. Its late status
+ // must not replace the successfully resumed player's state or source.
+ const statusRequested=new Promise(resolve=>statusStarted=resolve);
+ await page.evaluate(()=>{globalThis.oldRecovery=__pauseQA.recoverNativeAudio(qaTrack,{name:'NotSupportedError'})});await statusRequested;
+ const healthy=await snapshot();await page.evaluate(async()=>{__pauseQA.pause();await __pauseQA.play()});releaseStatus();await page.evaluate(()=>oldRecovery);
+ assert.equal(await page.evaluate(()=>__pauseQA.state.audioState),'playing');assert.equal((await snapshot()).writes,healthy.writes);assert.equal((await snapshot()).src,healthy.src);
+ results.push({name:'stale recovery after quick Pause/Play',passed:true});
  // A new offline copy becomes available while listening. Resume keeps the
  // currently loaded healthy source; the copy is used on the next selection.
  await page.evaluate(data=>{__pauseQA.offlineURLs.set(qaTrack.id,URL.createObjectURL(new Blob([Uint8Array.from(atob(data),c=>c.charCodeAt(0))],{type:'audio/mp4'})))},media.toString('base64'));
