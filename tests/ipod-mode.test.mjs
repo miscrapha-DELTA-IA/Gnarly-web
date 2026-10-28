@@ -81,6 +81,20 @@ test('screen and functional wheel belong to one existing audio player',()=>{
  assert.doesNotMatch(html,/id="ipod-skin-import"/);
  assert.doesNotMatch(app,/new Audio\(.*ipod/i);
 });
+test('album artwork is full-bleed inside iPod screen even on high-DPR phones',()=>{
+ const match=css.match(/\.gnarly-ipod \.ipod-screen>img\s*\{([^}]+)\}/);
+ assert.ok(match,'the physical iPod screen has an explicit artwork rule');
+ const rule=match[1];
+ assert.match(rule,/inset\s*:\s*0/);
+ assert.match(rule,/width\s*:\s*100%/);
+ assert.match(rule,/height\s*:\s*100%/);
+ assert.match(rule,/object-fit\s*:\s*cover/);
+ assert.match(rule,/object-position\s*:\s*center/);
+ assert.doesNotMatch(rule,/object-fit\s*:\s*contain|var\(--ipod-art-(?:width|height)/);
+ assert.doesNotMatch(app,/fitIPodArtwork|--ipod-art-width|--ipod-art-height/);
+ assert.match(app,/resolveArtworkAsset\(cover,\{/,'use the real CDN artwork quality pipeline');
+ assert.match(css,/\.gnarly-ipod \.ipod-screen-scrim\{/,'retain readable labels');
+});
 test('live cover fills only screen, and shell responds to selected GNARLY palette',()=>{
  assert.match(css,/\.gnarly-ipod \.ipod-screen>img\{/);
  assert.match(css,/object-fit:cover/);
