@@ -10,26 +10,28 @@ const next={id:'youtube:BBBBBBBBBBB',videoId:'BBBBBBBBBBB',source:'youtube'};
 test('next-song priming only in short safe handoff window, never offline/metered',()=>{
  const args={current,next,remaining:22,online:true};
  assert.equal(canWarmNext(args),true);
- for(const remaining of [0,2,50,Infinity])assert.equal(canWarmNext({...args,remaining}),false);
+ for(const remaining of [0,2,90,Infinity])assert.equal(canWarmNext({...args,remaining}),false);
  assert.equal(canWarmNext({...args,saveData:true}),false);
  assert.equal(canWarmNext({...args,effectiveType:'slow-2g'}),false);
  assert.equal(canWarmNext({...args,online:false}),false);
  assert.equal(canWarmNext({...args,next:current}),false);
  assert.equal(canWarmNext({...args,next:{source:'preview'}}),false);
 });
-test('one bounded range request only, no full-track prefetch, no second request for same ID',async()=>{
+test('one durable prepare POST only, no truncated stream probe or duplicate preparation',async()=>{
  const calls=[];
  const fetcher=async(url,options)=>{
   calls.push({url,options});
-  return new Response(new Uint8Array([42,51,60]),{status:206,headers:{'content-type':'audio/mp4'}});
+  return new Response('{"status":"preparing"}',{status:202,headers:{'content-type':'application/json'}});
  };
  const warmup=new QueueAudioWarmup({fetcher,timeout:250});
  assert.equal(await warmup.start(next),true);
  assert.equal(await warmup.start(next),false);
  assert.equal(calls.length,1);
- assert.equal(calls[0].options.headers.Range,'bytes=0-65535');
+ assert.equal(calls[0].options.method,'POST');
+ assert.equal(calls[0].options.headers.Range,undefined);
+ assert.equal(JSON.parse(calls[0].options.body).url,'https://www.youtube.com/watch?v=BBBBBBBBBBB');
  assert.equal(calls[0].options.credentials,'omit');
- assert.match(calls[0].url,/delivery=browser/);
+ assert.match(calls[0].url,/\/prepare$/);
  warmup.reset();
  assert.equal(await warmup.start(next),true);
  assert.equal(calls.length,2);
