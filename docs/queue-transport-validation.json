@@ -1,0 +1,97 @@
+{
+  "baseline": null,
+  "browser": "chromium",
+  "fixture": "synthetic AAC; simulated edge/origin latency; no provider",
+  "scenarios": {
+    "offline": {
+      "samples": 20,
+      "p50": 33.2,
+      "p95": 92.9,
+      "p99": 609.6,
+      "mediaRequests": 0,
+      "originRequests": 0,
+      "firstByteSamples": 0,
+      "firstByteP50": null
+    },
+    "r2-hit": {
+      "samples": 20,
+      "p50": 84.1,
+      "p95": 105.3,
+      "p99": 106.8,
+      "mediaRequests": 20,
+      "originRequests": 0,
+      "firstByteSamples": 19,
+      "firstByteP50": 69.4
+    },
+    "prepared-next": {
+      "samples": 20,
+      "p50": 78.7,
+      "p95": 94.7,
+      "p99": 104.1,
+      "mediaRequests": 20,
+      "originRequests": 0,
+      "firstByteSamples": 2,
+      "firstByteP50": 39.4
+    },
+    "cold-progressive": {
+      "samples": 20,
+      "p50": 154.5,
+      "p95": 182.5,
+      "p99": 197.9,
+      "mediaRequests": 20,
+      "originRequests": 20,
+      "firstByteSamples": 0,
+      "firstByteP50": null
+    },
+    "cold-fallback": {
+      "samples": 20,
+      "p50": 306.3,
+      "p95": 355.8,
+      "p99": 367.9,
+      "mediaRequests": 20,
+      "originRequests": 40,
+      "firstByteSamples": 0,
+      "firstByteP50": null
+    },
+    "high-latency": {
+      "samples": 20,
+      "p50": 291.7,
+      "p95": 359.6,
+      "p99": 363,
+      "mediaRequests": 20,
+      "originRequests": 20,
+      "firstByteSamples": 0,
+      "firstByteP50": null
+    },
+    "resume": {
+      "samples": 20,
+      "p50": 2.6,
+      "p95": 23,
+      "p99": 38.2,
+      "mediaRequests": 20,
+      "originRequests": 0,
+      "firstByteSamples": 0,
+      "firstByteP50": null
+    }
+  },
+  "regressions": {
+    "rapidNext": true,
+    "karaoke": true,
+    "headphoneTransport": true,
+    "mediaSessionHandler": true,
+    "networkRecovery": true,
+    "lowBandwidthStartup": true,
+    "automaticEnd": true,
+    "offlineWithoutNetwork": true,
+    "resumeKeepsSource": true,
+    "backForward": true,
+    "rapidAlternatingNavigation": true,
+    "queuePlayPause": true,
+    "noBalloons": true,
+    "sameTrackCancellation": true,
+    "startupWatchdog": true,
+    "sharedQueueDiscovery": true,
+    "discoveryPauseCancellation": true,
+    "uncaughtErrors": 0
+  }
+}
