@@ -643,7 +643,8 @@ assert.equal(await tastePage.locator('.native-queue-track').count(),0);
 for(const command of ['queue-play','queue-shuffle','smart-refresh'])
  assert.equal(await tastePage.locator('[data-command="'+command+'"]').isDisabled(),true);
 await tastePage.locator('[data-omnibox-tab="search"]').click();
-assert.match(await tastePage.locator('.section-head').first().innerText(),/para você/i);
+// Search has used an explicit results heading since the incremental-results UI.
+assert.match(await tastePage.locator('.section-head').first().innerText(),/resultados da busca/i);
 await tastePage.locator('#close-sheet').click();
 await tastePage.locator('#more-button').click();
 assert.equal(await tastePage.locator('[data-command="go-playlists"]').count(),1,

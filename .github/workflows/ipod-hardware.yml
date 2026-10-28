@@ -1,7 +1,7 @@
 name: iPod Hardware Studio acceptance
 on:
   pull_request:
-    paths: ['app.js', 'index.html', 'ipod-mode.css', 'lib/ipod-*.js', 'ui/ipod-*.js', 'ui/player-surface.js', 'tests/ipod-*', 'tests/pause-resume.browser.mjs', '.github/workflows/ipod-hardware.yml']
+    paths: ['app.js', 'index.html', 'ipod-mode.css', 'lib/ipod-*.js', 'ui/ipod-*.js', 'ui/player-surface.js', 'tests/ipod-*', 'tests/pause-resume.browser.mjs', 'styles.css', 'module-dock.css', 'ui/display-panel.js', 'tests/menu-*', '.github/workflows/ipod-hardware.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -34,6 +34,11 @@ jobs:
           CHROMIUM_PATH: /usr/bin/google-chrome
           PAUSE_ARTIFACT_DIR: ipod-hardware-artifacts/pause-resume
         run: node tests/pause-resume.browser.mjs
+      - name: Menu icon fallback, native keyboard and responsive controls
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+          MENU_ARTIFACT_DIR: ipod-hardware-artifacts/menu-polish
+        run: node tests/menu-polish.browser.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
