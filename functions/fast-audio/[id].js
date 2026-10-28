@@ -5,6 +5,44 @@
 const VIDEO_ID=/^[A-Za-z0-9_-]{11}$/;
 const RENDER='https://nightcorelab.onrender.com';
 const PASSTHROUGH=['content-length','content-range','accept-ranges','etag','last-modified'];
+
+const PROMOTION_MAX_BYTES=16*1024*1024;
+/** Never promote partial, unbounded or malformed media to the shared cache.
+ * A full-span 206 is allowed because browsers often request bytes=0-.
+ */
+export function completeAudioLength(response){
+ const size=Number(response.headers.get('content-length'));
+ if(!Number.isSafeInteger(size)||size<1024||size>PROMOTION_MAX_BYTES)return 0;
+ if(response.status===200)return size;
+ if(response.status!==206)return 0;
+ const match=/^bytes 0-(\d+)\/(\d+)$/.exec(response.headers.get('content-range')||'');
+ return match&&Number(match[1])+1===size&&Number(match[2])===size?size:0;
+}
+function promoteCompleteStream({upstream,bucket,id,waitUntil}){
+ const size=completeAudioLength(upstream);
+ if(!size||!upstream.body||!bucket||typeof bucket.put!=='function'||typeof waitUntil!=='function')
+  return upstream.body;
+ const [browser,copy]=upstream.body.tee();
+ const work=(async()=>{
+  const chunks=[];let received=0;
+  try{
+   const reader=copy.getReader();
+   while(true){
+    const {done,value}=await reader.read();if(done)break;
+    received+=value.byteLength;
+    if(received>size){await reader.cancel();return}
+    chunks.push(value);
+   }
+   if(received!==size)return;
+   const bytes=new Uint8Array(size);let offset=0;
+   for(const part of chunks){bytes.set(part,offset);offset+=part.byteLength}
+   await bucket.put(id+'/audio.m4a',bytes,{httpMetadata:{contentType:'audio/mp4'}});
+  }catch(error){console.debug('GNARLY edge cache promotion skipped',error?.name||'unknown')}
+ })();
+ try{waitUntil(work)}catch{void work.catch(()=>{})}
+ return browser;
+}
+
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Expose-Headers':
  'Content-Length, Content-Range, Accept-Ranges, X-Gnarly-Playback-Source, Server-Timing'};
 
@@ -44,7 +82,7 @@ async function edgeAudio(bucket,id,range,headOnly){
  }
  return new Response(headOnly?null:obj.body,{status:200,headers});
 }
-export async function handleFastAudio({request,env,params},fetcher=fetch){
+export async function handleFastAudio({request,env,params,waitUntil:contextWaitUntil},fetcher=fetch){
  const id=params?.id;
  if(!VIDEO_ID.test(id||''))return reply(400,'Invalid track ID');
  if(request.method!=='GET'&&request.method!=='HEAD')
@@ -85,7 +123,11 @@ export async function handleFastAudio({request,env,params},fetcher=fetch){
   }
   if(!upstream.headers.has('content-length'))headers.delete('content-length');
   if(!upstream.headers.has('content-range'))headers.delete('content-range');
-  return new Response(upstream.body,{status:upstream.status,headers});
+  // Write-through only a complete, bounded progressive AAC stream.
+  // The browser receives its tee immediately; R2 writes never block first audio.
+  const body=index===0?promoteCompleteStream({upstream,bucket:env?.GNARLY_AUDIO_R2,
+   id,waitUntil:contextWaitUntil}):upstream.body;
+  return new Response(body,{status:upstream.status,headers});
  }
  return reply(503,'Audio source temporarily unavailable',{'Retry-After':'8',
   'X-Gnarly-Playback-Source':'unavailable'});
