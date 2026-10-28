@@ -50,7 +50,7 @@ Recorded local results:
 - Responsive checks pass at 320×568, 390×844, 768×1024 and 1024×768; additional desktop 1440×1080 and DPR 3 mobile captures. Device width/height stays 0.61; wheel hit targets stay at least 44px.
 - Representative desktop silver/camouflage/acrylic/carbon/pearl and mobile captures are produced with the machine-readable `validation.json`. The CI workflow uploads these as `ipod-hardware-visual-acceptance`.
 
-The separate broad Stage72 browser suite has an existing search-heading assertion mismatch (“Para você” versus “RESULTADOS DA BUSCA”), outside this iPod scope; it has not been weakened. Actual Safari/iPhone, physical headphones, PWA installation and hardware-GPU frame-rate acceptance remain manual device checks. CSS parsing for Safari 16 and a Chromium dialog-fallback test are not equivalent to running WebKit.
+The Stage72 workflow now installs the existing project dependencies before unit tests, so the CSS parser check can run there as well. The separate broad Stage72 browser suite has an existing search-heading assertion mismatch (“Para você” versus “RESULTADOS DA BUSCA”), outside this iPod scope; it has not been weakened. Actual Safari/iPhone, physical headphones, PWA installation and hardware-GPU frame-rate acceptance remain manual device checks. CSS parsing for Safari 16 and a Chromium dialog-fallback test are not equivalent to running WebKit.
 
 ## Performance measurements and limits
 
