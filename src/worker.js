@@ -2,6 +2,8 @@
 // Keep the Pages-compatible handlers as the single source of truth for APIs.
 // Requests for real music stay on the existing Render backend; never proxy
 // full tracks or GPU stem outputs through the edge.
+import {ROOM_PATTERN} from './karaoke-relay.js';
+export {KaraokeRoom} from './karaoke-relay.js';
 import {onRequestGet as catalog} from '../functions/api/catalog.js';
 import {onRequestGet as omnibox} from '../functions/api/omnibox.js';
 import {onRequestPost as stemsTicket} from '../functions/api/stems-ticket.js';
@@ -25,6 +27,27 @@ function methodNotAllowed(method) {
 export default {
   async fetch(request, env, ctx) {
     const url=new URL(request.url);
+    // Pairing uses the standalone Cloudflare Worker, not the Pages HTML origin.
+    // Only short voice-analysis frames and playback clock are relayed.
+    const karaoke=/^\\/karaoke-relay\\/([^/]+)$/.exec(url.pathname);
+    if(karaoke){
+      if(request.method!=='GET'||request.headers.get('Upgrade')?.toLowerCase()!=='websocket')
+        return new Response('WebSocket required',{status:426});
+      if(!ROOM_PATTERN.test(karaoke[1]))return new Response('Invalid room',{status:400});
+      const origin=request.headers.get('Origin')||'';
+      let trusted=false;
+      try{
+        const o=new URL(origin);
+        trusted=o.protocol==='https:'&&(
+          /^(?:[a-z0-9-]+\\.)?(?:gnarly-web-pages|gnarly-web-stage72)\\.pages\\.dev$/i.test(o.hostname)||
+          o.hostname==='gnarly-web.miscrapha.workers.dev')||
+          o.protocol==='http:'&&['localhost','127.0.0.1'].includes(o.hostname);
+      }catch{}
+      if(!trusted)return new Response('Origin not allowed',{status:403});
+      if(!env.KARAOKE_ROOMS)return new Response('Pairing not deployed',{status:503});
+      const stub=env.KARAOKE_ROOMS.get(env.KARAOKE_ROOMS.idFromName(karaoke[1]));
+      return stub.fetch(request);
+    }
     // Workers deployments must share Pages' R2-first audio path. Otherwise
     // the browser silently takes the slower direct Render download route.
     const audioId=/^\/fast-audio\/([A-Za-z0-9_-]{11})$/.exec(url.pathname);
