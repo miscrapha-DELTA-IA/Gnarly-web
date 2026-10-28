@@ -1,5 +1,5 @@
 /** GNARLY iPod — optional visual shell, never a second media player.
- * A user-supplied Canva skin lives only in this browser's IndexedDB; the
+ * Legacy user-supplied skins stay in this browser's IndexedDB; the
  * existing audio element, queue, presets and MediaSession remain authoritative.
  */
 export const IPOD_SKIN_DB='gnarly-ipod-skin-v1';

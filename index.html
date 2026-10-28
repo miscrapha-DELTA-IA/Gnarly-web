@@ -73,7 +73,9 @@
              The shell is styled independently; the live album cover
              fills only the display. Wheel hit areas are real buttons. -->
         <div id="ipod-device" class="gnarly-ipod" aria-label="Reprodutor no modo iPod" hidden>
-          <div class="ipod-shell-base" aria-hidden="true"></div>
+          <div class="ipod-shell-base" aria-hidden="true"><div class="ipod-body">
+            <div class="ipod-internals"></div><div class="ipod-color"></div><div class="ipod-print"></div><div class="ipod-micro"></div><div class="ipod-light"></div>
+          </div></div>
           <img id="ipod-shell-image" class="ipod-shell-image" alt="" aria-hidden="true" hidden />
           <div class="ipod-screen" aria-label="Tela do iPod">
             <img id="ipod-cover-image" src="./assets/gnarly-icon.png" alt="Capa da música atual" decoding="async" />
@@ -87,12 +89,14 @@
             </div>
           </div>
           <div class="ipod-fallback-brand" aria-hidden="true">Gnarly</div>
+          <div class="ipod-edition" aria-hidden="true">PORTABLE AUDIO<br/>SERIES / 072</div>
+          <span class="ipod-port" aria-hidden="true"></span><span class="ipod-rivet left" aria-hidden="true"></span><span class="ipod-rivet right" aria-hidden="true"></span>
           <div class="ipod-wheel" role="group" aria-label="Roda de navegação iPod">
             <button class="ipod-wheel-menu" id="ipod-menu-button" type="button" aria-label="Abrir opções do modo iPod" aria-haspopup="menu" aria-controls="player-surface-menu" aria-expanded="false"><span>MENU</span></button>
             <button class="ipod-wheel-prev" id="ipod-previous-button" type="button" aria-label="Música anterior"><svg class="icon" aria-hidden="true"><use href="#i-prev" /></svg></button>
             <button class="ipod-wheel-next" id="ipod-next-button" type="button" aria-label="Próxima música"><svg class="icon" aria-hidden="true"><use href="#i-next" /></svg></button>
             <button class="ipod-wheel-play" id="ipod-play-button" type="button" aria-label="Reproduzir ou pausar"><svg class="icon" aria-hidden="true"><use href="#i-play" /></svg></button>
-            <button class="ipod-wheel-center" id="ipod-center-button" type="button" aria-label="Reproduzir ou pausar">●</button>
+            <button class="ipod-wheel-center" id="ipod-center-button" type="button" aria-label="Reproduzir ou pausar"><span aria-hidden="true">G</span></button>
           </div>
         </div>
         <div id="player-surface-menu" class="player-surface-menu" role="menu" aria-label="Aparência interna do player" hidden></div>
