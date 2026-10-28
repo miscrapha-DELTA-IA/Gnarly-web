@@ -6,7 +6,7 @@ export async function onRequestGet({request}) {
     const term=(url.searchParams.get('term')||'').trim().slice(0,90);
     const offset=Math.min(200,Math.max(0,Number.parseInt(url.searchParams.get('offset')||'0',10)||0));
     const limit=Math.min(25,Math.max(1,Number.parseInt(url.searchParams.get('limit')||'22',10)||22));
-    if(term.length<2)return new Response(JSON.stringify({error:'Use pelo menos 2 caracteres'}),{status:400,headers:{'content-type':'application/json'}});
+    if(term.length<1)return new Response(JSON.stringify({error:'Use pelo menos 2 caracteres'}),{status:400,headers:{'content-type':'application/json'}});
     const apple = new URL('https://itunes.apple.com/search');
     apple.searchParams.set('term',term);
     apple.searchParams.set('media','music');apple.searchParams.set('entity','song');apple.searchParams.set('limit',String(limit));
