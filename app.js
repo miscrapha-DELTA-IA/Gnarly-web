@@ -5,6 +5,7 @@ import {searchCatalog,searchNativeBackend,resolveTrackMetadata} from './lib/cata
 import {applyMetadata,enrichSearchCredits,isGenericArtist,inferredCredit,displayArtist,reconcileCatalogCredits} from './lib/metadata-intelligence.js';
 import {OmniboxSession,classifyIntent,rank,normalKey} from './lib/omnibox.js';
 import {instantSearch,personalizedRank} from './lib/live-search.js';
+import {discoveryQueries,mixDiscoveryFeed} from './lib/search-discovery.js';
 import {MUSIC_PRESETS,musicalPreset} from './lib/music-presets.js';
 import {autoLyrics,cachedAutoLyrics,prefetchAutoLyrics} from './lib/lyrics-auto.js';
 import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
@@ -1080,7 +1081,7 @@ function openSheet(which){
  $('#omnibox-toggle').setAttribute('aria-expanded',String(OMNIBOX_TABS.includes(which)));
  syncCreativeQuickActions();
  renderSheet();
- if(which==='search'){if(state.searchTerm&&!state.searchResults.length)void runSearch(state.searchTerm,{live:true});setTimeout(()=>$('#search-term')?.focus(),80)}
+ if(which==='search'){void runSearch(state.searchTerm,{live:true});setTimeout(()=>$('#search-term')?.focus(),80)}
  if(which==='controls'&&state.musicTab==='stems')void refreshCloudStemAvailability();
 }
 function closeSheet(){
@@ -1815,6 +1816,7 @@ $('#sheet-content').addEventListener('change',e=>{if(!e.target.hasAttribute('dat
 // Live catalogue discovery: user taste only boosts actually matching recordings.
 const SEARCH_PAGE_SIZE=20,PREVIEW_PAGE_SIZE=22;
 let searchCounter=0,searchPaging=null,searchMoreObserver=null,searchDebounce=null;
+let discoveryRemoteCache={items:[],savedAt:0};
 function searchPreferenceContext(){
  return {favorites:state.favorites,history:state.history,queue:state.queue,memory:listeningMemory};
 }
@@ -1824,6 +1826,64 @@ function searchInstantOptions(query){
  // Reuse already rendered hits when refining a query ("an" -> "ana").
  return {...searchPreferenceContext(),offline:state.tracks,playlists:saved,
   cached:[...cache,...state.searchResults]};
+}
+/** Empty Omnibox is a discovery feed, not an empty-search error.
+ * Render device-local choices synchronously, then blend actual catalogues
+ * as they respond, without autoplay or changes to the smart queue.
+ */
+function refreshSearchDiscovery(page,{loading=false,failed=false}={}){
+ if(searchPaging!==page||page.revision!==searchCounter||state.searchTerm)return;
+ const locals=searchInstantOptions('');
+ state.searchResults=mixDiscoveryFeed({
+  favorites:locals.favorites,history:locals.history,playlists:locals.playlists,
+  offline:locals.offline,queue:locals.queue,remote:page.remote,
+  previous:page.previous,current:state.current,max:36
+ });
+ const info=loading&&!state.searchResults.length?'Descobrindo músicas…':
+  failed?'Catálogo indisponível. Mostrando suas músicas salvas.':'';
+ state.searchError=info;
+ displaySearch(state.searchResults,info);
+}
+async function fetchSearchDiscovery(page){
+ if(searchPaging!==page||page.revision!==searchCounter||page.started)return;
+ page.started=true;
+ const valid=()=>searchPaging===page&&page.revision===searchCounter&&
+  !page.controller.signal.aborted&&!state.searchTerm;
+ const cached=Date.now()-discoveryRemoteCache.savedAt<180000&&discoveryRemoteCache.items.length;
+ if(cached){
+  page.remote=discoveryRemoteCache.items;
+  refreshSearchDiscovery(page);
+  return;
+ }
+ const queries=discoveryQueries({favorites:state.favorites,history:state.history,
+  memory:listeningMemory});
+ const batches=queries.map(()=>[]);
+ const merge=()=>{
+  const out=[];
+  for(let i=0;i<16;i++)for(const batch of batches)if(batch[i])out.push(batch[i]);
+  return out;
+ };
+ await Promise.allSettled(queries.map((query,i)=>searchNativeBackend(query,{
+  limit:14,signal:page.controller.signal
+ }).then(songs=>{
+  if(!valid())return;
+  batches[i]=songs;
+  page.remote=merge();
+  refreshSearchDiscovery(page);
+ })));
+ if(!valid())return;
+ // Previews are explicitly marked by the catalogue; never label them as
+ // complete native recordings. Use them only when the full catalog is down.
+ if(!page.remote.length){
+  try{
+   const previews=await searchCatalog(queries[0]||'music',{limit:12,
+    signal:page.controller.signal});
+   if(valid())page.remote=previews;
+  }catch{}
+ }
+ if(!valid())return;
+ if(page.remote.length)discoveryRemoteCache={items:page.remote,savedAt:Date.now()};
+ refreshSearchDiscovery(page,{failed:!page.remote.length});
 }
 function refreshLiveResults(page,info=''){
  if(searchPaging!==page||page.revision!==searchCounter)return;
@@ -1975,7 +2035,16 @@ async function runSearch(raw,{live=false}={}){
    source:'youtube',duration:0};
   state.searchResults=[track];selectTrack(track,false);displaySearch([track]);return;
  }
- if(!query||intent.kind==='direct'){
+ if(!query){
+  const page={query:'',kind:'discovery',revision,controller:new AbortController(),
+   previous:state.searchResults,remote:discoveryRemoteCache.items,
+   started:false,nativeMore:false,previewMore:false,previewBuffer:[],loading:false};
+  searchPaging=page;
+  refreshSearchDiscovery(page,{loading:!page.remote.length});
+  void fetchSearchDiscovery(page);
+  return;
+ }
+ if(intent.kind==='direct'){
   state.searchResults=[];displaySearch([]);return;
  }
  const options=searchInstantOptions(query);
