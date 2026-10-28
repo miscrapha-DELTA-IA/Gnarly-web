@@ -7,10 +7,18 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "run_worker_first": [
-      "/api/*"
+      "/api/*",
+      "/fast-audio/*",
+      "/fast-prepare/*"
     ]
   },
   "observability": {
     "enabled": true
-  }
+  },
+  "r2_buckets": [
+    {
+      "binding": "GNARLY_AUDIO_R2",
+      "bucket_name": "gnarly-cache"
+    }
+  ]
 }
