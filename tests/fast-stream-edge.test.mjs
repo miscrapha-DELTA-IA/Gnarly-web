@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {handleFastAudio,validByteRange} from '../functions/fast-audio/[id].js';
+import {handleFastAudio,validByteRange,completeAudioLength} from '../functions/fast-audio/[id].js';
 import {onRequestPost as prepare} from '../functions/fast-prepare/[id].js';
 import {fastPrepareURL,trackAudioURL,isGnarlyPagesHost} from '../lib/playback-source.js';
 import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from '../lib/queue-audio-warmup.js';
@@ -141,4 +141,42 @@ test('early next-song warmup is restricted to one eligible real recording',()=>{
  assert.equal(canWarmImmediately({current:track,next,effectiveType:'2g'}),false);
  assert.equal(canWarmImmediately({current:track,next:track}),false);
  assert.equal(canWarmImmediately({current:track,next:{...next,source:'preview'}}),false);
+});
+
+test('complete progressive AAC is streamed without blocking an asynchronous R2 write',async()=>{
+ const writes=[],pending=[];
+ const bucket={async get(){return null},async put(key,bytes,metadata){writes.push({key,bytes:new Uint8Array(bytes),metadata});return {}}};
+ const result=await handleFastAudio({
+  request:request('/fast-audio/ABCDEFGHIJK'),env:{GNARLY_AUDIO_R2:bucket},
+  params:{id:'ABCDEFGHIJK'},waitUntil:promise=>pending.push(promise)
+ },async()=>new Response(audio,{status:200,headers:{
+  'Content-Type':'audio/mp4','Content-Length':String(audio.byteLength)
+ }}));
+ assert.equal(result.status,200);
+ assert.equal(result.headers.get('x-gnarly-playback-source'),'progressive-origin');
+ assert.equal((await result.arrayBuffer()).byteLength,audio.length);
+ await Promise.all(pending);
+ assert.equal(writes.length,1);
+ assert.equal(writes[0].key,'ABCDEFGHIJK/audio.m4a');
+ assert.equal(writes[0].bytes.byteLength,audio.length);
+ assert.equal(writes[0].metadata.httpMetadata.contentType,'audio/mp4');
+});
+test('partial or oversized origin media is never promoted into a complete R2 object',async()=>{
+ let writes=0;
+ const bucket={async get(){return null},async put(){writes++}};
+ const pending=[];
+ const result=await handleFastAudio({
+  request:request('/fast-audio/ABCDEFGHIJK',{headers:{Range:'bytes=0-127'}}),
+  env:{GNARLY_AUDIO_R2:bucket},params:{id:'ABCDEFGHIJK'},waitUntil:p=>pending.push(p)
+ },async()=>new Response(audio.slice(0,128),{status:206,headers:{
+  'Content-Type':'audio/mp4','Content-Length':'128','Content-Range':'bytes 0-127/4096'
+ }}));
+ assert.equal(result.status,206);
+ assert.equal((await result.arrayBuffer()).byteLength,128);
+ await Promise.all(pending);
+ assert.equal(writes,0);
+ assert.equal(completeAudioLength(new Response(null,{headers:{'Content-Length':String(17*1024*1024)}})),0);
+ assert.equal(completeAudioLength(new Response(null,{status:206,headers:{
+  'Content-Length':'4096','Content-Range':'bytes 0-4095/4096'
+ }})),4096);
 });
