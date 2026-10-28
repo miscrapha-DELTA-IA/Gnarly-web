@@ -1871,8 +1871,9 @@ function searchPreferenceContext(){
 }
 function searchInstantOptions(query){
  const saved=playlistStore.names().flatMap(name=>playlistStore.tracks(name)).slice(0,160);
- const cache=omnibox.fromCache(query)?.results||[];
- // Reuse already rendered hits when refining a query ("an" -> "ana").
+ // Persisted exact matches and prefix matches are public catalogue metadata,
+ // still filtered by the typed query before appearing as instant suggestions.
+ const cache=omnibox.cachedMatches(query);
  return {...searchPreferenceContext(),offline:state.tracks,playlists:saved,
   cached:[...cache,...state.searchResults]};
 }
@@ -1936,12 +1937,16 @@ async function fetchSearchDiscovery(page){
 }
 function refreshLiveResults(page,info=''){
  if(searchPaging!==page||page.revision!==searchCounter)return;
- const available=page.native.length?page.native:page.previews;
- // Never hide relevant user matches while waiting on a remote provider.
+ // Keep independent Apple preview results visible when YouTube responds.
+ // Never reclassify previews as full songs: rank only deduplicates identical
+ // recordings, prioritizing the real native entry when both exist.
+ const available=[...page.native,...page.previews];
  state.searchResults=personalizedRank(page.query,[...page.local,...available],searchPreferenceContext());
- state.searchError=info;
- displaySearch(state.searchResults,info);
- if(available.length)omnibox.cacheResults(page.query,state.searchResults);
+ const waiting=!page.nativeFinished||!page.previewFinished;
+ const status=info||(!state.searchResults.length&&waiting?'Buscando músicas…':'');
+ state.searchError=status;
+ displaySearch(state.searchResults,status);
+ if(available.length)omnibox.cacheResults(page.query,available);
 }
 function stopSearchRequests(){
  if(searchDebounce!==null){clearTimeout(searchDebounce);searchDebounce=null}
@@ -2005,12 +2010,22 @@ function displaySearch(results,info='',append=[],offset=0){
  if(state.sheet!=='search')return;
  const list=$('#search-results'),status=$('#search-state');
  if(list){
-  const existing=list.querySelector('.media-list');
-  if(append.length&&existing){
-   const box=document.createElement('div');box.innerHTML=mediaList(append,'search',offset);
-   existing.insertAdjacentHTML('beforeend',box.firstElementChild.innerHTML);
-  }else list.innerHTML=results.length?mediaList(results,'search'):'';
-  upgradeMediaArtwork(list);
+  const rendered=results.map(x=>[x.id,x.title,x.artist,x.artwork].join('|'));
+  let previous=[];
+  try{previous=JSON.parse(list.dataset.searchRows||'[]')}catch{}
+  const unchanged=rendered.length===previous.length&&rendered.every((x,i)=>x===previous[i]);
+  if(!unchanged){
+   const existing=list.querySelector('.media-list');
+   const appended=existing&&previous.length&&rendered.length>previous.length&&
+    previous.every((x,i)=>rendered[i]===x);
+   if(appended){
+    const box=document.createElement('div');
+    box.innerHTML=mediaList(results.slice(previous.length),'search',previous.length);
+    existing.insertAdjacentHTML('beforeend',box.firstElementChild.innerHTML);
+   }else list.innerHTML=results.length?mediaList(results,'search'):'';
+   list.dataset.searchRows=JSON.stringify(rendered);
+   upgradeMediaArtwork(list);
+  }
  }
  if(status){status.textContent=info;status.hidden=!info}
  syncSearchMore();
@@ -2108,7 +2123,7 @@ async function runSearch(raw,{live=false}={}){
  refreshLiveResults(page);
  // Single-letter results appear locally now. The first remote discovery is
  // small, and every new keystroke cancels obsolete network work.
- const delay=live?(query.length===1?320:175):0;
+ const delay=live?(query.length===1?250:210):0;
  if(delay)searchDebounce=setTimeout(()=>{searchDebounce=null;void fetchLiveSearch(page)},delay);
  else void fetchLiveSearch(page);
 }
