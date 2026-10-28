@@ -77,8 +77,9 @@ test('integration maintains manual entries and only logs actual audio playback, 
  assert.match(source,/listeningMemory\.record\('play',state\.current\)/);
  assert.match(source,/listeningMemory\.record\('finish',state\.current\)/);
  assert.match(source,/audio\.addEventListener\('playing',[\s\S]*?listeningMemory\.record\('play'/);
- // Submitted searches now exclude taste suggestions; personal memory remains in the smart queue.
+ // Listening signals personalize matching results but cannot inject unrelated history.
  assert.doesNotMatch(source,/discoverySuggestions\(/);
- assert.match(source,/state\.searchResults=rank\(query,songs\.length\?songs:previews,\[\]\)/);
+ assert.match(source,/instantSearch\(query,options\)/);
+ assert.match(source,/personalizedRank\(page\.query,\[\.\.\.page\.local,\.\.\.available\]/);
  assert.match(source,/case 'taste-reset'/);
 });
