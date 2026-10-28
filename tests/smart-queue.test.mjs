@@ -62,8 +62,9 @@ test('player integration keeps source identity and queue transitions transaction
  const {readFileSync}=await import('node:fs');
  const code=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.doesNotMatch(code,/tr\.source\s*=\s*['"]preview['"]/,'Rendering must not overwrite the selected audio source');
- assert.match(code,/audio\.addEventListener\('playing',[\s\S]*?commitPlaying\(state\.queue,pendingQueueId\)/);
- assert.match(code,/const nextTrack=state\.queue\[0\]/,'Next should stage, not shift before playback');
+ assert.match(code,/if\(fromQueue\)\{\s*state\.queue=commitPlaying\(state\.queue,track\.id\)/,'Selection must advance queue BEFORE loading audio');
+ assert.match(code,/let candidate=state\.queue\[0\]/,'Next must pick the actual pending head');
+ assert.doesNotMatch(code,/pendingQueueId/,'An item must not remain stuck in queue until playing');
  assert.match(code,/function renderQueuePanel\(\)/);
  assert.match(code,/audioWarmup\.start\(\)/);
  assert.match(code,/handlePanelClick/);
