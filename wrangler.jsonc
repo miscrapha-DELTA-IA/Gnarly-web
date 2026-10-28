@@ -12,6 +12,14 @@
       "/fast-prepare/*"
     ]
   },
+  "durable_objects": {
+    "bindings": [
+      {"name": "KARAOKE_ROOMS", "class_name": "KaraokeRoom"}
+    ]
+  },
+  "migrations": [
+    {"tag": "karaoke-room-v1", "new_sqlite_classes": ["KaraokeRoom"]}
+  ],
   "observability": {
     "enabled": true
   },
