@@ -892,6 +892,43 @@ function updatePresetButtons(){document.querySelectorAll('[data-preset]').forEac
 function openYouTubePlayer(track){if(!/^[A-Za-z0-9_-]{11}$/.test(track?.videoId||''))return toast('Link do YouTube inválido');audio.pause();const dialog=$('#youtube-player-dialog'),frame=$('#youtube-player-frame');frame.src='https://www.youtube-nocookie.com/embed/'+track.videoId+'?autoplay=1&playsinline=1';$('#youtube-player-title').textContent=track.title;$('#youtube-player-link').href='https://www.youtube.com/watch?v='+track.videoId;dialog.hidden=false;dialog.setAttribute('aria-hidden','false');toast('Player oficial: Nightcore e reverb não podem alterar o áudio dentro do YouTube.');}
 function closeYouTubePlayer(){const dialog=$('#youtube-player-dialog');if(!dialog)return;dialog.hidden=true;dialog.setAttribute('aria-hidden','true');$('#youtube-player-frame').src='about:blank'}
 function toggleFavorite(){if(!state.current){openSheet('library');return}const at=state.favorites.findIndex(x=>x.id===state.current.id);if(at>=0){state.favorites.splice(at,1);listeningMemory.record('unlike',state.current);toast('Removido dos favoritos')}else{state.favorites.push(state.current);listeningMemory.record('like',state.current);toast('Adicionado aos favoritos')}setSetting('favorites',JSON.stringify(state.favorites.filter(x=>x.source!=='local').slice(-100)));updatePlayer();if(state.sheet==='favorites')renderSheet()}
+function closeQuickPlaylist(){
+ const menu=$('#quick-playlist-popover'),button=$('#quick-playlist-button');
+ if(!menu||!button)return;
+ menu.hidden=true;
+ button.setAttribute('aria-expanded','false');
+}
+function openQuickPlaylist(){
+ if(!state.current){toast('Escolha uma música antes de salvar em playlist.');return}
+ const menu=$('#quick-playlist-popover'),button=$('#quick-playlist-button');
+ if(!menu.hidden){closeQuickPlaylist();return}
+ menu.innerHTML=quickPlaylistMarkup(playlistStore.names(),selectedPlaylist);
+ menu.hidden=false;
+ button.setAttribute('aria-expanded','true');
+ menu.querySelector('[data-quick-playlist="add"]')?.focus({preventScroll:true});
+}
+function saveQuickPlaylist(name,{create=false}={}){
+ const track=state.current;
+ if(!track)return;
+ if(track.source==='local'){
+  toast('Playlists salvas ainda aceitam somente faixas do catálogo. O áudio local permanece em Biblioteca offline.');
+  return;
+ }
+ if(create){
+  if(!playlistStore.create(name)){
+   toast('Nome inválido, repetido ou limite de 12 playlists atingido.');
+   return;
+  }
+ }
+ if(!playlistStore.names().includes(name))return;
+ selectedPlaylist=name;
+ setSetting('smartPlaylist',name);
+ if(!playlistStore.add(name,track)){
+  toast('Esta música já está em '+name+'.');
+ }else toast('✓ '+track.title+' salva em '+name);
+ closeQuickPlaylist();
+ if(state.sheet==='playlists')renderSheet();
+}
 const OMNIBOX_TABS=['search','library','queue','karaoke'];
 function openSheet(which){
  closePlayerSurfaceMenu();
@@ -1371,6 +1408,30 @@ $('#lyrics-ai-import').addEventListener('change',e=>{
 $('#lrc-import').addEventListener('change',async e=>{const file=e.target.files?.[0];if(!file)return;state.lyricsAbort?.abort();state.lyrics=parseLRC(await file.text());state.plainLyrics=[];state.lyricsSource='manual';state.lyricsSynced=true;state.lyricsStatus='Letra sincronizada importada por você';state.lastLyric=-2;syncLyrics();toast(`${state.lyrics.length} linhas sincronizadas carregadas`);if(state.sheet==='karaoke')renderSheet();e.target.value=''});
 $('#stems-import').addEventListener('change',async e=>{const files=[...(e.target.files||[])];e.target.value='';if(!state.current)return toast('Escolha uma música primeiro');state.stemStatus='Carregando fontes Stems…';if(isModuleOpen('controls'))renderModule('controls');try{await stems.load(files);state.stemStatus='Quatro fontes reais conectadas ao mixer GNARLY.';toast('Stems prontos: voz, bateria, baixo e outros.')}catch(err){state.stemStatus=err.message;toast(err.message)}if(isModuleOpen('controls'))renderModule('controls')});
 $('#background-import').addEventListener('change',e=>{const file=e.target.files?.[0];if(!file||!file.type.startsWith('image/'))return;if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL);state.backgroundURL=URL.createObjectURL(file);state.photoAdjust=false;state.backgroundMode='custom';setSetting('backgroundMode','custom');applyBackground();if(state.sheet==='background')closeSheet();toast('Foto de fundo aplicada');e.target.value=''});
+$('#quick-playlist-button').addEventListener('click',openQuickPlaylist);
+$('#quick-playlist-popover').addEventListener('click',event=>{
+ const button=event.target.closest('[data-quick-playlist]');
+ if(!button)return;
+ if(button.dataset.quickPlaylist==='close'){closeQuickPlaylist();return}
+ if(button.dataset.quickPlaylist==='add')saveQuickPlaylist(button.dataset.playlistName);
+});
+$('#quick-playlist-popover').addEventListener('submit',event=>{
+ if(event.target.id!=='quick-playlist-create')return;
+ event.preventDefault();
+ const name=$('#quick-playlist-name').value.trim();
+ if(!name){toast('Dê um nome à nova playlist.');return}
+ saveQuickPlaylist(name,{create:true});
+});
+document.addEventListener('pointerdown',event=>{
+ const menu=$('#quick-playlist-popover');
+ if(!menu.hidden&&!menu.contains(event.target)&&!$('#quick-playlist-button').contains(event.target))
+  closeQuickPlaylist();
+});
+document.addEventListener('keydown',event=>{
+ if(event.key==='Escape'&&!$('#quick-playlist-popover').hidden){
+  closeQuickPlaylist();$('#quick-playlist-button').focus({preventScroll:true});
+ }
+});
 $('#cover-button').addEventListener('click',()=>{closePlayerSurfaceMenu();if(!state.current)openSheet('search');else openSheet('background')});
 $('#player-surface-button').addEventListener('click',()=>{
  if($('#player-surface-menu').hidden)openPlayerSurfaceMenu();
