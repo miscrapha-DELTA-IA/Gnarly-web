@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {safeMicFrame,safePlaybackSync,ROOM_PATTERN,SECRET_PATTERN} from '../lib/karaoke-relay-protocol.js';
-import {KaraokeRoom} from '../src/karaoke-relay.js';
+import {KaraokeRoomCore as KaraokeRoom} from '../lib/karaoke-room-core.js';
 import {microphonePairingLink,KaraokeRemoteHost} from '../lib/karaoke-remote.js';
 
 const room='a532b370-aa91-48ca-a555-123456789abc';
