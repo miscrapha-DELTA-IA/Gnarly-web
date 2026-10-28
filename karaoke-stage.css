@@ -273,3 +273,22 @@ html.karaoke-stage-open,html.karaoke-stage-open body{overflow:hidden;overscroll-
 .karaoke-remote-link-row button{flex:0 0 auto;min-height:42px;border-radius:10px;border:0;
  padding:0 12px;background:var(--acid,#46ff12);color:#091109;font-size:12px;font-weight:800}
 @media(max-width:560px){.karaoke-remote-link-row{flex-direction:column}}
+
+/* Exibição > Legendas: hide ONLY the inline lyrics, never the stage, audio,
+   timing pipeline or the independent button that opens expanded karaoke.
+   Reclaim the large reserved subtitle slot when the option is turned off. */
+.app-shell[data-lyrics-visible="false"] .compact-karaoke-slot{
+ flex:0 0 44px!important;height:44px!important;
+ margin:4px auto 0!important;
+}
+.app-shell[data-lyrics-visible="false"] .compact-karaoke-slot #floating-line{
+ display:none!important;
+}
+.app-shell[data-lyrics-visible="false"] .compact-karaoke-slot .floating-lyrics{
+ padding:0 8px!important;justify-content:flex-end!important;
+}
+.app-shell[data-lyrics-visible="false"] .compact-karaoke-slot .karaoke-compact-expand{
+ position:relative;top:auto;right:auto;transform:none;
+ width:35px;height:35px;flex:0 0 35px;
+ border-color:color-mix(in srgb,var(--acid,#46ff12) 55%,#ffffff38);
+}
