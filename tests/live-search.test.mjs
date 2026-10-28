@@ -36,7 +36,7 @@ test('local suggestion engine avoids duplicates across favorites playlists and h
 test('live input is debounced and obsolete provider requests are canceled',()=>{
  const code=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(code,/if\(el\.id==='search-term'\)\{void runSearch\(el\.value,\{live:true\}\)/);
- assert.match(code,/const delay=live\?\(query\.length===1\?320:175\):0/);
+ assert.match(code,/const delay=live\?\(query\.length===1\?250:210\):0/);
  assert.match(code,/searchPaging\?\.controller\?\.abort\(\)/);
  assert.match(code,/refreshLiveResults\(page\)/);
  assert.match(code,/searchNativeBackend\(query,\{limit:size,signal:controller\.signal\}\)/);
