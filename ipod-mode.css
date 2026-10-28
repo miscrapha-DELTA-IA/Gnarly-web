@@ -36,7 +36,9 @@
 .gnarly-ipod .ipod-color{background:var(--ipod-base);opacity:var(--ipod-body-alpha)}
 .gnarly-ipod .ipod-print{inset:-50%;border-radius:0;background-image:var(--ipod-pattern);background-size:var(--ipod-pattern-size);background-position:var(--ipod-pattern-position);transform:var(--ipod-print-transform,none);opacity:.85;filter:var(--ipod-print-filter,none)}
 .gnarly-ipod .ipod-micro{background-image:var(--ipod-grain);opacity:calc(var(--ipod-texture) * var(--ipod-grain-strength));mix-blend-mode:normal}
-.gnarly-ipod .ipod-light{background:var(--ipod-sheen);opacity:calc(.24 + var(--ipod-finish) * .76);box-shadow:inset 0 2px 4px #fffc,inset 2px 0 8px #fff7,inset -3px 0 6px #0002,inset 0 -9px 18px #0003}
+/* Cache the static light field separately from frequent color/print repaints.
+   One bounded overlay per visible device; the isolated paint probe justifies it. */
+.gnarly-ipod .ipod-light{will-change:opacity;background:var(--ipod-sheen);opacity:calc(.24 + var(--ipod-finish) * .76);box-shadow:inset 0 2px 4px #fffc,inset 2px 0 8px #fff7,inset -3px 0 6px #0002,inset 0 -9px 18px #0003}
 .gnarly-ipod .ipod-light::after{content:"";position:absolute;inset:0;border-radius:inherit;background:radial-gradient(ellipse at 35% -12%,#fff7,transparent 55%),linear-gradient(var(--ipod-tint),var(--ipod-tint));box-shadow:inset 0 0 0 1px #fff4}
 .gnarly-ipod .ipod-internals{opacity:var(--ipod-internal-alpha);background:
  repeating-linear-gradient(90deg,transparent 0 22px,#c9f2bc42 23px 24px,transparent 25px 48px),
