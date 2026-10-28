@@ -3,7 +3,10 @@ import {ROOM_PATTERN,SECRET_PATTERN} from './lib/karaoke-relay-protocol.js';
 const status=document.querySelector('#status'),song=document.querySelector('#song');
 const button=document.querySelector('#mic-toggle'),orb=document.querySelector('#orb');
 const meter=document.querySelector('#meter-bar');
-const code=location.hash.slice(1),separator=code.indexOf('.');
+const fromLink=location.hash.slice(1);
+let code=fromLink;
+try{code=fromLink||sessionStorage.getItem('gnarly.karaoke.mic-pairing')||''}catch{}
+const separator=code.indexOf('.');
 const room=code.slice(0,separator),invite=code.slice(separator+1);
 const valid=separator>0&&ROOM_PATTERN.test(room)&&SECRET_PATTERN.test(invite);
 const microphone=new KaraokeMicrophone();
@@ -49,6 +52,7 @@ button.addEventListener('click',async()=>{
 if(!valid)label('Link inválido. Abra o link enviado pelo GNARLY no desktop.');
 else{
  // Avoid keeping pairing credentials in the visible address bar/history.
+ try{sessionStorage.setItem('gnarly.karaoke.mic-pairing',code)}catch{}
  history.replaceState(null,'',location.pathname);
  socket=new WebSocket('wss://gnarly-web.miscrapha.workers.dev/karaoke-relay/'+room);
  socket.onopen=()=>transmit({type:'hello',role:'mic',key:invite});
