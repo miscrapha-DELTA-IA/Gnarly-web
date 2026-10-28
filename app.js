@@ -1183,7 +1183,7 @@ function openSheet(which){
  syncCreativeQuickActions();
  renderSheet();
  if(which==='karaoke')karaokeStage.updateScore();
- if(which==='search'){void runSearch(state.searchTerm,{live:true});setTimeout(()=>$('#search-term')?.focus(),80)}
+ if(which==='search'){void runSearch(state.searchTerm,{live:true});setTimeout(()=>{if(!document.activeElement?.closest('[role="tab"]'))$('#search-term')?.focus()},80)}
  if(which==='controls'&&state.musicTab==='stems')void refreshCloudStemAvailability();
 }
 function closeSheet(){
@@ -2204,6 +2204,21 @@ for(const name of ['playing','pause','ended','emptied','durationchange','ratecha
  audio.addEventListener(name,()=>syncSystemPlayback(name!=='playing'));
 }
 window.addEventListener('pageshow',()=>syncSystemPlayback(true));
+// Keep native keyboard activation inside menus separate from player shortcuts.
+function routeMenuKeyboard(event){
+ const target=event.target.closest?.('button,a[href],summary'),host=target?.closest('.topbar,.quick-actions,#omnibox-shell,#sheet-content,#module-dock,#player-surface-menu,#player-surface-button,#quick-playlist-popover,#quick-playlist-button,#karaoke-expand-button');
+ if(!host||!(event.code==='Space'||['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key)))return false;
+ const tab=target.closest('[role="tab"]'),tabs=tab?.closest('[role="tablist"]');
+ if(tabs&&['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){
+  const choices=[...tabs.querySelectorAll('[role="tab"]:not(:disabled)')];
+  if(choices.length){
+   event.preventDefault();const index=choices.indexOf(tab),next=choices[event.key==='Home'?0:event.key==='End'?choices.length-1:(index+(event.key==='ArrowRight'?1:-1)+choices.length)%choices.length];
+   const attr=next.hasAttribute('data-omnibox-tab')?'data-omnibox-tab':'data-command',value=next.getAttribute(attr);
+   next.click();[...host.querySelectorAll('[role="tab"]')].find(el=>el.getAttribute(attr)===value)?.focus({preventScroll:true});
+  }
+ }
+ return true;
+}
 window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select')||e.ctrlKey||e.altKey||e.metaKey)return;if(isModuleOpen('performance')&&!state.sheet){const pad=PAD_KEYS.indexOf(e.key.toLowerCase());if(pad>=0){e.preventDefault();if(!e.repeat)void pads.trigger(pad);return}}if(['MediaPlayPause','MediaPlay','MediaPause','MediaTrackNext','MediaTrackPrevious','MediaStop'].includes(e.key)){
   if(!state.current)return;
   e.preventDefault();
@@ -2215,6 +2230,7 @@ window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select
   else if(e.key==='MediaStop'){pause();externalSeek(0)}
   return;
  }
+ if(routeMenuKeyboard(e))return;
  if(e.code==='Space'){e.preventDefault();state.playing?pause():void play()}if(e.code==='Escape'){if(!$('#player-surface-menu').hidden){e.preventDefault();closePlayerSurfaceMenu(true);return}closeSheet();closeYouTubePlayer()};if(e.key==='ArrowRight'&&state.current)audio.currentTime=Math.min(audio.duration||0,audio.currentTime+5);if(e.key==='ArrowLeft'&&state.current)audio.currentTime=Math.max(0,audio.currentTime-5)});
 window.addEventListener('dragover',e=>{if(e.dataTransfer?.types.includes('Files')){e.preventDefault();app.classList.add('dragover')}});window.addEventListener('dragleave',e=>{if(!e.relatedTarget)app.classList.remove('dragover')});window.addEventListener('drop',e=>{e.preventDefault();app.classList.remove('dragover');importAudio(e.dataTransfer?.files||[])});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){karaokeStage.mic.stop();karaokeStage.scorer.stop();karaokeStage.updateScore();if(pads.running)pads.stopLoop();}syncSystemPlayback(true);});
