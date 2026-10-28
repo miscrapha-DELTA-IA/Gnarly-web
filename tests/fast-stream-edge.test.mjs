@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {handleFastAudio,validByteRange} from '../functions/fast-audio/[id].js';
 import {onRequestPost as prepare} from '../functions/fast-prepare/[id].js';
 import {fastPrepareURL,trackAudioURL,isGnarlyPagesHost} from '../lib/playback-source.js';
-import {QueueAudioWarmup,canWarmNext} from '../lib/queue-audio-warmup.js';
+import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from '../lib/queue-audio-warmup.js';
 
 const audio=new Uint8Array(4096).fill(7);
 const track={source:'youtube',id:'youtube:ABCDEFGHIJK',videoId:'ABCDEFGHIJK'};
@@ -132,4 +132,13 @@ test('warmup sends one persistent POST rather than aborting Range download',asyn
  assert.equal(calls[0].options.method,'POST');
  assert.equal(calls[0].options.headers.Range,undefined);
  assert.equal(JSON.parse(calls[0].options.body).url,'https://www.youtube.com/watch?v=ABCDEFGHIJK');
+});
+
+test('early next-song warmup is restricted to one eligible real recording',()=>{
+ const next={...track,id:'youtube:BBBBBBBBBBB',videoId:'BBBBBBBBBBB'};
+ assert.equal(canWarmImmediately({current:track,next,online:true}),true);
+ assert.equal(canWarmImmediately({current:track,next,saveData:true}),false);
+ assert.equal(canWarmImmediately({current:track,next,effectiveType:'2g'}),false);
+ assert.equal(canWarmImmediately({current:track,next:track}),false);
+ assert.equal(canWarmImmediately({current:track,next:{...next,source:'preview'}}),false);
 });
