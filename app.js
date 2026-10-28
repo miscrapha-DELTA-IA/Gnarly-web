@@ -4,6 +4,7 @@ import {parseLRC,lyricIndex} from './lib/lrc.js';
 import {searchCatalog,searchNativeBackend,resolveTrackMetadata} from './lib/catalog.js';
 import {applyMetadata,enrichSearchCredits,isGenericArtist,inferredCredit,displayArtist,reconcileCatalogCredits} from './lib/metadata-intelligence.js';
 import {OmniboxSession,classifyIntent,rank,normalKey} from './lib/omnibox.js';
+import {instantSearch,personalizedRank} from './lib/live-search.js';
 import {MUSIC_PRESETS,musicalPreset} from './lib/music-presets.js';
 import {autoLyrics,cachedAutoLyrics,prefetchAutoLyrics} from './lib/lyrics-auto.js';
 import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
@@ -1023,7 +1024,7 @@ function openSheet(which){
  $('#omnibox-toggle').setAttribute('aria-expanded',String(OMNIBOX_TABS.includes(which)));
  syncCreativeQuickActions();
  renderSheet();
- if(which==='search')setTimeout(()=>$('#search-term')?.focus(),80);
+ if(which==='search'){if(state.searchTerm&&!state.searchResults.length)void runSearch(state.searchTerm,{live:true});setTimeout(()=>$('#search-term')?.focus(),80)}
  if(which==='controls'&&state.musicTab==='stems')void refreshCloudStemAvailability();
 }
 function closeSheet(){
@@ -1339,7 +1340,7 @@ function renderVisualLayer(layer){
 }
 function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet){
  case 'search':{
-  // Search is driven by the typed query, not taste or listening history.
+  // Live search shows personal matching suggestions immediately, then the full catalogue.
   content.innerHTML=`<form id="search-form" class="search-bar"><input id="search-term" type="search" autocomplete="off" placeholder="Buscar música ou artista" aria-label="Omnibox GNARLY" value="${safe(state.searchTerm)}"/><button type="submit">Buscar</button></form><div class="section-head">Resultados da busca</div><div id="search-state" class="status-text" role="status" ${state.searchError?'':'hidden'}>${safe(state.searchError)}</div><div id="search-results">${state.searchResults.length?mediaList(state.searchResults,'search'):''}</div><div id="search-more-zone" class="search-more-zone" hidden><button id="search-more" type="button">Carregar mais resultados</button><div id="search-sentinel" aria-hidden="true"></div></div>`;
   break;
  }
@@ -1752,12 +1753,74 @@ function handlePanelClick(e){const target=e.target.closest('button,[data-lyric-t
  }
 }
 
-function handlePanelInput(e){const el=e.target;if(el.id==='lyric-font-search'){updateLyricFontFilter();return}if(el.id==='lyrics-ai-autofallback'){lyricsAIAutoSession=el.checked;if(el.checked&&state.current?.source==='local'&&state.current.file&&!state.lyrics.length&&!state.plainLyrics.length&&!state.lyricsAIWorking&&!lyricsAIOnce.has(state.current.id)){lyricsAIOnce.add(state.current.id);void transcribeOwnLyrics(state.current.file)}return}if(el.hasAttribute('data-dj-bpm')){pads.setBpm(el.value);return}if(el.dataset.photoParameter){const key=el.dataset.photoParameter;const v=Number(el.value);if(['photoZoom','photoX','photoY'].includes(key)&&Number.isFinite(v)){state[key]=v;setSetting(key,v);applyBackground();if(key==='photoZoom')$('#photo-zoom-value').textContent=Math.round(v*100)+'%'}return}if(el.dataset.panelToggle){displayStore.set(el.dataset.panelToggle,el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.hasAttribute('data-zen-toggle')){displayStore.setZen(el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.id==='search-term'){state.searchTerm=el.value;omnibox.setQuery(state.searchTerm);++searchCounter;searchPaging=null;state.searchResults=[];state.searchError='';displaySearch([]);syncSearchMore()}if(el.dataset.stemLevel){const kind=el.dataset.stemLevel;stems.setLevel(kind,el.value);const label=$(`#stem-${kind}-value`);if(label)label.textContent=`${Math.round(stems.levels[kind]*100)}%`;return}if(el.dataset.slider){const id=el.dataset.slider,v=Number(el.value);if(id==='speed'){state.speed=v;engine.setSpeed(v,state.pitch);state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='reverb'){state.reverb=v;engine.setReverb(v);state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='bass'){state.bass=v;engine.setBass(v)}setSetting(id,v);const out=$(`#${id}-value`);if(out)out.textContent=mixerValue(id,v)}if(el.id==='pitch-check'){state.pitch=el.checked;engine.setSpeed(state.speed,state.pitch);setSetting('pitch',state.pitch?'yes':'no');state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}}
+function handlePanelInput(e){const el=e.target;if(el.id==='lyric-font-search'){updateLyricFontFilter();return}if(el.id==='lyrics-ai-autofallback'){lyricsAIAutoSession=el.checked;if(el.checked&&state.current?.source==='local'&&state.current.file&&!state.lyrics.length&&!state.plainLyrics.length&&!state.lyricsAIWorking&&!lyricsAIOnce.has(state.current.id)){lyricsAIOnce.add(state.current.id);void transcribeOwnLyrics(state.current.file)}return}if(el.hasAttribute('data-dj-bpm')){pads.setBpm(el.value);return}if(el.dataset.photoParameter){const key=el.dataset.photoParameter;const v=Number(el.value);if(['photoZoom','photoX','photoY'].includes(key)&&Number.isFinite(v)){state[key]=v;setSetting(key,v);applyBackground();if(key==='photoZoom')$('#photo-zoom-value').textContent=Math.round(v*100)+'%'}return}if(el.dataset.panelToggle){displayStore.set(el.dataset.panelToggle,el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.hasAttribute('data-zen-toggle')){displayStore.setZen(el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.id==='search-term'){void runSearch(el.value,{live:true});return}if(el.dataset.stemLevel){const kind=el.dataset.stemLevel;stems.setLevel(kind,el.value);const label=$(`#stem-${kind}-value`);if(label)label.textContent=`${Math.round(stems.levels[kind]*100)}%`;return}if(el.dataset.slider){const id=el.dataset.slider,v=Number(el.value);if(id==='speed'){state.speed=v;engine.setSpeed(v,state.pitch);state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='reverb'){state.reverb=v;engine.setReverb(v);state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='bass'){state.bass=v;engine.setBass(v)}setSetting(id,v);const out=$(`#${id}-value`);if(out)out.textContent=mixerValue(id,v)}if(el.id==='pitch-check'){state.pitch=el.checked;engine.setSpeed(state.speed,state.pitch);setSetting('pitch',state.pitch?'yes':'no');state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}}
 for(const host of [$('#sheet-content'),$('#module-dock')]){host.addEventListener('click',handlePanelClick);host.addEventListener('input',handlePanelInput)}
 $('#sheet-content').addEventListener('change',e=>{if(!e.target.hasAttribute('data-smart-playlist'))return;const name=e.target.value;if(!playlistStore.names().includes(name))return;selectedPlaylist=name;setSetting('smartPlaylist',name);if(smartMode==='playlist'){smartFillEpoch++;lastSmartSeed='';state.queue=retainManualQueue(state.queue);void maybeFillSmartQueue({force:true})}renderSheet()});
-// Query-first catalogue pages. Nothing from history is injected into active search.
+// Live catalogue discovery: user taste only boosts actually matching recordings.
 const SEARCH_PAGE_SIZE=20,PREVIEW_PAGE_SIZE=22;
-let searchCounter=0,searchPaging=null,searchMoreObserver=null;
+let searchCounter=0,searchPaging=null,searchMoreObserver=null,searchDebounce=null;
+function searchPreferenceContext(){
+ return {favorites:state.favorites,history:state.history,queue:state.queue,memory:listeningMemory};
+}
+function searchInstantOptions(query){
+ const saved=playlistStore.names().flatMap(name=>playlistStore.tracks(name)).slice(0,160);
+ const cache=omnibox.fromCache(query)?.results||[];
+ // Reuse already rendered hits when refining a query ("an" -> "ana").
+ return {...searchPreferenceContext(),offline:state.tracks,playlists:saved,
+  cached:[...cache,...state.searchResults]};
+}
+function refreshLiveResults(page,info=''){
+ if(searchPaging!==page||page.revision!==searchCounter)return;
+ const available=page.native.length?page.native:page.previews;
+ // Never hide relevant user matches while waiting on a remote provider.
+ state.searchResults=personalizedRank(page.query,[...page.local,...available],searchPreferenceContext());
+ state.searchError=info;
+ displaySearch(state.searchResults,info);
+ if(available.length)omnibox.cacheResults(page.query,state.searchResults);
+}
+function stopSearchRequests(){
+ if(searchDebounce!==null){clearTimeout(searchDebounce);searchDebounce=null}
+ searchPaging?.controller?.abort();
+}
+async function fetchLiveSearch(page){
+ if(searchPaging!==page||page.revision!==searchCounter||page.started)return;
+ page.started=true;
+ const {query,controller}=page,size=query.length===1?8:SEARCH_PAGE_SIZE;
+ const valid=()=>searchPaging===page&&page.revision===searchCounter&&!controller.signal.aborted;
+ const native=searchNativeBackend(query,{limit:size,signal:controller.signal}).then(songs=>{
+  if(!valid())return [];
+  page.native=songs;
+  page.nativeOffset=songs.length;
+  page.nativeMore=songs.length>=size&&page.nativeOffset<100;
+  const repaired=reconcileCatalogCredits(songs,[omnibox.history,state.favorites,state.queue,[state.current]]);
+  if(repaired){
+   omnibox.save('history',omnibox.history);
+   setSetting('favorites',JSON.stringify(state.favorites.filter(x=>x.source!=='local').slice(-100)));
+   state.history=omnibox.history;updatePlayer();
+  }
+  refreshLiveResults(page);
+  return songs;
+ }).catch(error=>{if(valid())page.nativeFailed=true;return []}).finally(()=>{
+  if(valid()){page.nativeFinished=true;syncSearchMore()}
+ });
+ const preview=searchCatalog(query,{limit:query.length===1?12:PREVIEW_PAGE_SIZE,
+  signal:controller.signal}).then(items=>{
+  if(!valid())return [];
+  page.previews=items;
+  page.previewOffset=items.length;
+  page.previewMore=items.length>=(query.length===1?12:PREVIEW_PAGE_SIZE)&&page.previewOffset<200;
+  refreshLiveResults(page);
+  return items;
+ }).catch(error=>{if(valid())page.previewFailed=true;return []}).finally(()=>{
+  if(valid()){page.previewFinished=true;syncSearchMore()}
+ });
+ const [songs,previews]=await Promise.all([native,preview]);
+ if(!valid())return;
+ enrichSearchCredits(songs,previews);
+ page.previewBuffer=songs.length?personalizedRank(query,previews,searchPreferenceContext()):[];
+ refreshLiveResults(page,page.nativeFailed&&page.previewFailed&&!state.searchResults.length?
+  'Não foi possível atualizar o catálogo. Tente novamente.':'');
+}
 const searchResultKey=item=>normalKey((item.artist||'')+' '+(item.title||''))||String(item.id||'');
 function appendSearchResults(items){
  const ids=new Set(state.searchResults.map(x=>x.id)),names=new Set(state.searchResults.map(searchResultKey));
@@ -1816,7 +1879,7 @@ async function loadMoreSearchResults(manual=false){
    if(searchPaging!==p||p.revision!==searchCounter)return;
    p.nativeOffset+=songs.length;
    p.nativeMore=songs.length>=SEARCH_PAGE_SIZE&&p.nativeOffset<100;
-   added=appendSearchResults(rank(p.query,songs,[]));
+   added=appendSearchResults(personalizedRank(p.query,songs,searchPreferenceContext()));
    if(!added)p.nativeMore=false; // Old proxies may repeat the first page.
   }
   if(!p.nativeMore&&!added&&p.previewBuffer.length)
@@ -1826,7 +1889,7 @@ async function loadMoreSearchResults(manual=false){
    if(searchPaging!==p||p.revision!==searchCounter)return;
    p.previewOffset+=previews.length;
    p.previewMore=previews.length>=PREVIEW_PAGE_SIZE&&p.previewOffset<200;
-   added=appendSearchResults(rank(p.query,previews,[]));
+   added=appendSearchResults(personalizedRank(p.query,previews,searchPreferenceContext()));
    if(!added)p.previewMore=false;
   }
  }catch(error){
@@ -1839,46 +1902,38 @@ async function loadMoreSearchResults(manual=false){
   if(searchPaging===p&&p.revision===searchCounter){p.loading=false;syncSearchMore()}
  }
 }
-async function runSearch(raw){
- const query=String(raw||'').trim();state.searchTerm=query;omnibox.setQuery(query);
- const intent=classifyIntent(query),revision=++searchCounter;
- searchPaging=null;state.searchError='';state.searchResults=[];displaySearch([]);
- if(intent.kind==='direct'){
-  const id=intent.videoId,track={id:'youtube:'+id,videoId:id,title:id,artist:'Artista não identificado',artwork:'https://i.ytimg.com/vi/'+id+'/hqdefault.jpg',source:'youtube',duration:0};
+async function runSearch(raw,{live=false}={}){
+ const query=String(raw||'').trim();
+ const existing=searchPaging;
+ if(existing?.query===query&&existing.started&&state.sheet==='search')return;
+ state.searchTerm=query;
+ omnibox.setQuery(query);
+ stopSearchRequests();
+ const revision=++searchCounter,intent=classifyIntent(query);
+ searchPaging=null;
+ state.searchError='';
+ // A submitted direct link is still playable without searching by its ID.
+ if(!live&&intent.kind==='direct'){
+  const id=intent.videoId,track={id:'youtube:'+id,videoId:id,title:id,
+   artist:'Artista não identificado',artwork:'https://i.ytimg.com/vi/'+id+'/hqdefault.jpg',
+   source:'youtube',duration:0};
   state.searchResults=[track];selectTrack(track,false);displaySearch([track]);return;
  }
- if(intent.kind==='empty'||query.length<2)return;
- const page={query,revision,nativeOffset:0,nativeMore:false,previewOffset:0,previewMore:false,previewBuffer:[],loading:false,stalled:false};
+ if(!query||intent.kind==='direct'){
+  state.searchResults=[];displaySearch([]);return;
+ }
+ const options=searchInstantOptions(query);
+ const page={query,revision,local:instantSearch(query,options),native:[],previews:[],
+  nativeOffset:0,nativeMore:false,previewOffset:0,previewMore:false,previewBuffer:[],
+  loading:false,stalled:false,started:false,nativeFinished:false,previewFinished:false,
+  nativeFailed:false,previewFailed:false,controller:new AbortController()};
  searchPaging=page;
- const cache=omnibox.fromCache(query);
- if(cache){state.searchResults=cache.results;displaySearch(state.searchResults)}
- const native=searchNativeBackend(query,{offset:0,limit:SEARCH_PAGE_SIZE}).then(songs=>{
-  if(revision===searchCounter&&searchPaging===page&&songs.length){
-   const repaired=reconcileCatalogCredits(songs,[omnibox.history,state.favorites,state.queue,[state.current]]);
-   if(repaired){
-    omnibox.save('history',omnibox.history);
-    setSetting('favorites',JSON.stringify(state.favorites.filter(x=>x.source!=='local').slice(-100)));
-    state.history=omnibox.history;updatePlayer();
-   }
-   state.searchResults=rank(query,songs,[]);
-   displaySearch(state.searchResults);
-  }
-  return songs;
- });
- const settled=await Promise.allSettled([native,searchCatalog(query,{offset:0,limit:PREVIEW_PAGE_SIZE})]);
- if(revision!==searchCounter||searchPaging!==page)return;
- const songs=settled[0].status==='fulfilled'?settled[0].value:[],
-       previews=settled[1].status==='fulfilled'?settled[1].value:[];
- enrichSearchCredits(songs,previews);
- page.nativeOffset=songs.length;
- page.nativeMore=songs.length>=SEARCH_PAGE_SIZE&&page.nativeOffset<100;
- page.previewOffset=previews.length;
- page.previewMore=previews.length>=PREVIEW_PAGE_SIZE&&page.previewOffset<200;
- page.previewBuffer=songs.length?rank(query,previews,[]):[];
- state.searchResults=rank(query,songs.length?songs:previews,[]);
- omnibox.cacheResults(query,state.searchResults);
- const error=settled.every(x=>x.status==='rejected')?'Busca indisponível no momento.':'';
- state.searchError=error;displaySearch(state.searchResults,error);
+ refreshLiveResults(page);
+ // Single-letter results appear locally now. The first remote discovery is
+ // small, and every new keystroke cancels obsolete network work.
+ const delay=live?(query.length===1?320:175):0;
+ if(delay)searchDebounce=setTimeout(()=>{searchDebounce=null;void fetchLiveSearch(page)},delay);
+ else void fetchLiveSearch(page);
 }
 audio.addEventListener('play',()=>{if(stems.ready)void stems.play();state.playing=true;updatePlayer()});audio.addEventListener('pause',()=>{stems.pause();state.playing=false;updatePlayer()});audio.addEventListener('timeupdate',()=>{
  if(stems.ready)stems.sync();updateProgress();syncLyrics();
