@@ -7,6 +7,8 @@ import {onRequestGet as omnibox} from '../functions/api/omnibox.js';
 import {onRequestPost as stemsTicket} from '../functions/api/stems-ticket.js';
 import {onRequestGet as metadata} from '../functions/api/metadata.js';
 import {onRequestGet as artwork} from '../functions/api/artwork.js';
+import {handleFastAudio} from '../functions/fast-audio/[id].js';
+import {onRequestPost as fastPrepare} from '../functions/fast-prepare/[id].js';
 
 const ALLOW=Object.freeze({
   '/api/catalog': {method:'GET', handler:catalog},
@@ -23,6 +25,17 @@ function methodNotAllowed(method) {
 export default {
   async fetch(request, env, ctx) {
     const url=new URL(request.url);
+    // Workers deployments must share Pages' R2-first audio path. Otherwise
+    // the browser silently takes the slower direct Render download route.
+    const audioId=/^\/fast-audio\/([A-Za-z0-9_-]{11})$/.exec(url.pathname);
+    if(audioId)return handleFastAudio({request,env,params:{id:audioId[1]}});
+    const prepareId=/^\/fast-prepare\/([A-Za-z0-9_-]{11})$/.exec(url.pathname);
+    if(prepareId){
+      if(request.method!=='POST')return methodNotAllowed('POST');
+      return fastPrepare({request,env,params:{id:prepareId[1]}});
+    }
+    if(url.pathname.startsWith('/fast-audio/')||url.pathname.startsWith('/fast-prepare/'))
+      return new Response('Invalid track ID',{status:400,headers:{'cache-control':'no-store'}});
     const route=ALLOW[url.pathname];
     if(route){
       if(request.method!==route.method) return methodNotAllowed(route.method);
