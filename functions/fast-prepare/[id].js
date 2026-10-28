@@ -8,7 +8,8 @@ export async function onRequestPost({params,request},fetcher=fetch){
  const id=params?.id;
  if(!ID.test(id||''))return new Response('Invalid track ID',{status:400});
  const contentLength=Number(request.headers.get('content-length')||0);
- if(contentLength>0)return new Response('Body not accepted',{status:400});
+ if(contentLength>512)return new Response('Body too large',{status:413});
+ // Deliberately ignore untrusted body: only the validated URL path ID is sent upstream.
  const origin=new URL('/prepare',HOST);
  try{
   const response=await fetcher(origin.href,{
