@@ -184,7 +184,16 @@ try{
  assert.equal(await phone.locator('#ipod-hardware-studio').getAttribute('data-fallback'),'true');
  await phone.locator('[data-design="pearl"]').click();await phone.screenshot({path:path.join(out,'mobile-retina-pearl.png')});report.screenshots.push('mobile-retina-pearl.png');
  await phone.waitForFunction(()=>document.querySelector('#ipod-cover-image').complete);
- const artSize=await phone.locator('#ipod-cover-image').evaluate(el=>({width:el.getBoundingClientRect().width,natural:el.naturalWidth,dpr:devicePixelRatio}));assert.ok(artSize.width<=artSize.natural/artSize.dpr+1);
+ // main cfbf5c7/284d856 intentionally replaced the old DPR pixel cap with
+ // full-bleed artwork. Verify actual screen coverage, not the removed cap.
+ const artSize=await phone.locator('#ipod-cover-image').evaluate(el=>{
+  const r=el.getBoundingClientRect(),screen=el.parentElement,glass=screen.getBoundingClientRect();
+  return {width:r.width,height:r.height,natural:el.naturalWidth,dpr:devicePixelRatio,fit:getComputedStyle(el).objectFit,
+   screenWidth:screen.clientWidth,screenHeight:screen.clientHeight,x:r.x-glass.x-screen.clientLeft,y:r.y-glass.y-screen.clientTop};
+ });
+ assert.equal(artSize.dpr,3);assert.ok(artSize.natural>0);assert.equal(artSize.fit,'cover');
+ assert.ok(Math.abs(artSize.width-artSize.screenWidth)<=1&&Math.abs(artSize.height-artSize.screenHeight)<=1,JSON.stringify(artSize));
+ assert.ok(Math.abs(artSize.x)<=1&&Math.abs(artSize.y)<=1,JSON.stringify(artSize));
  assert.equal(await phone.locator('#ipod-center-button').evaluate(el=>getComputedStyle(el).transitionDuration),'0s');
  await phone.locator('[data-studio-action="close"]').click();await phone.waitForFunction(()=>document.querySelector('#ipod-device').parentElement.id==='player-section');
  report.checks.retina=true;report.checks.reducedMotion=true;report.checks.dialogFallback=true;
