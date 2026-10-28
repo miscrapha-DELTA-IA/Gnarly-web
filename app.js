@@ -809,7 +809,7 @@ async function recoverNativeAudio(track,initialError=null){
     audio.addEventListener('loadedmetadata',restore,{once:true});
     try{
      engine.restoreSpeed();
-     const start=audio.play(),unlock=engine.resume();
+     const start=audio.play(),unlock=resumePlayerAudio();
      await Promise.all([unlock,start]);
      restore();
      return true;
@@ -857,7 +857,7 @@ async function play(){
    recording:!!(karaokeStage.mic.active||state.micStream)});
   // Both calls start synchronously within the user's click gesture (Safari).
   engine.restoreSpeed();
-  const start=audio.play(),unlock=engine.resume();
+  const start=audio.play(),unlock=resumePlayerAudio();
   await Promise.all([unlock,start]);
   if(!stillSelected())return;
   state.playing=true;state.audioState='playing';state.playbackError='';reportAudioStatus('');updatePlayer();
@@ -1031,7 +1031,39 @@ async function importAudio(files){
  }else toast(valid.length+' música(s) adicionada(s) à biblioteca offline');
  if(state.sheet==='library')renderSheet();
 }
-function applyPreset(id){const v=musicalPreset(id);if(!v)return;if(engine.nativeTransport&&v.reverb>0){toast('Reverb requer Áudio de estúdio. Em Música, desative primeiro Áudio com tela bloqueada.');return;}state.preset=id;state.speed=v.speed;state.reverb=v.reverb;state.pitch=v.pitch;engine.setSpeed(v.speed,v.pitch);engine.setReverb(v.reverb);for(const key of ['speed','reverb','pitch','preset'])setSetting(key,key==='pitch'?(state.pitch?'yes':'no'):state[key]);updatePresetButtons();renderModule('controls');if(stems.ready)stems.sync();toast(id==='ORIGINAL'?'Som original restaurado':id+' ativado')}
+// Enable actual DSP automatically at the first user adjustment or playback
+// gesture if saved bass/reverb is nonzero. Keep native iOS lock-screen playback
+// when both controls are at zero; never build a graph just to render sliders.
+let studioEffectsPending=null;
+function audioEffectsRequested(){return state.bass>0||state.reverb>0}
+function autoEnableStudioEffects(){
+ if(!engine.nativeTransport||!audioEffectsRequested()||!state.current)return Promise.resolve(true);
+ if(studioEffectsPending)return studioEffectsPending;
+ const pending=engine.enableStudioEffects().then(enabled=>{
+  if(!enabled)throw Error('Processamento Web Audio indisponível');
+  engine.setBass(state.bass);engine.setReverb(state.reverb);
+  return true;
+ }).catch(error=>{
+  toast('Não foi possível aplicar baixo/reverb: '+(error?.message||'verifique o navegador'));
+  return false;
+ }).finally(()=>{if(studioEffectsPending===pending)studioEffectsPending=null});
+ studioEffectsPending=pending;
+ return pending;
+}
+function resumePlayerAudio(){
+ return engine.nativeTransport&&audioEffectsRequested()?autoEnableStudioEffects():engine.resume();
+}
+function applyPreset(id){
+ const v=musicalPreset(id);if(!v)return;
+ state.preset=id;state.speed=v.speed;state.reverb=v.reverb;state.pitch=v.pitch;
+ engine.setSpeed(v.speed,v.pitch);engine.setReverb(v.reverb);
+ for(const key of ['speed','reverb','pitch','preset'])
+  setSetting(key,key==='pitch'?(state.pitch?'yes':'no'):state[key]);
+ if(audioEffectsRequested())void autoEnableStudioEffects();
+ updatePresetButtons();renderModule('controls');
+ if(stems.ready)stems.sync();
+ toast(id==='ORIGINAL'?'Som original restaurado':id+' ativado');
+}
 function updatePresetButtons(){document.querySelectorAll('[data-preset]').forEach(b=>{const selected=b.dataset.preset===state.preset;b.classList.toggle('active',selected);b.setAttribute('aria-pressed',String(selected))})}
 function openYouTubePlayer(track){if(!/^[A-Za-z0-9_-]{11}$/.test(track?.videoId||''))return toast('Link do YouTube inválido');audio.pause();const dialog=$('#youtube-player-dialog'),frame=$('#youtube-player-frame');frame.src='https://www.youtube-nocookie.com/embed/'+track.videoId+'?autoplay=1&playsinline=1';$('#youtube-player-title').textContent=track.title;$('#youtube-player-link').href='https://www.youtube.com/watch?v='+track.videoId;dialog.hidden=false;dialog.setAttribute('aria-hidden','false');toast('Player oficial: Nightcore e reverb não podem alterar o áudio dentro do YouTube.');}
 function closeYouTubePlayer(){const dialog=$('#youtube-player-dialog');if(!dialog)return;dialog.hidden=true;dialog.setAttribute('aria-hidden','true');$('#youtube-player-frame').src='about:blank'}
@@ -1504,18 +1536,6 @@ function applyChosenLyricFont(id,scope=lyricScope){
 
 function resolveTracks(context){if(context==='playlist')return playlistStore.tracks(selectedPlaylist);return ({search:state.searchResults,library:state.tracks,queue:state.queue,favorites:state.favorites,history:state.history})[context]||[]}
 function handleCommand(command){switch(command){
- case 'enable-studio-effects':
-   void (async()=>{
-    try{
-     const enabled=await engine.enableStudioEffects();
-     if(!enabled)throw new Error('Web Audio indisponível');
-     engine.setBass(state.bass);engine.setReverb(state.reverb);
-     toast('Baixo e reverb ativos. No iPhone, o som pode parar ao bloquear a tela.');
-     if(state.sheet==='controls')renderSheet();
-     if(isModuleOpen('controls'))renderModule('controls');
-    }catch(error){toast('Não foi possível ativar processamento: '+(error?.message||''))}
-   })();
-   break;
  case 'queue-play':
    if(!state.current&&state.queue.length)selectTrack(state.queue[0],true,{fromQueue:true});
    else if(state.current&&audio.paused)void play();
@@ -1811,7 +1831,7 @@ function handlePanelClick(e){const target=e.target.closest('button,[data-lyric-t
  }
 }
 
-function handlePanelInput(e){const el=e.target;if(el.id==='lyric-font-search'){updateLyricFontFilter();return}if(el.id==='lyrics-ai-autofallback'){lyricsAIAutoSession=el.checked;if(el.checked&&state.current?.source==='local'&&state.current.file&&!state.lyrics.length&&!state.plainLyrics.length&&!state.lyricsAIWorking&&!lyricsAIOnce.has(state.current.id)){lyricsAIOnce.add(state.current.id);void transcribeOwnLyrics(state.current.file)}return}if(el.hasAttribute('data-dj-bpm')){pads.setBpm(el.value);return}if(el.dataset.photoParameter){const key=el.dataset.photoParameter;const v=Number(el.value);if(['photoZoom','photoX','photoY'].includes(key)&&Number.isFinite(v)){state[key]=v;setSetting(key,v);applyBackground();if(key==='photoZoom')$('#photo-zoom-value').textContent=Math.round(v*100)+'%'}return}if(el.dataset.panelToggle){displayStore.set(el.dataset.panelToggle,el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.hasAttribute('data-zen-toggle')){displayStore.setZen(el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.id==='search-term'){void runSearch(el.value,{live:true});return}if(el.dataset.stemLevel){const kind=el.dataset.stemLevel;stems.setLevel(kind,el.value);const label=$(`#stem-${kind}-value`);if(label)label.textContent=`${Math.round(stems.levels[kind]*100)}%`;return}if(el.dataset.slider){const id=el.dataset.slider,v=Number(el.value);if(id==='speed'){state.speed=v;engine.setSpeed(v,state.pitch);state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='reverb'){state.reverb=v;engine.setReverb(v);state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='bass'){state.bass=v;engine.setBass(v)}setSetting(id,v);const out=$(`#${id}-value`);if(out)out.textContent=mixerValue(id,v)}if(el.id==='pitch-check'){state.pitch=el.checked;engine.setSpeed(state.speed,state.pitch);setSetting('pitch',state.pitch?'yes':'no');state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}}
+function handlePanelInput(e){const el=e.target;if(el.id==='lyric-font-search'){updateLyricFontFilter();return}if(el.id==='lyrics-ai-autofallback'){lyricsAIAutoSession=el.checked;if(el.checked&&state.current?.source==='local'&&state.current.file&&!state.lyrics.length&&!state.plainLyrics.length&&!state.lyricsAIWorking&&!lyricsAIOnce.has(state.current.id)){lyricsAIOnce.add(state.current.id);void transcribeOwnLyrics(state.current.file)}return}if(el.hasAttribute('data-dj-bpm')){pads.setBpm(el.value);return}if(el.dataset.photoParameter){const key=el.dataset.photoParameter;const v=Number(el.value);if(['photoZoom','photoX','photoY'].includes(key)&&Number.isFinite(v)){state[key]=v;setSetting(key,v);applyBackground();if(key==='photoZoom')$('#photo-zoom-value').textContent=Math.round(v*100)+'%'}return}if(el.dataset.panelToggle){displayStore.set(el.dataset.panelToggle,el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.hasAttribute('data-zen-toggle')){displayStore.setZen(el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.id==='search-term'){void runSearch(el.value,{live:true});return}if(el.dataset.stemLevel){const kind=el.dataset.stemLevel;stems.setLevel(kind,el.value);const label=$(`#stem-${kind}-value`);if(label)label.textContent=`${Math.round(stems.levels[kind]*100)}%`;return}if(el.dataset.slider){const id=el.dataset.slider,v=Number(el.value);if(id==='speed'){state.speed=v;engine.setSpeed(v,state.pitch);state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='reverb'){state.reverb=v;engine.setReverb(v);state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='bass'){state.bass=v;engine.setBass(v)}if((id==='bass'||id==='reverb')&&audioEffectsRequested())void autoEnableStudioEffects();setSetting(id,v);const out=$(`#${id}-value`);if(out)out.textContent=mixerValue(id,v)}if(el.id==='pitch-check'){state.pitch=el.checked;engine.setSpeed(state.speed,state.pitch);setSetting('pitch',state.pitch?'yes':'no');state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}}
 for(const host of [$('#sheet-content'),$('#module-dock')]){host.addEventListener('click',handlePanelClick);host.addEventListener('input',handlePanelInput)}
 $('#sheet-content').addEventListener('change',e=>{if(!e.target.hasAttribute('data-smart-playlist'))return;const name=e.target.value;if(!playlistStore.names().includes(name))return;selectedPlaylist=name;setSetting('smartPlaylist',name);if(smartMode==='playlist'){smartFillEpoch++;lastSmartSeed='';state.queue=retainManualQueue(state.queue);void maybeFillSmartQueue({force:true})}renderSheet()});
 // Live catalogue discovery: user taste only boosts actually matching recordings.
