@@ -36,7 +36,7 @@ import {renderMusicPanel,mixerValue} from './ui/music-panel.js';
 import {createDisplayStore,renderDisplayPanel} from './ui/display-panel.js';
 import {deviceLayout,themeAccent,attachEyeGestures,OFFICIAL_SUPPORT_URL} from './lib/responsive-shell.js';
 import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel} from './ui/player-surface.js';
-import {createIPodSkinStore,validateIPodSkinDimensions,ipodSourceLabel} from './ui/ipod-mode.js';
+import {createIPodSkinStore,ipodSourceLabel} from './ui/ipod-mode.js';
 import {artworkBudget,artworkCandidates,resolveArtworkAsset} from './lib/artwork-quality.js';
 import {requestVerifiedAlbumArtwork} from './lib/album-artwork-client.js';
 import {createFullscreenController} from './lib/fullscreen-controller.js';
@@ -1572,21 +1572,6 @@ $('#ipod-next-button').addEventListener('click',()=>void next());
 for(const id of ['ipod-play-button','ipod-center-button']){
  $('#'+id).addEventListener('click',()=>state.playing?pause():void play());
 }
-$('#ipod-skin-import').addEventListener('change',async event=>{
- const file=event.currentTarget.files?.[0];
- event.currentTarget.value='';
- if(!file)return;
- try{
-  await validateIPodSkinDimensions(file);
-  setIPodSkin(file);
-  try{
-   await ipodSkinStore.save(file);
-   toast('Arte do iPod instalada. Ela ficará disponível neste navegador.');
-  }catch(error){
-   toast('Arte ativa nesta sessão, mas não foi possível salvá-la: '+(error?.message||''));
-  }
- }catch(error){toast(error?.message||'Não foi possível importar essa imagem')}
-});
 $('#cover-button').addEventListener('click',()=>{closePlayerSurfaceMenu();if(!state.current)openSheet('search');else openSheet('background')});
 $('#player-surface-button').addEventListener('click',()=>{
  if($('#player-surface-menu').hidden)openPlayerSurfaceMenu();
@@ -1595,9 +1580,7 @@ $('#player-surface-button').addEventListener('click',()=>{
 $('#player-surface-menu').addEventListener('click',e=>{
  const action=e.target.closest('[data-player-surface-action]');
  if(action){
-  if(action.dataset.playerSurfaceAction==='import-ipod-skin'){
-   closePlayerSurfaceMenu();$('#ipod-skin-import').click();
-  }else if(action.dataset.playerSurfaceAction==='reset-ipod-skin'){
+  if(action.dataset.playerSurfaceAction==='reset-ipod-skin'){
    void ipodSkinStore.remove().then(()=>{
     setIPodSkin(null);closePlayerSurfaceMenu();toast('Carcaça padrão do iPod restaurada.');
    }).catch(error=>toast('Não foi possível remover a arte: '+(error?.message||'')));
