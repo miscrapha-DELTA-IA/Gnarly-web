@@ -1,0 +1,37 @@
+name: Karaoke microphone and export acceptance
+on:
+  pull_request:
+    paths: ['app.js', 'karaoke-stage.css', 'lib/karaoke-*.js', 'ui/karaoke-*.js', 'lib/share-*.js', 'lib/webm-duration.js', 'ui/share-*', 'lib/visual-engine.js', 'lib/audio-engine.js', 'tests/*karaoke*', '.github/workflows/karaoke-share.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  media:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install media test prerequisites
+        run: |
+          npm install --no-audit --no-fund
+          npm install --no-save playwright@1.56.1
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+      - name: Unit tests and production build
+        run: |
+          npm test
+          npm run build
+      - name: Real browser capture and encoded file validation
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+          SHARE_ARTIFACT_DIR: karaoke-share-artifacts
+        run: node tests/karaoke-share.browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: karaoke-share-media-acceptance
+          path: karaoke-share-artifacts
+          if-no-files-found: ignore
