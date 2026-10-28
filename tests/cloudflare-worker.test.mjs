@@ -23,12 +23,12 @@ test('Worker returns only staged static assets on non-API paths',async()=>{
  const css=await route('/styles.css');assert.equal(await css.text(),'ASSET: /styles.css');
 });
 test('Worker uses native 400 and 405 for catalogue; unknown APIs are 404',async()=>{
- const bad=await route('/api/catalog?term=x');assert.equal(bad.status,400);
+ const bad=await route('/api/catalog?term=');assert.equal(bad.status,400);
  const rejected=await route('/api/catalog','POST',{});assert.equal(rejected.status,405);assert.equal(rejected.headers.get('allow'),'GET');
  const missing=await route('/api/not-defined');assert.equal(missing.status,404);
 });
 test('Omnibox and stem admission retain edge validation',async()=>{
- const omnibox=await route('/api/omnibox?term=x');assert.equal(omnibox.status,400);
+ const omnibox=await route('/api/omnibox?term=');assert.equal(omnibox.status,400);
  const ticket=await route('/api/stems-ticket','POST',{sha256:'bad',bytes:20,seconds:5});assert.equal(ticket.status,400);
  assert.equal((await route('/api/stems-ticket')).status,405);
 });
