@@ -95,3 +95,10 @@
  #player-section[data-audio-charge] .gnarly-cover-charge-wave{top:62%;opacity:.62}
  .gnarly-cover-charge-bars i{height:6px!important}
 }
+
+/* Screen readers get the same real player status in iPod mode. */
+.gnarly-charge-sr-only{
+ position:absolute!important;width:1px!important;height:1px!important;
+ padding:0!important;margin:-1px!important;overflow:hidden!important;
+ clip-path:inset(50%)!important;white-space:nowrap!important;border:0!important;
+}
