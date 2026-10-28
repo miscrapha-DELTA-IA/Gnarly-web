@@ -398,18 +398,8 @@ function ensureIPodHardware(){
   .catch(error=>{ipodHardwarePromise=null;throw error});
  return ipodHardwarePromise;
 }
-// Cap the display at actual source pixels. A missing larger CDN asset is
-// letterboxed on the glass, never stretched or sharpened into fictitious detail.
-function fitIPodArtwork(){
- const image=$('#ipod-cover-image'),density=Math.max(1,window.devicePixelRatio||1);
- if(image.naturalWidth&&image.naturalHeight){
-  image.style.setProperty('--ipod-art-width',Math.floor(image.naturalWidth/density)+'px');
-  image.style.setProperty('--ipod-art-height',Math.floor(image.naturalHeight/density)+'px');
- }
-}
-$('#ipod-cover-image').addEventListener('load',fitIPodArtwork);
-if($('#ipod-cover-image').complete)fitIPodArtwork();
-window.addEventListener('resize',fitIPodArtwork,{passive:true});
+// The album art fills the physical display. Quality is supplied by
+// resolveArtworkAsset below, not by shrinking the image based on device DPR.
 let ipodArtVersion=0;
 function updateIPodScreen(){
  const track=state.current,cover=track?.backgroundArtwork||track?.artwork||icon;
