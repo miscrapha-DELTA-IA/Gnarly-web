@@ -22,6 +22,7 @@
   <link rel="stylesheet" href="./performance.css" />
   <link rel="stylesheet" href="./module-dock.css" />
   <link rel="stylesheet" href="./ipod-mode.css" />
+  <link rel="stylesheet" href="./cover-charge.css" />
   <link rel="stylesheet" href="./karaoke-art.css" />
   <link rel="stylesheet" href="./karaoke-art-refined.css" />
   <link rel="stylesheet" href="./karaoke-stage.css" />
@@ -37,7 +38,7 @@
   </div>
   <div class="app-shell" id="app-shell">
     <header class="topbar" id="topbar">
-      <button class="icon-button edge" id="search-toggle" type="button" title="Toque: recolher · arraste ←/→: recolher/expandir · arraste ↓: Exibição" aria-label="Recolher atalhos. Deslize horizontalmente para expandir ou recolher; verticalmente para editar exibição" aria-expanded="true" aria-pressed="false"><svg class="icon"><use href="#i-eye" /></svg></button>
+      <button class="icon-button edge" id="search-toggle" type="button" title="Toque: atalhos · arraste ↓: Exibição" aria-label="Recolher atalhos. Deslize para baixo para abrir Exibição." aria-expanded="true" aria-pressed="false"><svg class="icon"><use href="#i-eye" /></svg><svg class="eye-gesture-arrow" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#i-chevron" /></svg></button>
       <button class="icon-button palette" id="theme-button" type="button" aria-controls="bottom-sheet" aria-expanded="false" aria-label="Paleta: toque para próximo tema; arraste para baixo para escolher manualmente" title="🎨 Tema · toque: próximo / arraste ↓: escolher"><svg class="icon"><use href="#i-palette" /></svg></button>
       <button class="icon-button bolt" id="experience-button" type="button" aria-controls="bottom-sheet" aria-expanded="false" aria-label="Relâmpago: toque para próxima experiência; arraste para baixo para escolher" title="⚡ Experiência · toque: próximo / arraste ↓: escolher"><svg class="icon"><use href="#i-bolt" /></svg></button>
       <button class="icon-button lyric-typography-button" id="lyric-style-button" type="button" aria-controls="bottom-sheet" aria-expanded="false" aria-label="Aa: toque para próximo estilo; arraste para baixo para abrir fontes e estilos" title="Aa · toque: próxima fonte / arraste ↓: catálogo"><span aria-hidden="true">Aa</span></button>
@@ -78,7 +79,9 @@
           </div></div>
           <img id="ipod-shell-image" class="ipod-shell-image" alt="" aria-hidden="true" hidden />
           <div class="ipod-screen" aria-label="Tela do iPod">
+            <span id="ipod-audio-status" class="gnarly-charge-sr-only" role="status" aria-live="polite"></span>
             <img id="ipod-cover-image" src="./assets/gnarly-icon.png" alt="Capa da música atual" decoding="async" />
+            <span class="gnarly-cover-charge" aria-hidden="true"><span class="gnarly-cover-charge-wash"></span><span class="gnarly-cover-charge-wave"></span><span class="gnarly-cover-charge-signal"><span class="gnarly-cover-charge-bars"><i></i><i></i><i></i></span></span></span>
             <div class="ipod-screen-scrim" aria-hidden="true"></div>
             <div class="ipod-screen-copy">
               <span id="ipod-screen-source" class="ipod-screen-source">GNARLY · iPOD</span>
@@ -102,6 +105,7 @@
         <div id="player-surface-menu" class="player-surface-menu" role="menu" aria-label="Aparência interna do player" hidden></div>
         <button class="cover-wrap" id="cover-button" title="Alterar o fundo / buscar uma música" aria-label="Buscar uma música">
           <img id="cover-image" src="./assets/gnarly-icon.png" alt="Capa do áudio atual" />
+          <span class="gnarly-cover-charge" aria-hidden="true"><span class="gnarly-cover-charge-wash"></span><span class="gnarly-cover-charge-wave"></span><span class="gnarly-cover-charge-signal"><span class="gnarly-cover-charge-bars"><i></i><i></i><i></i></span></span></span>
           <span id="cover-play-overlay" class="cover-overlay"><svg class="icon"><use href="#i-plus" /></svg> Escolher música</span>
         </button>
         <h2 id="track-title">Sua música. Seu universo.</h2>

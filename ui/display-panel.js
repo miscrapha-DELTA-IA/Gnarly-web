@@ -1,12 +1,12 @@
 /** Editable Stage72 panel visibility, independent of the music transport. */
-export const PANEL_KEYS=Object.freeze(['search','presets','controls','header','player','export','performance']);
-const defaults=Object.freeze({search:true,presets:true,controls:true,header:true,player:true,export:true,performance:true});
+export const PANEL_KEYS=Object.freeze(['search','presets','controls','header','player','lyrics','export','performance']);
+const defaults=Object.freeze({search:true,presets:true,controls:true,header:true,player:true,lyrics:true,export:true,performance:true});
 export const PLAYER_SIZES=Object.freeze(['compact','standard','minimal']);
 export const PLAYER_MATERIALS=Object.freeze(['clear','balanced','frosted']);
 export const LAYOUTS=Object.freeze({
- all:{search:true,presets:true,controls:true,header:true,player:true,export:true,performance:true},
- essential:{search:true,presets:false,controls:true,header:true,player:true,export:false,performance:false},
- listening:{search:false,presets:true,controls:true,header:false,player:true,export:false,performance:false}
+ all:{search:true,presets:true,controls:true,header:true,player:true,lyrics:true,export:true,performance:true},
+ essential:{search:true,presets:false,controls:true,header:true,player:true,lyrics:true,export:false,performance:false},
+ listening:{search:false,presets:true,controls:true,header:false,player:true,lyrics:false,export:false,performance:false}
 });
 export function createDisplayStore(storage=null){
  let saved=null;try{saved=JSON.parse(storage?.getItem('gnarly.web.panels.v1')||'null')}catch{}
@@ -39,5 +39,5 @@ export function renderDisplayPanel(display){
  ${[['compact','Compacto'],['standard','Clássico'],['minimal','Mínimo']].map(([id,title])=>`<button type="button" data-player-size="${id}" aria-pressed="${display.size===id}" class="${display.size===id?'active':''}">${title}</button>`).join('')}
  </div>
  <p class="display-player-hint">Toque no botão de aparência junto ao tempo da faixa para escolher Fosco, Nítido, Em movimento ou Turbulent Displacement. O tamanho é independente do visual e da música.</p>
- </section><h3>BUSCA</h3>${toggle('search','Busca','⌕')}<div class="display-group-head"><h3>ÁUDIO · PRESETS E CONTROLES</h3><button data-layout-group="all">Tudo</button><button data-layout-group="none">Nada</button></div>${toggle('presets','Presets','☷')}${toggle('controls','Controles','☷')}<h3>OUTRAS JANELAS</h3>${toggle('header','Cabeçalho e atalhos','▤')}${toggle('player','Player','♫')}${toggle('export','Exportar','⇧')}${toggle('performance','Performance / DJ','◈')}<button class="display-hide-button" data-command="hide-display-panels">Ocultar janelas desta tela</button><p class="display-footer">A reprodução continua enquanto as janelas são ocultadas. O botão do olho fica acessível para restaurá-las.</p></div>`;
+ </section><h3>BUSCA</h3>${toggle('search','Busca','⌕')}<div class="display-group-head"><h3>ÁUDIO · PRESETS E CONTROLES</h3><button data-layout-group="all">Tudo</button><button data-layout-group="none">Nada</button></div>${toggle('presets','Presets','☷')}${toggle('controls','Controles','☷')}<h3>OUTRAS JANELAS</h3>${toggle('lyrics','Legendas','Aa')}${toggle('header','Cabeçalho e atalhos','▤')}${toggle('player','Player','♫')}${toggle('export','Exportar','⇧')}${toggle('performance','Performance / DJ','◈')}<button class="display-hide-button" data-command="hide-display-panels">Ocultar janelas desta tela</button><p class="display-footer">A reprodução continua enquanto as janelas são ocultadas. O botão do olho fica acessível para restaurá-las.</p></div>`;
 }

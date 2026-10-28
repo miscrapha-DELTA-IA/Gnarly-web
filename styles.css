@@ -803,3 +803,23 @@ body{position:relative;min-height:100dvh;background:#05090a}
 .search-more-zone #search-more:focus-visible{outline:2px solid var(--acid);outline-offset:3px}
 #search-sentinel{height:1px;pointer-events:none}
 #search-state[hidden]{display:none!important}
+
+/* Exibição: a small theme-colored downward chevron makes the eye's swipe-down
+   gesture discoverable without enlarging its hitbox or hiding other controls. */
+.app-shell .topbar #search-toggle{position:relative}
+.app-shell .topbar #search-toggle .eye-gesture-arrow{
+ position:absolute;left:50%;bottom:1px;width:14px;height:12px;
+ transform:translateX(-50%);
+ fill:none;stroke:var(--acid,#46ff12);stroke-width:2.7;
+ stroke-linecap:round;stroke-linejoin:round;
+ opacity:.9;pointer-events:none;
+ filter:drop-shadow(0 0 3px color-mix(in srgb,var(--acid,#46ff12) 30%,transparent));
+ transition:transform .18s ease,opacity .18s ease;
+}
+.app-shell .topbar #search-toggle:hover .eye-gesture-arrow,
+.app-shell .topbar #search-toggle:focus-visible .eye-gesture-arrow{
+ transform:translate(-50%,2px);opacity:1;
+}
+@media(prefers-reduced-motion:reduce){
+ .app-shell .topbar #search-toggle .eye-gesture-arrow{transition:none!important}
+}
