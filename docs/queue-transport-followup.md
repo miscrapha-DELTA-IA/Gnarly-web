@@ -55,7 +55,17 @@ continua sendo a entrega conjunta, sem presumir que o site já foi atualizado.
 
 Os testes de áudio são fixtures de integração, não medições de produção. O ambiente
 recebeu HTTP 403 ao ler os dois hosts públicos consultados, portanto nenhuma alegação
-é feita sobre a versão publicada. Não houve deploy nem mudança no backend compartilhado
+é feita sobre a versão publicada. Não foi feita publicação em produção nem mudança no backend compartilhado
 nesta rodada. Safari/iPhone, Bluetooth físico e longa duração em segundo plano continuam
 exigindo validação em dispositivo. O erro pré-existente da suíte Stage72 na expectativa
 “Para você” continua documentado no relatório anterior; ele não foi afrouxado nesta rodada.
+
+## Entrega
+
+Correção enviada ao PR #50, commit funcional `6813438`. A prévia automática
+Netlify foi sinalizada como publicada com sucesso pelo status do GitHub no commit
+`cdc2b82`: https://deploy-preview-50--gnarlyweb.netlify.app . Essa prévia exige
+autenticação: as leituras HTTP neste ambiente retornaram 401. Portanto o sucesso
+do build da prévia não é tratado como teste de reprodução no site publicado.
+O PR permanece aberto e fora da main; os workflows Actions ainda não apareceram
+na consulta do novo head. A validação descrita acima foi executada localmente.
