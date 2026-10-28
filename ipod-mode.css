@@ -1,0 +1,216 @@
+/* GNARLY iPod — optional visual player shell.
+   Independently respects the selected global shader / experience / palette.
+   The album art appears ONLY in the screen, the physical case carries the
+   dynamic selected accent. Live controls call the existing single player. */
+#ipod-device[hidden],#ipod-shell-image[hidden]{display:none!important}
+#ipod-device{display:none}
+.app-shell[data-player-surface-mode="ipod"] #player-section.player{
+ width:min(86vw,452px)!important;
+ max-width:452px!important;
+ min-width:260px;
+ aspect-ratio:0.614;
+ height:auto!important;
+ padding:0!important;
+ margin:clamp(12px,2.8dvh,44px) auto clamp(10px,2dvh,26px)!important;
+ border:0!important;
+ border-radius:0!important;
+ overflow:visible!important;
+ box-shadow:none!important;
+ background:transparent!important;
+ -webkit-backdrop-filter:none!important;backdrop-filter:none!important;
+ isolation:isolate;
+}
+.app-shell[data-player-surface-mode="ipod"] #player-section>:not(#ipod-device):not(#player-surface-menu){
+ display:none!important;
+}
+.app-shell[data-player-surface-mode="ipod"] #ipod-device{
+ position:absolute;inset:0;width:100%;height:100%;
+ display:block!important;
+ overflow:visible;
+ touch-action:pan-y;
+ -webkit-user-select:none;user-select:none;
+ -webkit-touch-callout:none;
+}
+.gnarly-ipod .ipod-shell-base{
+ position:absolute;inset:0;border-radius:8% / 5%;
+ box-shadow:0 18px 74px #000a,inset 0 2px 3px #fff8,inset 0 -10px 30px #0002;
+ overflow:hidden;
+ background:
+  radial-gradient(ellipse 60% 45% at 15% 19%,color-mix(in srgb,var(--acid) 29%,white),transparent 89%),
+  radial-gradient(ellipse 71% 40% at 82% 65%,color-mix(in srgb,var(--acid) 26%,white),transparent 90%),
+  radial-gradient(ellipse 55% 43% at 25% 83%,color-mix(in srgb,var(--acid) 24%,white),transparent 91%),
+  repeating-linear-gradient(110deg,rgba(255,255,255,.065) 0px,rgba(0,0,0,.025) 2px,transparent 5px),
+  linear-gradient(125deg,#b3b9b6 0%,#f5f7f4 14%,#d5dcd9 48%,#eff0ed 79%,#adb6b3 100%);
+ border:1px solid rgba(246,251,245,.58);
+}
+.gnarly-ipod .ipod-shell-base::after{
+ content:"";position:absolute;inset:0;pointer-events:none;
+ background:radial-gradient(ellipse at 48% 55%,transparent 44%,#1524141a 100%);
+}
+.gnarly-ipod .ipod-shell-image{
+ position:absolute;inset:0;width:100%;height:100%;
+ object-fit:cover;object-position:center;
+ border-radius:8% / 5%;pointer-events:none;
+ box-shadow:0 18px 68px #000a;
+}
+.gnarly-ipod.has-skin .ipod-shell-base{opacity:0}
+.gnarly-ipod.has-skin .ipod-fallback-brand{opacity:0}
+.gnarly-ipod .ipod-screen{
+ position:absolute;top:5.1%;left:9.8%;width:80.4%;height:48.9%;
+ border-radius:4.6% / 3.6%;
+ z-index:3;overflow:hidden;isolation:isolate;
+ background:#0b110e;
+ border:2px solid #161d18;
+ box-shadow:0 0 0 2px rgba(255,255,255,.13),inset 0 0 20px #0009,0 5px 15px #0003;
+}
+.gnarly-ipod.has-skin .ipod-screen{
+ border:0;
+ border-radius:4.4% / 3.2%;
+ box-shadow:0 1px 3px #0005;
+}
+.gnarly-ipod .ipod-screen>img{
+ position:absolute;inset:0;
+ width:100%;height:100%;object-fit:cover;object-position:center;
+ background:#132018;image-rendering:auto;
+}
+.gnarly-ipod .ipod-screen-scrim{
+ position:absolute;inset:0;
+ background:linear-gradient(180deg,#07110a1f 0%,transparent 24%,transparent 42%,#030806af 73%,#020602ed 100%);
+ z-index:1;pointer-events:none;
+}
+.gnarly-ipod .ipod-screen-copy{
+ position:absolute;z-index:2;left:6%;right:6%;bottom:4.2%;
+ display:flex;flex-direction:column;gap:3px;min-width:0;
+ color:#fff;text-shadow:0 1px 8px #000c;
+}
+.gnarly-ipod .ipod-screen-source{
+ font-size:clamp(8px,1.7vw,11px);
+ font-weight:800;letter-spacing:.17em;
+ color:color-mix(in srgb,var(--acid) 54%,white);
+}
+.gnarly-ipod .ipod-screen-copy strong{
+ font-size:clamp(14px,4.5vw,25px);
+ line-height:1.17;letter-spacing:-.025em;
+ font-weight:830;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.gnarly-ipod .ipod-screen-copy small{
+ font-size:clamp(10px,2.5vw,15px);font-weight:520;
+ opacity:.93;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.gnarly-ipod .ipod-screen-time{
+ display:flex;justify-content:space-between;align-items:center;
+ margin-top:6px;font-size:clamp(9px,2.25vw,12px);
+ font-variant-numeric:tabular-nums;
+}
+.gnarly-ipod .ipod-screen-progress{
+ height:3px;border-radius:4px;overflow:hidden;
+ background:#ffffff6c;margin-top:1px;
+}
+.gnarly-ipod .ipod-screen-progress>span{
+ display:block;height:100%;width:0%;border-radius:4px;
+ background:color-mix(in srgb,var(--acid) 58%,white);
+ box-shadow:0 0 8px var(--acid);transform-origin:left;
+}
+.gnarly-ipod .ipod-fallback-brand{
+ position:absolute;top:55%;left:0;width:100%;z-index:2;
+ text-align:center;pointer-events:none;
+ font-family:Impact,Haettenschweiler,'Arial Narrow Bold',sans-serif;
+ font-size:clamp(21px,7.4vw,44px);
+ font-style:italic;letter-spacing:-.075em;
+ color:color-mix(in srgb,var(--acid) 72%,#0a2609);
+ text-shadow:-1px 2px 0 #fff9,0 3px 3px #0008,0 0 17px var(--acid);
+ transform:rotate(-4deg);
+}
+.gnarly-ipod .ipod-wheel{
+ position:absolute;z-index:4;left:23%;top:64.2%;
+ width:54%;aspect-ratio:1;
+ border-radius:50%;
+ background:
+  radial-gradient(circle at center,#0a180f 0 27%,transparent 28%),
+  radial-gradient(circle at 25% 20%,#fafef8,#ebf4ed 49%,#bfcdc1 100%);
+ box-shadow:0 4px 20px #0004, inset 0 1px 7px #fff;
+ border:1px solid #dbe5dd;
+}
+.gnarly-ipod .ipod-wheel:before{
+ content:"";position:absolute;inset:30%;border-radius:50%;pointer-events:none;
+ background:
+   radial-gradient(circle at 35% 26%,color-mix(in srgb,var(--acid) 30%,#141d17),#020905 75%),
+   linear-gradient(#081a0b,#051109);
+ border:2px solid #93a998;
+ box-shadow:0 0 0 2px #263c27,0 0 25px color-mix(in srgb,var(--acid) 40%,transparent);
+}
+.gnarly-ipod.has-skin .ipod-wheel{
+ background:transparent;border-color:transparent;
+ box-shadow:none;
+}
+.gnarly-ipod.has-skin .ipod-wheel:before{display:none}
+.gnarly-ipod .ipod-wheel button{
+ position:absolute;z-index:2;display:grid;place-items:center;
+ border:0;background:transparent;cursor:pointer;
+ color:#556c61;font-weight:850;
+ text-shadow:0 1px 1px #fff7;
+ touch-action:manipulation;
+ -webkit-tap-highlight-color:transparent;
+ -webkit-user-select:none;user-select:none;
+}
+.gnarly-ipod .ipod-wheel button:focus-visible{
+ outline:2px solid var(--acid);outline-offset:-4px;
+ background:color-mix(in srgb,var(--acid) 11%,transparent);
+ border-radius:24px;
+}
+.gnarly-ipod .ipod-wheel button:active{
+ transform:scale(.96);
+ background:color-mix(in srgb,var(--acid) 16%,transparent);
+ border-radius:24px;
+}
+.gnarly-ipod .ipod-wheel button:disabled{opacity:.38;cursor:default}
+.gnarly-ipod .ipod-wheel .icon{width:clamp(17px,4vw,25px);height:clamp(17px,4vw,25px)}
+.gnarly-ipod .ipod-wheel-menu{
+ top:0;left:29%;width:42%;height:27%;
+ font-size:clamp(10px,2.4vw,15px);letter-spacing:.045em;
+}
+.gnarly-ipod .ipod-wheel-prev{
+ top:31%;left:1%;height:38%;width:26%;
+}
+.gnarly-ipod .ipod-wheel-next{
+ top:31%;right:1%;height:38%;width:26%;
+}
+.gnarly-ipod .ipod-wheel-play{
+ bottom:0;left:29%;height:28%;width:42%;
+}
+.gnarly-ipod .ipod-wheel-center{
+ inset:32% 32%;width:36%;height:36%;
+ color:color-mix(in srgb,var(--acid) 50%,white)!important;
+ font-size:clamp(20px,5vw,30px);border-radius:50%;
+}
+.gnarly-ipod.has-skin .ipod-wheel button{
+ color:transparent;text-shadow:none;
+}
+.gnarly-ipod.has-skin .ipod-wheel button .icon{opacity:0}
+.gnarly-ipod.has-skin .ipod-wheel button:focus-visible{
+ outline-offset:-5px;background:#ffffff22;
+}
+.app-shell[data-player-surface-mode="ipod"] #player-surface-menu{
+ z-index:30!important;position:absolute!important;
+ top:19%!important;left:12%!important;right:auto!important;
+ bottom:auto!important;width:76%!important;
+ max-height:53%!important;
+ background:rgba(16,20,19,.96);border-color:#ffffff45;
+ overflow-y:auto;
+}
+.app-shell[data-player-surface-mode="ipod"] #player-surface-menu .player-surface-option{
+ min-height:44px;padding:9px 11px;font-size:13px;
+}
+.app-shell[data-player-surface-mode="ipod"] #player-surface-menu .surface-option-glyph{
+ font-size:18px;
+}
+@media(max-width:410px){
+ .app-shell[data-player-surface-mode="ipod"] #player-section.player{
+  width:min(90vw,365px)!important;min-width:0;
+ }
+ .gnarly-ipod .ipod-screen-copy{gap:2px}
+ .gnarly-ipod .ipod-screen-copy strong{font-size:clamp(14px,4.1vw,19px)}
+}
+@media(prefers-reduced-motion:reduce){
+ .gnarly-ipod .ipod-screen-progress>span{transition:none!important}
+}
