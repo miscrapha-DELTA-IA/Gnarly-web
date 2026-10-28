@@ -28,7 +28,7 @@ export default {
     // Workers deployments must share Pages' R2-first audio path. Otherwise
     // the browser silently takes the slower direct Render download route.
     const audioId=/^\/fast-audio\/([A-Za-z0-9_-]{11})$/.exec(url.pathname);
-    if(audioId)return handleFastAudio({request,env,params:{id:audioId[1]}});
+    if(audioId)return handleFastAudio({request,env,params:{id:audioId[1]},waitUntil:job=>ctx.waitUntil(job)});
     const prepareId=/^\/fast-prepare\/([A-Za-z0-9_-]{11})$/.exec(url.pathname);
     if(prepareId){
       if(request.method!=='POST')return methodNotAllowed('POST');
