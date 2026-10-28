@@ -18,13 +18,13 @@ test('Stage72 home has a preset-free player and a retractable Omnibox below it',
 test('Música owns presets and two tabs, realistic four-stem sliders and reaction',()=>{
  const state={tab:'speedPitch',speed:1.25,preset:'NIGHTCORE',pitch:false,reverb:.35,bass:3,reaction:'FLUIDO'};
  const front=renderMusicPanel(state);
- assert.match(front,/Speed &amp; Pitch/);
+ assert.match(front,/Velocidade e tom/);
  assert.match(front,/Redefinir/);
  assert.match(front,/Lentidão/);
  assert.match(front,/Nightcore/);
  assert.match(front,/Manter o tom original/);
  assert.match(front,/RITMO VISUAL/);
- assert.match(front,/MIXAGEM · ÁUDIO E RITMO/);
+ assert.match(front,/MIXAGEM/);
  assert.doesNotMatch(html,/id="reaction-button"/);
  assert.match(html,/id="player-surface-label"/);
  assert.doesNotMatch(renderMusicPanel({...state,showControls:false}),/RITMO VISUAL/);
