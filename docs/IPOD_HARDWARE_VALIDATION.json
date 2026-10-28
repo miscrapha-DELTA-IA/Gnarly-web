@@ -1,0 +1,70 @@
+{
+  "media": "Original synthetic AAC, no provider requests; shader frozen in QA for deterministic software-GPU captures",
+  "viewports": [
+    {
+      "width": 320,
+      "height": 568,
+      "deviceWidth": 281.59375,
+      "deviceHeight": 461.625
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "deviceWidth": 327.59375,
+      "deviceHeight": 537.03125
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "deviceWidth": 408,
+      "deviceHeight": 668.84375
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "deviceWidth": 408,
+      "deviceHeight": 668.84375
+    }
+  ],
+  "screenshots": [
+    "desktop-player.png",
+    "desktop-studio-silver.png",
+    "desktop-studio-woodland.png",
+    "desktop-studio-ice.png",
+    "desktop-studio-carbon.png",
+    "desktop-studio-pearl.png",
+    "mobile-live-controls.png",
+    "mobile-studio-woodland.png",
+    "mobile-player-woodland.png",
+    "mobile-retina-pearl.png"
+  ],
+  "errors": [],
+  "checks": {
+    "presets": 22,
+    "materials": 14,
+    "patterns": 29,
+    "validSVG": true,
+    "singleAudio": true,
+    "transportDuringCustomization": true,
+    "noAudioReload": true,
+    "persistence": true,
+    "userPresetCRUD": true,
+    "jsonImport": true,
+    "legacy": true,
+    "otherModes": true,
+    "noCanva": true,
+    "retina": true,
+    "reducedMotion": true,
+    "dialogFallback": true
+  },
+  "appearanceUpdateMs": {
+    "p50": 1104.800000000745,
+    "p95": 1268.800000000745,
+    "note": "Store update to scheduled paint, without automation clicks; software-rendered Chromium."
+  },
+  "presetClickToTwoFramesMs": {
+    "p50": 2654,
+    "p95": 3603,
+    "note": "Headless wall time includes automation, GPU rendering and two frames; not audio latency."
+  }
+}

@@ -79,7 +79,7 @@ try{
   durations.push(Date.now()-started);
  }
  await page.locator('[data-design="silver"]').click();await twoFrames();
- await page.locator('[data-design="silver"]').focus();await page.keyboard.press('Space');assert.equal(await page.evaluate(()=>__ipodQA.audio.paused),false);
+ await page.locator('[data-design="silver"]').focus();await page.keyboard.press('Space');assert.equal(await page.evaluate(()=>document.activeElement.dataset.design),'silver');assert.equal(await page.evaluate(()=>__ipodQA.audio.paused),false);
  await page.screenshot({path:path.join(out,'desktop-studio-silver.png')});report.screenshots.push('desktop-studio-silver.png');
  for(const id of ['woodland','ice','carbon','pearl']){
   await page.locator(`[data-design="${id}"]`).click();await twoFrames();
@@ -123,6 +123,10 @@ try{
  await page.reload({waitUntil:'domcontentloaded'});await page.waitForFunction(()=>!!globalThis.__ipodQA);await page.evaluate(()=>{__ipodQA.freezeVisual();return __ipodQA.ensureIPodHardware()});
  assert.equal(await page.evaluate(async()=>JSON.stringify((await __ipodQA.ensureIPodHardware()).store.snapshot().config)),savedConfig);
  await open();await page.locator('[data-studio-tab="saved"]').click();assert.match(await page.locator('.ipod-user-design').innerText(),/Night Archive/);
+ // The small JSON download contains the same versioned appearance record.
+ const downloaded=page.waitForEvent('download');await page.locator('[data-studio-action="export"]').click();
+ const download=await downloaded;assert.equal(download.suggestedFilename(),'gnarly-ipod-design.json');
+ const exported=JSON.parse(await readFile(await download.path(),'utf8'));assert.equal(exported.kind,'gnarly-ipod-appearance');assert.equal(exported.version,1);
  // JSON import is bounded data, not CSS or image injection.
  await page.locator('[data-import-design]').setInputFiles({name:'own.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({kind:'gnarly-ipod-appearance',version:1,appearance:{material:'anodized',colors:{body:'#2b5bba'}}}))});await twoFrames();
  assert.equal(await page.locator('#ipod-device').getAttribute('data-ipod-material'),'anodized');

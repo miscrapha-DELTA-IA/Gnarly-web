@@ -34,7 +34,7 @@
  box-shadow:0 0 0 1px #ffffff65,inset 0 0 0 1px #0003,inset 0 4px 6px #fff8}
 .gnarly-ipod .ipod-color,.gnarly-ipod .ipod-print,.gnarly-ipod .ipod-micro,.gnarly-ipod .ipod-light,.gnarly-ipod .ipod-internals{position:absolute;inset:0;pointer-events:none;border-radius:inherit}
 .gnarly-ipod .ipod-color{background:var(--ipod-base);opacity:var(--ipod-body-alpha)}
-.gnarly-ipod .ipod-print{inset:-40%;border-radius:0;background-image:var(--ipod-pattern);background-size:var(--ipod-pattern-size);background-position:var(--ipod-pattern-position);transform:var(--ipod-print-transform,none);opacity:.85;filter:var(--ipod-print-filter,none)}
+.gnarly-ipod .ipod-print{inset:-50%;border-radius:0;background-image:var(--ipod-pattern);background-size:var(--ipod-pattern-size);background-position:var(--ipod-pattern-position);transform:var(--ipod-print-transform,none);opacity:.85;filter:var(--ipod-print-filter,none)}
 .gnarly-ipod .ipod-micro{background-image:var(--ipod-grain);opacity:calc(var(--ipod-texture) * var(--ipod-grain-strength));mix-blend-mode:normal}
 .gnarly-ipod .ipod-light{background:var(--ipod-sheen);opacity:calc(.24 + var(--ipod-finish) * .76);box-shadow:inset 0 2px 4px #fffc,inset 2px 0 8px #fff7,inset -3px 0 6px #0002,inset 0 -9px 18px #0003}
 .gnarly-ipod .ipod-light::after{content:"";position:absolute;inset:0;border-radius:inherit;background:radial-gradient(ellipse at 35% -12%,#fff7,transparent 55%),linear-gradient(var(--ipod-tint),var(--ipod-tint));box-shadow:inset 0 0 0 1px #fff4}
@@ -85,7 +85,7 @@
 .gnarly-ipod .ipod-screen-copy small{font-size:clamp(10px,2.5vw,14px);opacity:.82;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .gnarly-ipod .ipod-screen-time{display:flex;justify-content:space-between;margin-top:5px;font:600 10px/1.4 monospace;letter-spacing:.02em;font-variant-numeric:tabular-nums;color:#d6e3d5}
 .gnarly-ipod .ipod-screen-progress{height:3px;overflow:hidden;border-radius:4px;background:#ffffff38;margin-top:1px}
-.gnarly-ipod .ipod-screen-progress>span{display:block;width:0;height:100%;background:color-mix(in srgb,var(--acid) 24%,#f0f5e9);border-radius:inherit;box-shadow:0 0 4px #fff5}
+.gnarly-ipod .ipod-screen-progress>span{display:block;width:0;height:100%;background:#e8f3d7;background:color-mix(in srgb,var(--acid) 24%,#f0f5e9);border-radius:inherit;box-shadow:0 0 4px #fff5}
 .gnarly-ipod .ipod-fallback-brand{position:absolute;top:51.3%;left:8.8%;z-index:2;pointer-events:none;color:var(--ipod-brand);font:italic 900 clamp(21px,5vw,30px)/1 Impact,Haettenschweiler,'Arial Narrow Bold',sans-serif;letter-spacing:-.065em;text-shadow:0 1px 0 #ffffff70}
 .gnarly-ipod .ipod-edition{position:absolute;top:51.8%;right:9%;z-index:2;pointer-events:none;color:var(--ipod-brand);text-align:right;font:700 7px/1.5 monospace;letter-spacing:.13em;opacity:.8}
 .gnarly-ipod .ipod-wheel{position:absolute;left:19.5%;top:58%;width:61%;aspect-ratio:1;z-index:4;border-radius:50%;
