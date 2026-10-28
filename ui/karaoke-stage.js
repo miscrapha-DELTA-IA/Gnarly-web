@@ -1,4 +1,4 @@
-import {KaraokeMicrophone} from '../lib/karaoke-microphone.js';
+import {microphoneError,KaraokeMicrophone} from '../lib/karaoke-microphone.js';
 import {KaraokeRemoteHost} from '../lib/karaoke-remote.js';
 import {KaraokeLiveScore} from '../lib/karaoke-live-score.js';
 import {applyLyricStyle,allLyricStyles} from '../lib/lyric-style.js';
@@ -20,7 +20,7 @@ export function karaokeStageMarkup(){
    <button type="button" id="karaoke-voice-toggle" aria-pressed="false">🎤 Ligar mic</button>
    <button type="button" id="karaoke-remote-toggle" aria-expanded="false">📱 Usar celular como microfone</button>
    <button type="button" id="karaoke-voice-record" disabled aria-pressed="false">● Gravar voz</button>
-   <button type="button" id="karaoke-caption-settings">Aa · Legenda</button>
+   <button type="button" id="karaoke-caption-settings">Aa · Legenda</button><button type="button" id="karaoke-share-score">Compartilhar resultado</button>
   </nav>
   <div class="karaoke-remote-panel" id="karaoke-remote-panel" hidden>
    <strong>Microfone sem fio · GNARLY</strong>
@@ -50,8 +50,8 @@ export function karaokeStageMarkup(){
 }
 const SILENCE={rms:0,hz:null,confidence:0,voiced:false};
 export class KaraokeStage {
- constructor({root,audio,getState,onStyle,onNotify,onMicConflict,onPlayPause,onFullscreen}){
-  this.root=root;this.audio=audio;this.getState=getState;this.onStyle=onStyle;
+ constructor({root,audio,getState,onStyle,onNotify,onMicConflict,onPlayPause,onFullscreen,isCaptureVisible,onScore,onShareScore}){
+  this.root=root;this.audio=audio;this.isCaptureVisible=isCaptureVisible||(()=>this.opened);this.onScore=onScore||(()=>{});this.onShareScore=onShareScore||(()=>{});this.getState=getState;this.onStyle=onStyle;
   this.externalNotify=onNotify||(()=>{});this.onFullscreen=onFullscreen||(()=>{});
   this.onNotify=message=>{
    // The global app toast is BEHIND the modal. Stage feedback must be visible
@@ -76,10 +76,16 @@ export class KaraokeStage {
   this.trigger=null;this.artworkSource='';this.artworkRequest=0;this.feedbackTimer=null;
   this.savedDocumentScroll={x:0,y:0};
   // Safari may deliver HTMLAudioElement timeupdate only a few times per
-  // second. Score on each REAL microphone sample (~90 ms), using the player's
+  // second. Score on each REAL microphone sample (at most 20 Hz), using the player's
   // currentTime (not Date.now), and keep timeupdate as a harmless fallback.
   this.mic.onChange=()=>{
-   if(!this.opened)return;
+   if(this.mic.active&&this.scorer.active){
+    const data=this.getState();
+    if(data.lines!==this.scoreLines||data.synced!==this.scoreSynced){
+     this.scorer.retime(data.synced?data.lines:[],this.audio.currentTime||0,this.audio.duration||0);
+     this.scoreLines=data.lines;this.scoreSynced=data.synced;
+    }
+   }
    if(this.mic.active&&this.scorer.active)
     this.scorer.tick(this.audio.currentTime||0,
      !this.audio.paused&&!this.audio.ended&&!this.audio.seeking,
@@ -88,9 +94,16 @@ export class KaraokeStage {
   };
   this.mic.onRecording=blob=>{if(blob.size){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;
    a.download='gnarly-karaoke-voz-'+new Date().toISOString().slice(0,19).replaceAll(':','-')+(blob.type.includes('mp4')?'.m4a':'.webm');
-   document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2500);
-   this.onNotify('Gravação da voz salva (sem áudio musical).')
+   document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+   this.onNotify('Gravação da voz pronta para baixar (sem áudio musical).')
   }else this.onNotify('Nenhuma voz foi gravada.');};
+  this.audio.addEventListener('seeking',()=>{
+   if(!this.scorer.active)return;
+   const d=this.getState(),at=this.audio.currentTime||0;
+   if(d.synced)this.scorer.start(d.lines,at,this.audio.duration||0);
+   else this.scorer.startPresence(at,this.audio.duration||0);
+   this.updateScore();
+  });
   this.root.addEventListener('click',e=>this.click(e));
   this.root.addEventListener('wheel',()=>this.setFollowing(false),{passive:true});
   this.root.querySelector('#karaoke-reader').addEventListener('touchstart',()=>this.setFollowing(false),{passive:true});
@@ -148,7 +161,7 @@ export class KaraokeStage {
   this.trigger=trigger||null;this.opened=true;this.follow=true;
   this.savedDocumentScroll={x:window.scrollX||0,y:window.scrollY||0};
   this.root.hidden=false;this.query('karaoke-stage-font-menu').hidden=true;document.documentElement.classList.add('karaoke-stage-open');
-  this.trackId=null;this.lineRef=null;this.currentIndex=-999;
+  this.lineRef=null;this.currentIndex=-999;
   this.refresh(true);this.query('karaoke-stage-close').focus({preventScroll:true});
  }
  close(){
@@ -236,7 +249,7 @@ export class KaraokeStage {
   if(!this.opened)return;
   const data=this.getState(),time=this.audio.currentTime||0,lines=data.synced?data.lines:[];
   if((data.track?.id??null)!==this.trackId||this.lineRef!==data.lines){this.refresh(true);return}
-  if(this.mic.active&&this.scorer.active)this.scorer.tick(time,!this.audio.paused&&!this.audio.ended,this.mic.frameNow());
+  if(this.mic.active&&this.scorer.active)this.scorer.tick(time,!this.audio.paused&&!this.audio.ended&&!this.audio.seeking,this.mic.frameNow());
   let index=-1;
   if(data.synced&&lines?.length){
    // LRC line-time interpolation only; don't fabricate individual word boundaries.
@@ -290,10 +303,12 @@ export class KaraokeStage {
   button.setAttribute('aria-label',playing?'Pausar música':'Reproduzir música');
  }
  updateScore(){
+  this.onScore({score:this.scorer.snapshot(),voice:this.mic.frameNow(),active:this.mic.active,pending:!!this.mic.pending||this.mic.status==='requesting',status:this.mic.status,error:this.mic.error,recording:this.mic.recording});
   this.updateTransport();
   const result=this.scorer.snapshot(),remoteActive=this.remoteHost.active;
   const voice=remoteActive?this.remoteHost.lastFrame||SILENCE:this.mic.frameNow();
   const active=this.mic.active||remoteActive;
+  this.query('karaoke-voice-toggle').disabled=!!this.mic.pending||this.mic.status==='requesting';
   this.query('karaoke-voice-toggle').textContent=active?'🎤 Desligar mic':'🎤 Ligar mic';
   this.query('karaoke-voice-toggle').setAttribute('aria-pressed',String(active));
   const record=this.query('karaoke-voice-record');record.disabled=!this.mic.active;record.textContent=this.mic.recording?'■ Parar gravação':'● Gravar voz';
@@ -317,15 +332,17 @@ export class KaraokeStage {
    :'Tom indisponível · referência melódica não verificada';
  }
  async toggleMic(){
-  if(this.mic.active){this.mic.stop();this.scorer.stop();this.updateScore();return}
+  if(this.mic.active){this.mic.stop();this.scorer.finish();this.updateScore();return}
   if(this.remoteHost.socket)this.remoteHost.stop();
   this.query('karaoke-remote-panel').hidden=true;
   if(this.onMicConflict()){this.onNotify('Pare outra gravação de voz antes de ativar o karaokê.');return}
   this.query('karaoke-voice-toggle').disabled=true;
   try{
-   const ok=await this.mic.start();
-   if(!ok||!this.opened){this.mic.stop();return}
-   const d=this.getState();
+   const activation=this.mic.start(),generation=this.mic.generation;
+   const ok=await activation;
+   if(!ok||this.mic.generation!==generation)return;
+   if(!this.isCaptureVisible()){this.mic.stop();return}
+   const d=this.getState();this.trackId=d.track?.id??null;this.scoreLines=d.lines;this.scoreSynced=d.synced;
    if(d.synced&&Array.isArray(d.lines)&&d.lines.length)
     this.scorer.start(d.lines,this.audio.currentTime||0,this.audio.duration||0);
    else this.scorer.startPresence(this.audio.currentTime||0,this.audio.duration||0);
@@ -333,7 +350,7 @@ export class KaraokeStage {
     'Microfone ativo · pontuação sincronizada com a letra.':
     'Microfone ativo · pontuação por presença vocal enquanto buscamos LRC.');
   }catch(e){
-   this.onNotify(e?.name==='NotAllowedError'?'Permissão de microfone negada. Autorize o microfone no navegador.':'Não foi possível ativar o microfone (requer HTTPS e autorização).');
+   this.onNotify(microphoneError(e));
   }finally{this.query('karaoke-voice-toggle').disabled=false;this.updateScore()}
  }
  click(e){
@@ -347,6 +364,7 @@ export class KaraokeStage {
    case 'karaoke-voice-toggle':void this.toggleMic();break;
    case 'karaoke-remote-toggle':void this.toggleRemote();break;
    case 'karaoke-remote-copy':void this.copyRemoteLink();break;
+   case 'karaoke-share-score':this.onShareScore(this.scorer.snapshot());break;
    case 'karaoke-voice-record':
     if(this.mic.recording)this.mic.stopRecording();
     else if(!this.mic.beginRecording())this.onNotify('Gravação não suportada pelo navegador.');

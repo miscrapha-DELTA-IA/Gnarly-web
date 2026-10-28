@@ -38,10 +38,12 @@ test('late synchronized LRC upgrade keeps earned real-microphone points and comb
  s.tick(4.3,true,vocal);
  assert.ok(s.snapshot().score>before.score);
 });
-test('vocal tracking stays forgiving of airy harmonics but ignores low-confidence noise',()=>{
+test('native confidence gate rejects unvoiced input and accepts verified vocal evidence',()=>{
  const s=new KaraokeLiveScore();s.startPresence(1,100);
  const breathy={rms:.03,hz:null,confidence:.42,voiced:false};
  s.tick(1.1,true,breathy);
+ assert.equal(s.snapshot().score,0);
+ s.tick(1.15,true,vocal);
  assert.ok(s.snapshot().score>0);
  const previous=s.snapshot().score;
  s.tick(1.2,true,{...breathy,confidence:.1});
