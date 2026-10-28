@@ -51,10 +51,21 @@
  position:absolute;inset:0;width:100%;height:100%;
  object-fit:cover;object-position:center;
  border-radius:8% / 5%;pointer-events:none;
+ z-index:1;
+ image-rendering:auto;
+ opacity:.97;
  box-shadow:0 18px 68px #000a;
 }
-.gnarly-ipod.has-skin .ipod-shell-base{opacity:0}
+.gnarly-ipod.has-skin .ipod-shell-base{opacity:1}
 .gnarly-ipod.has-skin .ipod-fallback-brand{opacity:0}
+/* Keep imported Canva detail visible, with a subtle metallic backing rather
+   than a semitransparent shell over the animated page background. */
+.gnarly-ipod.has-skin .ipod-shell-image{
+ filter:none;
+ mix-blend-mode:normal;
+ -webkit-backface-visibility:hidden;
+ backface-visibility:hidden;
+}
 .gnarly-ipod .ipod-screen{
  position:absolute;top:5.1%;left:9.8%;width:80.4%;height:48.9%;
  border-radius:4.6% / 3.6%;
