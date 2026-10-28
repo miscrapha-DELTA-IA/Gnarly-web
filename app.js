@@ -10,6 +10,8 @@ import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
 import {trackAudioURL,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
 import {AudioDeliveryRecovery,inspectPlaybackLimit,playbackLimitMessage} from './lib/audio-delivery.js';
 import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-library.js';
+import {QueueAudioWarmup,canWarmNext} from './lib/queue-audio-warmup.js';
+import {quickPlaylistMarkup} from './ui/quick-playlist.js';
 import {createMediaSessionController,configureBrowserAudioSession} from './lib/media-session-controller.js';
 import {appendUnique,commitPlaying,moveTrack,removeTrack,shuffleUpcoming,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
 import {ListeningMemory,MEMORY_KEY,recommendTracks,retainManualQueue,markAutoTracks,sameRecording,discoverySuggestions} from './lib/listening-intelligence.js';
@@ -45,6 +47,7 @@ const pads=new PerformancePads(engine);
 const midiAnalysis={busy:false,status:'MIDI estimado, sem alterar a reprodução.',notes:[],duration:0,harmony:null,abort:null,trackId:null,revision:0};
 function midiView(){return {...pads.snapshot(),intelligence:{...midiAnalysis.harmony,notes:midiAnalysis.notes.length,ready:midiAnalysis.notes.length>0,busy:midiAnalysis.busy,status:midiAnalysis.status}}}
 const audioDelivery=new AudioDeliveryRecovery();
+const queueAudioWarmup=new QueueAudioWarmup();
 const offlineLibrary=createOfflineLibrary();
 const offlineURLs=new Map(); // Persistent track IDs mapped to live blob URLs.
 const offlinePending=new Set();
@@ -373,6 +376,7 @@ function updatePlayer(){
  $('#play-button').innerHTML=svg(state.playing?'pause':'play');
  $('#play-button').setAttribute('aria-label',state.playing?'Pausar':'Reproduzir');
  $('#next-button').disabled=state.queue.length===0;
+ $('#quick-playlist-button').disabled=!track;
  $('#duration-label').textContent=track?.source==='preview'?'PRÉVIA · 0:30':fmt(Number.isFinite(audio.duration)&&audio.duration>0?audio.duration:track?.duration||0);
  updatePresetButtons();
  updateBadges(); updateProgress();
@@ -649,6 +653,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
   if(playbackBackstack.length>30)playbackBackstack.shift();
  }
  playbackSelection++;
+ queueAudioWarmup.reset();closeQuickPlaylist();
  pendingQueueId=fromQueue?track.id:null;
  if(isGenericArtist(track.artist))track.artist=displayArtist(track);
  audioDelivery.select(track);recoveryOperation=null;state.userPaused=false;
@@ -670,13 +675,15 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
   audio.src=offlineAudio(track.id)||track.url;
   engine.restoreSpeed();
  }
- // The musical preset belongs to the session, not the selected track.
- engine.restoreSpeed();
- reportAudioStatus('');state.lastLyric=-2;updatePlayer();void loadArtworkHue(track);void enrichOfficialAlbumArt(track);void loadAutoLyrics(track);prefetchNextLyrics();
+ // The single audio element starts on the user's action before costly
+ // artwork, lyric, metadata and surface work blocks the transition.
+ engine.restoreSpeed();reportAudioStatus('');state.lastLyric=-2;
+ if(autoplay)void play();
+ updatePlayer();void loadArtworkHue(track);void enrichOfficialAlbumArt(track);void loadAutoLyrics(track);prefetchNextLyrics();
  karaokeStage.refresh(true);
  if(track.source==='youtube')void enrichSelectedTrack(track);omnibox.record(track);state.history=omnibox.history;
  if(isModuleOpen('performance'))void pads.prepareSong(track);
- if(autoplay)void play();if(state.sheet&&['library','queue','search','lyric-style'].includes(state.sheet))renderSheet();
+ if(state.sheet&&['library','queue','search','lyric-style'].includes(state.sheet))renderSheet();
 }
 async function recoverNativeAudio(track,initialError=null){
  if(!track||track.source!=='youtube'||state.current!==track||state.userPaused)return false;
@@ -765,7 +772,7 @@ async function play(){
   console.warn('GNARLY WEB audio play:',e);
  }
 }
-function pause(){state.userPaused=true;audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
+function pause(){state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
 function next(){
  if(state.current&&audio.currentTime>=4&&!audio.ended&&audio.currentTime<Math.min(36,(audio.duration||240)*.3)){
   listeningMemory.record('skip',state.current);
@@ -1249,7 +1256,8 @@ function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet)
    tab:state.musicTab,preset:state.preset,speed:state.speed,reverb:state.reverb,bass:state.bass,pitch:state.pitch,reaction:state.reaction,
    showPresets:displayStore.visible.presets,showControls:displayStore.visible.controls,stemsReady:stems.ready,
    stemLevels:stems.levels,stemStatus:state.stemStatus,stemModel:state.stemModel,
-   demucsBusy:state.demucsBusy,demucsAvailable:state.demucsAvailable,stemLabels:STEM_LABELS
+   demucsBusy:state.demucsBusy,demucsAvailable:state.demucsAvailable,stemLabels:STEM_LABELS,
+   backgroundAudioSupported:isIOSWebKitAudioDevice(navigator),backgroundAudioEnabled:engine.nativeTransport
   });break;
  case 'performance':content.innerHTML=renderPerformancePanel(midiView());break;
  case 'display':content.innerHTML=renderDisplayPanel(displayStore);break;
@@ -1318,6 +1326,18 @@ function applyChosenLyricFont(id,scope=lyricScope){
 
 function resolveTracks(context){if(context==='playlist')return playlistStore.tracks(selectedPlaylist);return ({search:state.searchResults,library:state.tracks,queue:state.queue,favorites:state.favorites,history:state.history})[context]||[]}
 function handleCommand(command){switch(command){
+ case 'enable-studio-effects':
+   void (async()=>{
+    try{
+     const enabled=await engine.enableStudioEffects();
+     if(!enabled)throw new Error('Web Audio indisponível');
+     engine.setBass(state.bass);engine.setReverb(state.reverb);
+     toast('Baixo e reverb ativos. No iPhone, o som pode parar ao bloquear a tela.');
+     if(state.sheet==='controls')renderSheet();
+     if(isModuleOpen('controls'))renderModule('controls');
+    }catch(error){toast('Não foi possível ativar processamento: '+(error?.message||''))}
+   })();
+   break;
  case 'queue-play':
    if(!state.current&&state.queue.length)selectTrack(state.queue[0],true,{fromQueue:true});
    else if(state.current&&audio.paused)void play();
@@ -1601,7 +1621,17 @@ async function runSearch(raw){const query=String(raw||'').trim();state.searchTer
  const hits=rank(query,selectMusicResults(songs,previews),omnibox.history);state.searchResults=hits;omnibox.cacheResults(query,hits);displaySearch(hits,`${songs.length} músicas no catálogo GNARLY · ${previews.length} prévias autorizadas`+(songs.length===0?' · servidor musical indisponível ou sem resultados':''));
  }catch(error){if(count!==searchCounter)return;displaySearch(state.searchResults,'Falha de rede. Resultados locais mantidos.');console.warn('Omnibox',error)}
 }
-audio.addEventListener('play',()=>{if(stems.ready)void stems.play();state.playing=true;updatePlayer()});audio.addEventListener('pause',()=>{stems.pause();state.playing=false;updatePlayer()});audio.addEventListener('timeupdate',()=>{if(stems.ready)stems.sync();updateProgress();syncLyrics()});audio.addEventListener('loadedmetadata',()=>{
+audio.addEventListener('play',()=>{if(stems.ready)void stems.play();state.playing=true;updatePlayer()});audio.addEventListener('pause',()=>{stems.pause();state.playing=false;updatePlayer()});audio.addEventListener('timeupdate',()=>{
+ if(stems.ready)stems.sync();updateProgress();syncLyrics();
+ // Warm one upcoming recording in the last 42 seconds, never full playlists.
+ const nextTrack=state.queue[0];
+ if(state.playing&&!audio.paused&&!isOffline(nextTrack?.id)&&canWarmNext({
+  current:state.current,next:nextTrack,
+  remaining:(Number.isFinite(audio.duration)?audio.duration:Infinity)-(audio.currentTime||0),
+  online:navigator.onLine,saveData:navigator.connection?.saveData,
+  effectiveType:navigator.connection?.effectiveType
+ }))void queueAudioWarmup.start(nextTrack);
+});audio.addEventListener('loadedmetadata',()=>{
  engine.restoreSpeed(); // WebKit can reset the media rate during load.
  updateProgress();const track=state.current;
  if(!track||!['youtube','local'].includes(track.source)||!Number.isFinite(audio.duration)||audio.duration<=0)return;
