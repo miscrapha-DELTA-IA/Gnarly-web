@@ -25,7 +25,7 @@ const server=createServer(async(req,res)=>{
   if(file==='app.js'){
    const app=await read(file);
    res.setHeader('Content-Type','text/javascript');
-   res.end(app+`\nglobalThis.__playerTest={selectTrack,next,play,pause,state,audio,engine,queueAudioWarmup,offlineURLs,openSheet,prepareUpcomingAudio,recoverNativeAudio,syncSystemPlayback,setDiscovery:fn=>{const old=maybeFillSmartQueue;maybeFillSmartQueue=fn;return old},setMode:value=>smartMode=value};`);return;
+   res.end(app+`\nglobalThis.__playerTest={selectTrack,next,previous,play,pause,handleCommand,addToQueue,fillSmartQueue:options=>maybeFillSmartQueue(options),updatePlayer,resetNavigation:()=>{playbackBackstack.length=0},setStartupTimeout:value=>playbackStartTimeoutMs=value,state,audio,engine,queueAudioWarmup,offlineURLs,openSheet,closeSheet,prepareUpcomingAudio,recoverNativeAudio,syncSystemPlayback,setDiscovery:fn=>{const old=maybeFillSmartQueue;maybeFillSmartQueue=fn;return old},setMode:value=>smartMode=value};`);return;
   }
   if(file==='lib/playback-source.js'){
    res.setHeader('Content-Type','text/javascript');
@@ -50,10 +50,14 @@ try{
    navigator.mediaSession.setActionHandler=(name,handler)=>{__mediaActions[name]=handler;set(name,handler)};
   }
  });
- let scenario='r2-hit',requests=0,originRequests=0;
+ let scenario='r2-hit',requests=0,originRequests=0,recommendationGate=null,recommendationRequests=0;
  const errors=[];
  await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
+  if(url.origin===base&&url.pathname==='/api/omnibox'&&recommendationGate){
+   recommendationRequests++;const gate=recommendationGate;await gate.promise;
+   await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({results:gate.results})});return;
+  }
   if(url.hostname==='nightcorelab.onrender.com'&&url.pathname==='/download'){
    requests++;originRequests++;
    await route.fulfill({status:200,contentType:'audio/mp4',body:bytes});return;
@@ -70,6 +74,7 @@ try{
    }};
    const result=await handleFastAudio({request:new Request(url,{headers:range?{Range:range}:{}}),env:{GNARLY_AUDIO_R2:bucket},params:{id:url.pathname.split('/').pop()}},async origin=>{
     originRequests++;
+    if(scenario==='stalled-source')await delay(1200);
     if(scenario==='network-recovery')throw Error('synthetic network interruption');
     if(scenario==='low-bandwidth')await delay(bytes.length/65536*1000);
     await delay(scenario==='high-latency'?250:scenario==='cold-fallback'?120:90);
@@ -89,7 +94,7 @@ try{
  await page.evaluate(data=>{
   __playerTest.setMode('off');globalThis.__testAudioBlob=new Blob([Uint8Array.from(atob(data),c=>c.charCodeAt(0))],{type:'audio/mp4'});
  },bytes.toString('base64'));
- const song=id=>({source:'youtube',id:'youtube:'+id,videoId:id,title:'Fixture',artist:'Fixture',duration:12,metadataConfidence:100,album:'Fixture',artwork:'/assets/gnarly-icon.png'});
+ const song=id=>({source:'youtube',id:'youtube:'+id,videoId:id,title:'Fixture '+id,artist:'Fixture',duration:12,metadataConfidence:100,album:'Fixture',artwork:'/assets/gnarly-icon.png'});
  async function start(track,action='select'){
   return page.evaluate(async({track,action})=>{
    const api=__playerTest,a=api.audio;
@@ -185,13 +190,113 @@ try{
   await page.evaluate(()=>__playerTest.audio.dispatchEvent(new Event('error')));
   assert.equal(await page.evaluate(()=>__playerTest.state.playing),true);
  }
+ // Previous restores the interrupted recording as the immediate next song.
+ scenario='r2-hit';
+ await page.evaluate(()=>{__playerTest.closeSheet();__playerTest.resetNavigation();__playerTest.state.queue=[]});
+ await start(song('NAVAAAAAAAA'));
+ await page.evaluate(tracks=>{__playerTest.state.queue=tracks;void __playerTest.next()},[song('NAVBBBBBBBB'),song('NAVCCCCCCCC')]);
+ await page.waitForFunction(()=>__playerTest.state.current.videoId==='NAVBBBBBBBB'&&__playerTest.state.audioState==='playing');
+ await page.evaluate(()=>{__playerTest.audio.currentTime=0});
+ await page.click('#previous-button',{force:true});
+ await page.waitForFunction(()=>__playerTest.state.current.videoId==='NAVAAAAAAAA'&&__playerTest.state.audioState==='playing');
+ assert.deepEqual(await page.evaluate(()=>__playerTest.state.queue.map(x=>x.videoId)),['NAVBBBBBBBB','NAVCCCCCCCC']);
+ await page.click('#next-button',{force:true});
+ await page.waitForFunction(()=>__playerTest.state.current.videoId==='NAVBBBBBBBB'&&__playerTest.state.audioState==='playing');
+ // Rapid alternating transport commands while the old media is still loading.
+ scenario='high-latency';
+ await page.evaluate(tracks=>{
+  const api=__playerTest;api.resetNavigation();api.state.queue=tracks.slice(1);api.selectTrack(tracks[0]);
+  for(const id of ['next-button','ipod-next-button','previous-button','next-button','ipod-previous-button'])document.getElementById(id).click();
+ },['RAPAAAAAAAA','RAPBBBBBBBB','RAPCCCCCCCC','RAPDDDDDDDD'].map(song));
+ await page.waitForFunction(()=>__playerTest.state.current.videoId==='RAPBBBBBBBB'&&__playerTest.state.audioState==='playing');
+ assert.deepEqual(await page.evaluate(()=>__playerTest.state.queue.map(x=>x.videoId)),['RAPCCCCCCCC','RAPDDDDDDDD']);
+ assert.equal(await page.evaluate(()=>__playerTest.state.playbackError),'');
+ // Play/Pause in the queue controls this recording; it never consumes Next.
+ await page.evaluate(()=>__playerTest.openSheet('queue'));
+ const selected=await page.evaluate(()=>__playerTest.state.current.videoId);
+ await page.locator('[data-command="queue-play"]').click();
+ assert.equal(await page.evaluate(()=>__playerTest.audio.paused),true);
+ await page.locator('[data-command="queue-play"]').click();
+ await page.waitForFunction(()=>!__playerTest.audio.paused&&__playerTest.state.audioState==='playing');
+ assert.equal(await page.evaluate(()=>__playerTest.state.current.videoId),selected);
+ assert.equal(await page.locator('#toast').count(),0);
+ const feedback=page.locator('#action-feedback');
+ await page.evaluate(()=>__playerTest.handleCommand('queue-shuffle'));
+ assert.equal(await feedback.evaluate(el=>getComputedStyle(el).clipPath),'inset(50%)');
+ await page.locator('#close-sheet').click();
+ // Search selection removes an already queued copy, and explicit choices
+ // go before suggestions rather than disappearing behind the automatic tail.
+ await page.evaluate(tracks=>{
+  const api=__playerTest;api.state.queue=[tracks[0],tracks[1]];api.selectTrack(tracks[0]);
+ },['DUPAAAAAAAA','DUPBBBBBBBB'].map(song));
+ await page.waitForFunction(()=>__playerTest.state.audioState==='playing');
+ assert.deepEqual(await page.evaluate(()=>__playerTest.state.queue.map(x=>x.videoId)),['DUPBBBBBBBB']);
+ await page.evaluate(tracks=>{
+  const api=__playerTest;api.state.queue=tracks.slice(0,2).map(x=>({...x,_gnarlyAutoMode:'mix'}));
+  api.addToQueue(tracks[2]);api.addToQueue(tracks[1]);
+ },['MANAAAAAAAA','MANBBBBBBBB','MANCCCCCCCC'].map(song));
+ assert.deepEqual(await page.evaluate(()=>__playerTest.state.queue.map(x=>x.videoId)),['MANCCCCCCCC','MANBBBBBBBB','MANAAAAAAAA']);
+ await page.evaluate(()=>{__playerTest.setMode('mix');__playerTest.state.queue=[];__playerTest.updatePlayer()});
+ assert.equal(await page.locator('#next-button').isDisabled(),false);
+ assert.equal(await page.locator('#ipod-next-button').isDisabled(),false);
+ await page.evaluate(()=>__playerTest.setMode('off'));
+ // Old same-track play failures after Pause/Play cannot restart the resumed source.
+ scenario='r2-hit';
+ await page.evaluate(track=>{
+  const api=__playerTest,original=api.audio.play.bind(api.audio);let first=true;
+  globalThis.__restoreNativePlay=()=>{api.audio.play=original};
+  api.audio.play=()=>{
+   const playing=original();
+   if(!first)return playing;
+   first=false;playing?.catch(()=>{});
+   return new Promise((_,reject)=>globalThis.__rejectOldPlay=reject);
+  };
+  api.selectTrack(track);api.pause();void api.play();
+ },song('SAMESONGAAA'));
+ await page.waitForFunction(()=>__playerTest.state.current.videoId==='SAMESONGAAA'&&__playerTest.state.audioState==='playing');
+ const beforeStaleFailure=requests;
+ await page.evaluate(()=>{__rejectOldPlay(new DOMException('Obsolete source','NotSupportedError'));__restoreNativePlay()});
+ await delay(700);
+ assert.equal(requests,beforeStaleFailure);
+ assert.equal(await page.evaluate(()=>__playerTest.state.playbackError),'');
+ // A silent hanging initial request falls back within a bounded startup wait.
+ scenario='stalled-source';
+ await page.evaluate(()=>__playerTest.setStartupTimeout(400));
+ await start(song('TIMEOUTAAAA'));
+ assert.equal(await page.evaluate(()=>__playerTest.state.playbackError),'');
+ await page.evaluate(()=>__playerTest.setStartupTimeout(30000));
+ // Empty-queue Next reuses the real recommendation operation already running.
+ scenario='r2-hit';let release;
+ recommendationGate={promise:new Promise(resolve=>release=resolve),results:['RECBBBBBBBB','RECCCCCCCCC','RECDDDDDDDD'].map(song)};
+ recommendationRequests=0;
+ const discoveryStart=await page.evaluate(()=>__playerTest.state.current.id);
+ await page.evaluate(()=>{
+  const api=__playerTest;api.setMode('mix');api.state.queue=[];
+  void api.fillSmartQueue({force:true});void api.next();
+ });
+ await page.waitForFunction(()=>document.querySelector('#player-status').textContent.includes('Buscando'));
+ await delay(100);assert.equal(recommendationRequests,1);
+ release();
+ await page.waitForFunction(id=>__playerTest.state.current.id!==id&&__playerTest.state.audioState==='playing',discoveryStart);
+ assert.equal(recommendationRequests,1);
+ recommendationGate=null;await page.evaluate(()=>__playerTest.setMode('off'));
+ // Pause/Resume cancels an old discovery intent even on the same recording.
+ const resumedId=await page.evaluate(async track=>{
+  const api=__playerTest,selected=api.state.current.id;api.setMode('mix');api.state.queue=[];
+  let release;const waiting=new Promise(resolve=>release=resolve);
+  const original=api.setDiscovery(()=>waiting),next=api.next();
+  api.pause();void api.play();api.state.queue=[track];release();await next;
+  api.setDiscovery(original);api.setMode('off');return selected;
+ },song('PAUSEAAAAAA'));
+ await page.waitForFunction(()=>__playerTest.state.audioState==='playing');
+ assert.equal(await page.evaluate(()=>__playerTest.state.current.id),resumedId);
  // Offline playback with every network request rejected.
  await page.evaluate(track=>{
   __playerTest.offlineURLs.set(track.id,URL.createObjectURL(__testAudioBlob));
  },song('JJJJJJJJJJJ'));
  await context.setOffline(true);await start(song('JJJJJJJJJJJ'));await context.setOffline(false);
  assert.deepEqual(errors,[]);
- report.regressions={rapidNext:true,karaoke:true,headphoneTransport:true,mediaSessionHandler:true,networkRecovery:true,lowBandwidthStartup:true,automaticEnd:true,offlineWithoutNetwork:true,resumeKeepsSource:!baseline,uncaughtErrors:errors.length};
+ report.regressions={rapidNext:true,karaoke:true,headphoneTransport:true,mediaSessionHandler:true,networkRecovery:true,lowBandwidthStartup:true,automaticEnd:true,offlineWithoutNetwork:true,resumeKeepsSource:!baseline,backForward:true,rapidAlternatingNavigation:true,queuePlayPause:true,noBalloons:true,sameTrackCancellation:true,startupWatchdog:true,sharedQueueDiscovery:true,discoveryPauseCancellation:true,uncaughtErrors:errors.length};
  await context.close();
  console.log(JSON.stringify(report,null,2));
  if(process.env.REPORT_PATH)await writeFile(process.env.REPORT_PATH,JSON.stringify(report,null,2)+'\n');

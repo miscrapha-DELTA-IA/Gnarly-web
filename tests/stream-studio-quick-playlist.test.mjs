@@ -63,7 +63,7 @@ test('iPhone tells the truth about native EQ and exposes one explicit studio mod
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(app,/case 'enable-studio-effects'/);
  assert.match(app,/backgroundAudioEnabled:engine.nativeTransport/);
- assert.match(app,/const start=audio\.play\(\),unlock=engine\.resume\(\)/);
+ assert.match(app,/await startNativePlayback\(audio,\{signal:request\.signal,timeoutMs:playbackStartTimeoutMs,unlock:\(\)=>engine\.resume\(\)\}\)/);
 });
 test('enabling studio creates exactly one real WebAudio source; EQ changes live gain',async()=>{
  const previous=globalThis.window;

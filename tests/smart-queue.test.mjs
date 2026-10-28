@@ -62,10 +62,24 @@ test('player integration keeps source identity and queue transitions transaction
  const {readFileSync}=await import('node:fs');
  const code=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.doesNotMatch(code,/tr\.source\s*=\s*['"]preview['"]/,'Rendering must not overwrite the selected audio source');
- assert.match(code,/if\(fromQueue\)\{\s*state\.queue=commitPlaying\(state\.queue,track\.id\)/,'Selection must advance queue BEFORE loading audio');
+ assert.match(code,/if\(fromQueue\|\|state\.queue\.some\(item=>item\.id===track\.id\)\)\{\s*state\.queue=commitPlaying\(state\.queue,track\.id\)/,'Selection must advance queue BEFORE loading audio');
  assert.match(code,/let candidate=state\.queue\[0\]/,'Next must pick the actual pending head');
  assert.doesNotMatch(code,/pendingQueueId/,'An item must not remain stuck in queue until playing');
  assert.match(code,/function renderQueuePanel\(\)/);
  assert.match(code,/audioWarmup\.start\(\)/);
  assert.match(code,/handlePanelClick/);
+});
+
+test('manual additions precede the automatic tail without changing manual order',async()=>{
+ const {enqueueManual}=await import('../lib/smart-queue.js');
+ const a={id:'a',title:'First manual',artist:'Test'},b={id:'b',title:'Auto B',artist:'Test',_gnarlyAutoMode:'mix'};
+ const c={id:'c',title:'Auto C',artist:'Test',_gnarlyAutoMode:'mix'},d={id:'d',title:'New manual',artist:'Test'};
+ const queue=[a,b,c],added=enqueueManual(queue,d);
+ assert.deepEqual(added.map(x=>x.id),['a','d','b','c']);
+ const promoted=enqueueManual(added,c);
+ assert.deepEqual(promoted.map(x=>x.id),['a','d','c','b']);
+ assert.equal(promoted[2]._gnarlyAutoMode,undefined);
+ assert.equal(enqueueManual(promoted,d),promoted);
+ assert.equal(enqueueManual(queue,d,'d'),queue);
+ assert.equal(queue[2]._gnarlyAutoMode,'mix');
 });

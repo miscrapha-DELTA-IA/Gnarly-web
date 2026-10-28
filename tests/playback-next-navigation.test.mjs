@@ -16,23 +16,23 @@ test('rapid consecutive Next choices must use distinct queued songs while buffer
  current=pending[0];pending=commitPlaying(pending,current.id);
  assert.equal(current.id,second.id);
  assert.deepEqual(pending.map(x=>x.id),[third.id]);
- assert.match(app,/if\(fromQueue\)\{\s*state\.queue=commitPlaying\(state\.queue,track\.id\)/);
+ assert.match(app,/if\(fromQueue\|\|state\.queue\.some\(item=>item\.id===track\.id\)\)\{\s*state\.queue=commitPlaying\(state\.queue,track\.id\)/);
  assert.doesNotMatch(app,/pendingQueueId/);
 });
 test('stale interrupted play promise never recovers an obsolete recording',()=>{
  const block=app.slice(app.indexOf('async function play(){'),app.indexOf('function pause(){'));
  assert.match(block,/const track=state\.current,selection=playbackSelection/);
- assert.match(block,/const stillSelected=\(\)=>state\.current===track&&playbackSelection===selection&&!state\.userPaused/);
+ assert.match(block,/const stillSelected=\(\)=>state\.current===track&&playbackSelection===selection&&playbackAbort===request&&!request\.signal\.aborted&&!state\.userPaused/);
  assert.match(block,/catch\(e\)\{[\s\S]*?if\(!stillSelected\(\)\)return/);
  assert.match(block,/if\(e\?\.name==='AbortError'\)/);
- assert.match(block,/await audio\.play\(\)/);
+ assert.match(block,/await startNativePlayback\(audio,\{signal:request\.signal,timeoutMs:playbackStartTimeoutMs,unlock:\(\)=>engine\.resume\(\)\}\)/);
  assert.match(block,/if\(track\.source==='youtube'&&!isOffline\(track\.id\)\)\{await recoverNativeAudio/);
 });
 test('Next looks up an eligible smart queue candidate without stopping the current audio',()=>{
  const block=app.slice(app.indexOf('async function next(){'),app.indexOf('function prefetchNextLyrics()'));
  assert.match(block,/await maybeFillSmartQueue\(\{force:true\}\)/);
  assert.match(block,/if\(state\.current!==startingTrack\)return/);
- assert.match(block,/else toast\('Fila vazia\. Adicione outra música para avançar\.'\)/);
+ assert.match(block,/else reportQueueStatus\('Fila vazia\. Adicione outra música para avançar\.'\)/);
  assert.match(app,/nexttrack:\(\)=>\{void next\(\)\}/);
  assert.match(app,/e\.key==='MediaTrackNext'\)void next\(\)/);
 });

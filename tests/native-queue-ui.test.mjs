@@ -50,3 +50,10 @@ test('automatic queue keeps manual songs and uses the exact audio source, withou
  assert.match(css,/\.native-queue-actions\{[\s\S]*?grid-template-columns:repeat\(3/);
  assert.match(css,/\.native-queue-row\{/);
 });
+
+test('queue play control describes the current transport instead of silently skipping',()=>{
+ const active=renderSmartQueuePanel({queueCount:5,anchor:track,playing:true});
+ assert.match(active,/aria-label="Pausar reprodução"/);assert.match(active,/>Pausar<\/span>/);
+ const paused=renderSmartQueuePanel({queueCount:5,anchor:track,playing:false});
+ assert.match(paused,/aria-label="Continuar reprodução"/);assert.match(paused,/>Continuar<\/span>/);
+});
