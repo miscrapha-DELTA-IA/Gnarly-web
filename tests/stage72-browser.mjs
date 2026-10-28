@@ -784,4 +784,54 @@ assert.ok(Math.abs(afterTimeline-beforeTimeline)<1,'Playlist popover must not mo
 assert.deepEqual(saveErrors,[],'Quick playlist picker must not trigger runtime errors');
 await savePage.close();
 
+// Canva GNARLY iPod: a responsive shell using the very same audio element,
+// functioning wheel controls, persistent personal artwork and an exit path.
+const ipodPage=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+const ipodErrors=[];ipodPage.on('pageerror',e=>ipodErrors.push(e.message));
+await ipodPage.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
+assert.equal(await ipodPage.locator('#ipod-device').isVisible(),false);
+await ipodPage.locator('#player-surface-button').click();
+await ipodPage.locator('[data-player-surface="ipod"]').click();
+assert.equal(await ipodPage.locator('#ipod-device').isVisible(),true);
+assert.equal(await ipodPage.locator('#cover-button').isVisible(),false,'default player must not duplicate iPod screen');
+const bounds=await ipodPage.evaluate(()=>{
+ const caseRect=document.getElementById('ipod-device').getBoundingClientRect();
+ const screen=document.querySelector('.ipod-screen').getBoundingClientRect();
+ return {caseWidth:caseRect.width,caseHeight:caseRect.height,
+  screenWidth:screen.width,inside:screen.left>=caseRect.left&&screen.right<=caseRect.right&&screen.bottom<caseRect.bottom};
+});
+assert.ok(bounds.caseWidth>250&&bounds.caseWidth<390);
+assert.ok(bounds.caseHeight>bounds.caseWidth*1.45);
+assert.ok(bounds.inside,'artwork should appear only inside the iPod display');
+for(const id of ['ipod-menu-button','ipod-previous-button','ipod-next-button','ipod-play-button','ipod-center-button'])
+ assert.equal(await ipodPage.locator('#'+id).isVisible(),true,id);
+await ipodPage.locator('#ipod-menu-button').click();
+assert.equal(await ipodPage.locator('[data-player-surface-action="import-ipod-skin"]').count(),1);
+await ipodPage.locator('#player-surface-menu').evaluate(el=>{el.hidden=true});
+const generatedSkin=await ipodPage.evaluate(()=>{
+ const canvas=document.createElement('canvas');canvas.width=800;canvas.height=800;
+ const ctx=canvas.getContext('2d');
+ ctx.fillStyle='#d8ebd9';ctx.fillRect(0,0,800,800);
+ for(let i=0;i<700;i++){
+  ctx.fillStyle='rgb('+((i*23)%255)+','+((i*91)%255)+','+((i*47)%255)+')';
+  ctx.fillRect((i*17)%800,(i*29)%800,27,15);
+ }
+ return canvas.toDataURL('image/png').split(',')[1];
+});
+await ipodPage.locator('#ipod-skin-import').setInputFiles({
+ name:'canva-gnarly-ipod.png',mimeType:'image/png',buffer:Buffer.from(generatedSkin,'base64')
+});
+await ipodPage.waitForFunction(()=>document.querySelector('#ipod-device')?.classList.contains('has-skin'),null,{timeout:10000});
+await ipodPage.waitForTimeout(250);
+await ipodPage.reload({waitUntil:'domcontentloaded'});
+await ipodPage.waitForFunction(()=>document.querySelector('#ipod-device')?.classList.contains('has-skin'),null,{timeout:10000});
+assert.equal(await ipodPage.locator('#ipod-device').isVisible(),true,'saved iPod skin and mode survive reload');
+assert.ok(await ipodPage.locator('#ipod-shell-image').evaluate(el=>el.src.startsWith('blob:')));
+await ipodPage.locator('#ipod-menu-button').click();
+await ipodPage.locator('[data-player-surface="turbulent"]').click();
+assert.equal(await ipodPage.locator('#ipod-device').isVisible(),false,'return to original Gnarly card');
+assert.equal(await ipodPage.locator('#cover-button').isVisible(),true);
+assert.deepEqual(ipodErrors,[],'iPod mode must not introduce JavaScript exceptions');
+await ipodPage.close();
+
 await browser.close();

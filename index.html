@@ -21,6 +21,7 @@
   <link rel="stylesheet" href="./styles.css" />
   <link rel="stylesheet" href="./performance.css" />
   <link rel="stylesheet" href="./module-dock.css" />
+  <link rel="stylesheet" href="./ipod-mode.css" />
   <link rel="stylesheet" href="./karaoke-art.css" />
   <link rel="stylesheet" href="./karaoke-art-refined.css" />
   <link rel="stylesheet" href="./karaoke-stage.css" />
@@ -68,6 +69,33 @@
           </div>
           <div class="player-surface-overlay"></div>
         </div>
+        <!-- The iPod is an optional skin for the SAME GNARLY player.
+             Canva artwork fills the physical shell; the live album cover
+             fills only the display. Wheel hit areas are real buttons. -->
+        <div id="ipod-device" class="gnarly-ipod" aria-label="Reprodutor no modo iPod" hidden>
+          <div class="ipod-shell-base" aria-hidden="true"></div>
+          <img id="ipod-shell-image" class="ipod-shell-image" alt="" aria-hidden="true" hidden />
+          <div class="ipod-screen" aria-label="Tela do iPod">
+            <img id="ipod-cover-image" src="./assets/gnarly-icon.png" alt="Capa da música atual" decoding="async" />
+            <div class="ipod-screen-scrim" aria-hidden="true"></div>
+            <div class="ipod-screen-copy">
+              <span id="ipod-screen-source" class="ipod-screen-source">GNARLY · iPOD</span>
+              <strong id="ipod-screen-title">Sua música. Seu universo.</strong>
+              <small id="ipod-screen-artist">Selecione uma música para começar</small>
+              <div class="ipod-screen-time"><span id="ipod-screen-elapsed">0:00</span><span id="ipod-screen-duration">0:00</span></div>
+              <div class="ipod-screen-progress" aria-hidden="true"><span id="ipod-screen-progress"></span></div>
+            </div>
+          </div>
+          <div class="ipod-fallback-brand" aria-hidden="true">Gnarly</div>
+          <div class="ipod-wheel" role="group" aria-label="Roda de navegação iPod">
+            <button class="ipod-wheel-menu" id="ipod-menu-button" type="button" aria-label="Abrir opções do modo iPod" aria-haspopup="menu" aria-controls="player-surface-menu" aria-expanded="false"><span>MENU</span></button>
+            <button class="ipod-wheel-prev" id="ipod-previous-button" type="button" aria-label="Música anterior"><svg class="icon" aria-hidden="true"><use href="#i-prev" /></svg></button>
+            <button class="ipod-wheel-next" id="ipod-next-button" type="button" aria-label="Próxima música"><svg class="icon" aria-hidden="true"><use href="#i-next" /></svg></button>
+            <button class="ipod-wheel-play" id="ipod-play-button" type="button" aria-label="Reproduzir ou pausar"><svg class="icon" aria-hidden="true"><use href="#i-play" /></svg></button>
+            <button class="ipod-wheel-center" id="ipod-center-button" type="button" aria-label="Reproduzir ou pausar">●</button>
+          </div>
+        </div>
+        <input type="file" id="ipod-skin-import" accept="image/png,image/jpeg,image/webp" hidden aria-label="Importar arte do Canva para o iPod" />
         <div id="player-surface-menu" class="player-surface-menu" role="menu" aria-label="Aparência interna do player" hidden></div>
         <button class="cover-wrap" id="cover-button" title="Alterar o fundo / buscar uma música" aria-label="Buscar uma música">
           <img id="cover-image" src="./assets/gnarly-icon.png" alt="Capa do áudio atual" />

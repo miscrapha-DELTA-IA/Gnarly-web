@@ -6,7 +6,7 @@ const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
 test('player visual mode selection is independent of global background and display',()=>{
- assert.deepEqual(PLAYER_SURFACE_MODES,['turbulent','frosted','sharp','moving']);
+ assert.deepEqual(PLAYER_SURFACE_MODES,['turbulent','frosted','sharp','moving','ipod']);
  for(const mode of PLAYER_SURFACE_MODES)assert.equal(normalizePlayerSurfaceMode(mode),mode);
  assert.equal(normalizePlayerSurfaceMode('legacy'),'turbulent');
  assert.match(app,/playerSurfaceMode:normalizePlayerSurfaceMode/);
@@ -14,13 +14,17 @@ test('player visual mode selection is independent of global background and displ
  assert.match(app,/app\.dataset\.playerSurfaceMode/);
  assert.match(app,/backgroundMode:getSetting/);
 });
-test('popover has exactly four radio options in reference order with checked state',()=>{
+test('popover has five radio options, with an extra iPod device option in reference order with checked state',()=>{
  const output=renderPlayerSurfaceMenu('moving');
- assert.equal((output.match(/role="menuitemradio"/g)||[]).length,4);
+ assert.equal((output.match(/role="menuitemradio"/g)||[]).length,5);
  assert.equal((output.match(/aria-checked="true"/g)||[]).length,1);
  assert.ok(output.indexOf('Fosco')<output.indexOf('Nítido'));
  assert.ok(output.indexOf('Nítido')<output.indexOf('Em movimento'));
  assert.ok(output.indexOf('Em movimento')<output.indexOf('Turbulent Displacement'));
+ assert.ok(output.indexOf('Turbulent Displacement')<output.indexOf('iPod · GNARLY'));
+ assert.match(renderPlayerSurfaceMenu('ipod',{skinInstalled:true}),/Importar arte do Canva/);
+ assert.match(renderPlayerSurfaceMenu('ipod',{skinInstalled:true}),/Voltar à carcaça padrão/);
+ assert.equal((renderPlayerSurfaceMenu('ipod').match(/role="menuitemradio"/g)||[]).length,5);
  assert.match(output,/data-player-surface="moving" aria-checked="true"/);
 });
 test('appearance button replaces the side handle beside the track time; artwork still loops',()=>{
@@ -37,6 +41,7 @@ test('appearance button replaces the side handle beside the track time; artwork 
  assert.match(css,/\.player \.progress-foot\{/);
  assert.doesNotMatch(css,/position:absolute;right:14px;bottom:11px;z-index:2/);
  assert.equal(playerSurfaceShortLabel('frosted'),'FOSCO');
+ assert.equal(playerSurfaceShortLabel('ipod'),'iPOD');
  assert.match(css,/width:200%;height:100%/);
  assert.match(css,/flex:0 0 50%/);
  assert.match(css,/translate3d\(-50%,0,0\)/);
