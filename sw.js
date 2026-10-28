@@ -5,7 +5,7 @@
 const SHELL='gnarly-web-shell-20261027-v1';
 const PREFIX='gnarly-web-shell-';
 const CORE=['/','/index.html','/app.js','/styles.css','/module-dock.css',
- '/performance.css','/karaoke-art.css','/karaoke-art-refined.css',
+ '/performance.css','/ipod-mode.css','/karaoke-art.css','/karaoke-art-refined.css',
  '/karaoke-stage.css','/manifest.webmanifest','/assets/gnarly-icon.png'];
 const ROOT_STATIC=['/logo.svg','/sw.js','/offline-assets.json'];
 const STATIC_EXT=['.js','.mjs','.css','.png','.jpg','.jpeg','.webp','.svg'];
