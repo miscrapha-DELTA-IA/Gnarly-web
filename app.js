@@ -370,12 +370,30 @@ async function hydrateIPodSkin(){
   if(blob instanceof Blob&&blob.size>0)setIPodSkin(blob);
  }catch(error){console.debug('GNARLY iPod: arte local indisponível',error?.message)}
 }
+let ipodArtVersion=0;
 function updateIPodScreen(){
- const track=state.current,cover=track?.artwork||icon;
+ const track=state.current,cover=track?.backgroundArtwork||track?.artwork||icon;
  const image=$('#ipod-cover-image');
  if(image.dataset.source!==cover){
   image.dataset.source=cover;
+  const version=++ipodArtVersion;
+  image.onerror=()=>{if(version===ipodArtVersion){image.onerror=null;image.src=icon}};
   image.src=cover;
+  image.dataset.artQuality='loading';
+  if(cover!==icon){
+   const rect=image.getBoundingClientRect();
+   const dpr=Math.min(3,window.devicePixelRatio||1);
+   void resolveArtworkAsset(cover,{
+    pixels:artPixels('cover'),
+    displayWidth:Math.max(320,Math.round(rect.width||360)),
+    displayHeight:Math.max(320,Math.round(rect.height||360)),
+    dpr,minDimension:320
+   }).then(asset=>{
+    if(version!==ipodArtVersion||image.dataset.source!==cover)return;
+    applyArtworkQuality(image,asset,'cover');
+    if(asset.url&&asset.url!==cover)image.src=asset.url;
+   }).catch(()=>{ /* Keep the already-visible original cover. */ });
+  }
  }
  image.alt=track?'Capa de '+track.title:'Capa GNARLY';
  $('#ipod-screen-title').textContent=track?.title||'Sua música. Seu universo.';
@@ -398,7 +416,7 @@ function updatePlayer(){
   if(cover!==icon)void resolveArtworkAsset(cover,{...artworkViewport('cover'),minDimension:260}).then(asset=>{
    if(version===coverArtVersion&&lastCoverArt===coverKey){
     applyArtworkQuality(image,asset,'cover');
-    if(asset.url!==cover&&asset.url){image.src=asset.url;$('#ipod-cover-image').src=asset.url}
+    if(asset.url!==cover&&asset.url)image.src=asset.url
    }
   });
  }
