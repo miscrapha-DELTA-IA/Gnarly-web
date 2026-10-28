@@ -130,7 +130,7 @@ test('headphone transport does not change the existing native playback source wh
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(app,/configureBrowserAudioSession\(\{navigatorObject:navigator/);
  assert.match(app,/recording:!!\(karaokeStage\.mic\.active\|\|state\.micStream\)/);
- assert.match(app,/nexttrack:\(\)=>\{if\(state\.queue\.length\)next\(\)\}/);
+ assert.match(app,/nexttrack:\(\)=>\{void next\(\)\}/);
  assert.match(app,/previoustrack:\(\)=>\{if\(state\.current\)previous\(\)\}/);
  assert.doesNotMatch(app,/visibilitychange[^\n]*pause\(\)/);
 });
