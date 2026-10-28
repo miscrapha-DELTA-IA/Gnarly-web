@@ -34,6 +34,7 @@ import {renderMusicPanel,mixerValue} from './ui/music-panel.js';
 import {createDisplayStore,renderDisplayPanel} from './ui/display-panel.js';
 import {deviceLayout,themeAccent,attachEyeGestures,OFFICIAL_SUPPORT_URL} from './lib/responsive-shell.js';
 import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel} from './ui/player-surface.js';
+import {createIPodSkinStore,validateIPodSkinDimensions,ipodSourceLabel} from './ui/ipod-mode.js';
 import {artworkBudget,artworkCandidates,resolveArtworkAsset} from './lib/artwork-quality.js';
 import {requestVerifiedAlbumArtwork} from './lib/album-artwork-client.js';
 import {createFullscreenController} from './lib/fullscreen-controller.js';
@@ -49,6 +50,8 @@ function midiView(){return {...pads.snapshot(),intelligence:{...midiAnalysis.har
 const audioDelivery=new AudioDeliveryRecovery();
 const queueAudioWarmup=new QueueAudioWarmup();
 const offlineLibrary=createOfflineLibrary();
+const ipodSkinStore=createIPodSkinStore();
+let ipodSkinURL=null;
 const offlineURLs=new Map(); // Persistent track IDs mapped to live blob URLs.
 const offlinePending=new Set();
 let offlineLoaded=false,offlineStatus='Preparando biblioteca offline…';
@@ -352,6 +355,37 @@ function reportAudioError(text){
 function reportAudioStatus(text){
  const status=$('#player-status');if(status){status.textContent=text;status.hidden=!text;}
 }
+function setIPodSkin(blob){
+ if(ipodSkinURL){URL.revokeObjectURL(ipodSkinURL);ipodSkinURL=null}
+ const el=$('#ipod-shell-image'),device=$('#ipod-device');
+ ipodSkinURL=blob?URL.createObjectURL(blob):null;
+ el.hidden=!ipodSkinURL;
+ if(ipodSkinURL)el.src=ipodSkinURL;
+ else el.removeAttribute('src');
+ device.classList.toggle('has-skin',!!ipodSkinURL);
+}
+async function hydrateIPodSkin(){
+ try{
+  const blob=await ipodSkinStore.get();
+  if(blob instanceof Blob&&blob.size>0)setIPodSkin(blob);
+ }catch(error){console.debug('GNARLY iPod: arte local indisponível',error?.message)}
+}
+function updateIPodScreen(){
+ const track=state.current,cover=track?.artwork||icon;
+ const image=$('#ipod-cover-image');
+ if(image.dataset.source!==cover){
+  image.dataset.source=cover;
+  image.src=cover;
+ }
+ image.alt=track?'Capa de '+track.title:'Capa GNARLY';
+ $('#ipod-screen-title').textContent=track?.title||'Sua música. Seu universo.';
+ $('#ipod-screen-artist').textContent=track?displayArtist(track):'Selecione uma música';
+ $('#ipod-screen-source').textContent=ipodSourceLabel(state.playing);
+ const label=state.playing?'Pausar':'Reproduzir';
+ $('#ipod-play-button').setAttribute('aria-label',label);
+ $('#ipod-center-button').setAttribute('aria-label',label);
+ $('#ipod-next-button').disabled=!state.queue.length;
+}
 function updatePlayer(){
  const track=state.current;
  $('#track-title').textContent=track?.title||'Sua música. Seu universo.';
@@ -364,11 +398,12 @@ function updatePlayer(){
   if(cover!==icon)void resolveArtworkAsset(cover,{...artworkViewport('cover'),minDimension:260}).then(asset=>{
    if(version===coverArtVersion&&lastCoverArt===coverKey){
     applyArtworkQuality(image,asset,'cover');
-    if(asset.url!==cover&&asset.url)image.src=asset.url;
+    if(asset.url!==cover&&asset.url){image.src=asset.url;$('#ipod-cover-image').src=asset.url}
    }
   });
  }
  updatePlayerSurfaceArtwork();
+ updateIPodScreen();
  $('#cover-play-overlay').textContent=track?'Fundo da capa':'Escolher música';
  $('#cover-button').setAttribute('aria-label',track?'Configurar fundo a partir da capa':'Abrir busca de músicas');
  applyBackground();
@@ -382,7 +417,7 @@ function updatePlayer(){
  updateBadges(); updateProgress();
  syncSystemPlayback(true);
 }
-function updateProgress(){const d=audio.duration||0,t=audio.currentTime||0,p=d?Math.min(1000,1000*t/d):0;const slider=$('#seek-slider');slider.value=String(p);slider.style.setProperty('--progress',`${p/10}%`);$('#elapsed-label').textContent=fmt(t);if(state.current?.source!=='preview')$('#duration-label').textContent=fmt(d||state.current?.duration||0);externalMedia.position({track:state.current})}
+function updateProgress(){const d=audio.duration||0,t=audio.currentTime||0,p=d?Math.min(1000,1000*t/d):0;const slider=$('#seek-slider');slider.value=String(p);slider.style.setProperty('--progress',`${p/10}%`);$('#elapsed-label').textContent=fmt(t);if(state.current?.source!=='preview')$('#duration-label').textContent=fmt(d||state.current?.duration||0);$('#ipod-screen-elapsed').textContent=fmt(t);$('#ipod-screen-duration').textContent=fmt(d||state.current?.duration||0);$('#ipod-screen-progress').style.width=(p/10)+'%';externalMedia.position({track:state.current})}
 // Internal artwork uses a separate layer, never the app's backgroundMode.
 // Repeating two identical tiles produces a cyclic lateral loop with no reset jump.
 function safeSurfaceArtwork(raw){
@@ -412,20 +447,23 @@ function closePlayerSurfaceMenu(restoreFocus=false){
  const wasOpen=!menu.hidden;
  menu.hidden=true;
  $('#player-surface-button').setAttribute('aria-expanded','false');
+ $('#ipod-menu-button').setAttribute('aria-expanded','false');
  if(restoreFocus&&wasOpen)$('#player-surface-button').focus();
 }
 function openPlayerSurfaceMenu(){
  if(state.sheet)closeSheet();
  const menu=$('#player-surface-menu');
- menu.innerHTML=renderPlayerSurfaceMenu(state.playerSurfaceMode);
+ menu.innerHTML=renderPlayerSurfaceMenu(state.playerSurfaceMode,{skinInstalled:!!ipodSkinURL});
  menu.hidden=false;
  $('#player-surface-button').setAttribute('aria-expanded','true');
+ $('#ipod-menu-button').setAttribute('aria-expanded','true');
  menu.querySelector('[aria-checked="true"]')?.focus();
 }
 function applyPlayerSurfaceMode(next,{persist=true}={}){
  const mode=normalizePlayerSurfaceMode(next);
  state.playerSurfaceMode=mode;
  app.dataset.playerSurfaceMode=mode;
+ $('#ipod-device').hidden=mode!=='ipod';
  $('#player-surface-label').textContent=playerSurfaceShortLabel(mode);
  if(persist)setSetting('playerSurfaceMode',mode);
  updatePlayerSurfaceArtwork();
