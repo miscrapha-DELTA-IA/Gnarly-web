@@ -40,8 +40,10 @@ test('iPod is opt-in, never replaces turbulent or visual modes',()=>{
  assert.equal(normalizePlayerSurfaceMode('ipod'),'ipod');
  assert.equal(normalizePlayerSurfaceMode('invalid'),'turbulent');
  assert.equal((renderPlayerSurfaceMenu('ipod').match(/role="menuitemradio"/g)||[]).length,5);
- assert.match(renderPlayerSurfaceMenu('ipod'),/Importar arte do Canva/);
- assert.doesNotMatch(renderPlayerSurfaceMenu('frosted'),/Importar arte do Canva/);
+ assert.doesNotMatch(renderPlayerSurfaceMenu('ipod'),/Importar arte do Canva|import-ipod-skin/);
+ assert.doesNotMatch(renderPlayerSurfaceMenu('frosted'),/Importar arte do Canva|import-ipod-skin/);
+ assert.match(renderPlayerSurfaceMenu('ipod',{skinInstalled:true}),/reset-ipod-skin/);
+ assert.doesNotMatch(app,/ipod-skin-import|import-ipod-skin/);
  assert.match(app,/app\.dataset\.playerSurfaceMode=mode/);
  assert.match(app,/setSetting\('playerSurfaceMode',mode\)/);
  assert.match(app,/state\.backgroundMode/);
@@ -67,7 +69,7 @@ test('reject huge, empty and non-image uploads',()=>{
 test('screen and functional wheel belong to one existing audio player',()=>{
  for(const id of ['ipod-device','ipod-cover-image','ipod-screen-title','ipod-screen-artist',
   'ipod-screen-progress','ipod-menu-button','ipod-previous-button','ipod-next-button',
-  'ipod-play-button','ipod-center-button','ipod-skin-import']){
+  'ipod-play-button','ipod-center-button']){
   assert.match(html,new RegExp('id="'+id+'"'),id);
  }
  assert.match(app,/\['ipod-play-button','ipod-center-button'\]/);
@@ -75,7 +77,7 @@ test('screen and functional wheel belong to one existing audio player',()=>{
  assert.match(app,/addEventListener\('click',\(\)=>void next\(\)\)/);
  assert.match(app,/state\.playing\?pause\(\):void play\(\)/);
  assert.match(app,/updateIPodScreen\(\)/);
- assert.match(app,/updateProgress\(\)/);
+ assert.match(app,/updateProgress\(\)/);\n assert.doesNotMatch(html,/id="ipod-skin-import"/);
  assert.doesNotMatch(app,/new Audio\(.*ipod/i);
 });
 test('live cover fills only screen, and shell responds to selected GNARLY palette',()=>{
