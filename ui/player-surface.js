@@ -1,22 +1,27 @@
 /** Stage 72 — card-only player surfaces; independent of global themes and backgrounds. */
-export const PLAYER_SURFACE_MODES=Object.freeze(['turbulent','frosted','sharp','moving']);
+export const PLAYER_SURFACE_MODES=Object.freeze(['turbulent','frosted','sharp','moving','ipod']);
 const OPTIONS=Object.freeze([
   ['frosted','Fosco','◌'],
   ['sharp','Nítido','▧'],
   ['moving','Em movimento','↔'],
-  ['turbulent','Turbulent Displacement','◈']
+  ['turbulent','Turbulent Displacement','◈'],
+  ['ipod','iPod · GNARLY','♫']
 ]);
 export function normalizePlayerSurfaceMode(value){
   return PLAYER_SURFACE_MODES.includes(value)?value:'turbulent';
 }
 export function playerSurfaceShortLabel(value){
-  return {turbulent:'TURBULENT',frosted:'FOSCO',sharp:'NÍTIDO',moving:'MOVIMENTO'}[normalizePlayerSurfaceMode(value)];
+  return {turbulent:'TURBULENT',frosted:'FOSCO',sharp:'NÍTIDO',moving:'MOVIMENTO',ipod:'iPOD'}[normalizePlayerSurfaceMode(value)];
 }
-export function renderPlayerSurfaceMenu(selected){
+export function renderPlayerSurfaceMenu(selected,{skinInstalled=false}={}){
   const mode=normalizePlayerSurfaceMode(selected);
-  return OPTIONS.map(([id,label,glyph])=>
+  const base=OPTIONS.map(([id,label,glyph])=>
     `<button type="button" class="player-surface-option ${id===mode?'selected':''}" role="menuitemradio" data-player-surface="${id}" aria-checked="${String(id===mode)}"><span>${label}</span><span class="surface-option-glyph" aria-hidden="true">${mode===id?'✓':glyph}</span></button>`
   ).join('');
+  if(mode!=='ipod')return base;
+  return base+
+    '<button type="button" class="player-surface-option ipod-skin-option" role="menuitem" data-player-surface-action="import-ipod-skin"><span>Importar arte do Canva</span><span class="surface-option-glyph" aria-hidden="true">＋</span></button>'+
+    (skinInstalled?'<button type="button" class="player-surface-option ipod-skin-option" role="menuitem" data-player-surface-action="reset-ipod-skin"><span>Voltar à carcaça padrão</span><span class="surface-option-glyph" aria-hidden="true">↺</span></button>':'');
 }
 
 /** Upgrade only recognized Apple Music artwork URLs to an actually available
