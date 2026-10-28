@@ -45,6 +45,9 @@ export class KaraokeRoom {
   if(state.role==='mic'){
    const host=getPeer(this.ctx,'host');
    if(value?.type==='mic-on'||value?.type==='mic-off'){
+    // A user may turn the phone microphone off/on within the same room.
+    // Reset replay state for the new capture generation without reopening WS.
+    if(value.type==='mic-on')ws.serializeAttachment({...state,lastSeq:-1,lastAt:0});
     send(host,{type:value.type});return;
    }
    if(value?.type==='frame'){
