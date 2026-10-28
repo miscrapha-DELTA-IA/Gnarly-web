@@ -18,7 +18,7 @@ Immediate visual preview is isolated from concurrent native `timeupdate`. Actual
 
 ## Text cleanup
 
-Hardware Studio labels and descriptions are shorter: “Meus estilos”, “Restaurar”, “Renomear” and concise material/pattern copy. Music uses “Velocidade e tom” and “Mixagem”. Compatibility guidance and separation-engine details remain available in native disclosures; consent, quota and AI limitations remain accessible. The karaoke explanation is under “Sobre as letras”; AI upload consent stays visible and unchanged. Functionality and data attributes remain intact. The two old music-label assertions were updated to their intentionally changed labels, without removing their controls/preset/layout checks.
+Hardware Studio labels and descriptions are shorter: “Meus estilos”, “Restaurar”, “Renomear” and concise material/pattern copy. Music uses “Velocidade e tom” and “Mixagem”. Compatibility guidance and separation-engine details remain available in native disclosures; consent, quota and AI limitations remain accessible. The karaoke explanation is under “Sobre as letras”; AI upload consent stays visible and unchanged. Functionality and data attributes remain intact. The old Hardware Studio browser DPR assertion was updated to the full-bleed contract already established by main commits `cfbf5c7`/`284d856`: it now verifies loaded artwork covers the glass in both dimensions at DPR 3, with correct alignment. The two old music-label assertions were updated to their intentionally changed labels, without removing their controls/preset/layout checks.
 
 ## Verification
 
