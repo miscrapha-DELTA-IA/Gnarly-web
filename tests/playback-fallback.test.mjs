@@ -26,7 +26,7 @@ test('YouTube is a visible GNARLY page section, NOT hidden audio or a blocking p
  assert.match(html,/iframe id="youtube-player-frame"/);
  assert.doesNotMatch(html,/id="playback-official-fallback"/);
  assert.match(css,/\.youtube-modal\.official-inline \.youtube-frame-wrap\{[\s\S]*?min-height:200px/);
- assert.match(css,/\.youtube-modal\.official-inline \[hidden\]/);
+ assert.match(css,/\.youtube-modal\.official-inline\[hidden\]/);
  assert.match(css,/\.youtube-official-footer/);
 });
 test('auto-switch after confirmed upstream rate limit, native R2 still first choice',()=>{
