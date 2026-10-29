@@ -29,14 +29,18 @@ test('YouTube is a visible GNARLY page section, NOT hidden audio or a blocking p
  const html=source('index.html'),css=source('styles.css');
  const player=html.indexOf('id="player-section"'),official=html.indexOf('id="youtube-player-dialog"');
  const search=html.indexOf('id="omnibox-shell"');
- assert.ok(player>=0&&official>player&&search>official);
+ const cover=html.indexOf('id="cover-button"');
+ assert.ok(player>=0&&official>player&&official<cover&&search>cover,'official source must be inside the GNARLY player');
+ assert.match(html,/<section id="youtube-player-dialog"[\s\S]*?<\/section>[\s\S]*?<button class="cover-wrap"/);
  assert.match(html,/<section id="youtube-player-dialog" class="youtube-modal official-inline"/);
- assert.match(html,/role="region" aria-label="Reprodução oficial do YouTube"/);
+ assert.match(html,/role="region" aria-label="Reprodução oficial integrada ao GNARLY"/);
  assert.match(html,/iframe id="youtube-player-frame"/);
  assert.doesNotMatch(html,/id="playback-official-fallback"/);
  assert.match(css,/\.youtube-modal\.official-inline \.youtube-frame-wrap\{[\s\S]*?min-height:200px/);
  assert.match(css,/\.youtube-modal\.official-inline\[hidden\]/);
  assert.match(css,/\.youtube-official-footer/);
+ assert.match(css,/\[data-audio-provider="youtube-official"\] #player-section > :not\(#youtube-player-dialog\)\{display:none!important\}/);
+ for(const id of ['youtube-native-retry','youtube-next','youtube-previous','youtube-track-art'])assert.match(html,new RegExp('id="'+id+'"'));
 });
 test('auto-switch after confirmed upstream rate limit, native R2 still first choice',()=>{
  const app=source('app.js');
@@ -59,7 +63,18 @@ test('official playback retains original YouTube controls and marks sound as sep
  assert.match(app,/iframe-player|player-oficial|YOUTUBE · PLAYER OFICIAL|YOUTUBE · OFICIAL/);
  assert.match(css,/\[data-audio-provider="youtube-official"\] #seek-slider\{pointer-events:none/);
  assert.match(source('lib/official-playback.js'),/autoplay=0/);
- assert.match(source('index.html'),/FONTE OFICIAL · YOUTUBE/);
+ assert.match(source('index.html'),/GNARLY · FONTE OFICIAL YOUTUBE/);
+});
+test('returning from official source checks only first-party cached HEAD, and keeps music effects honest',()=>{
+ const app=source('app.js'),panel=source('ui/music-panel.js');
+ assert.match(app,/method:'HEAD',credentials:'omit',cache:'no-store'/);
+ assert.match(app,/X-Gnarly-Playback-Source'\)==='r2-edge'/);
+ assert.match(app,/audio.removeAttribute\('src'\);audioDelivery.select\(track\)/);
+ assert.match(app,/official=state.audioState==='official'/);
+ assert.match(app,/beat:0,energy:envelope/);
+ assert.match(panel,/officialPlayback/);
+ assert.match(panel,/officialNotice/);
+ assert.match(panel,/Stems, velocidade, reverb e baixo exigem áudio nativo/);
 });
 test('iPod MENU keeps access to the official provider while preserving customization',()=>{
  const normal=renderPlayerSurfaceMenu('ipod');
