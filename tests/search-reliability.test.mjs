@@ -105,3 +105,33 @@ test('obsolete browser searches cancel the actual edge-to-provider request',asyn
   });
  }
 });
+
+test('429 from search proxy is passed through without being cached as success',async()=>{
+ let calls=0;
+ await edgeCase('/api/omnibox?term=limited',async()=>{
+  calls++;
+  return new Response('origin limited',{status:429,headers:{'Retry-After':'45'}});
+ },async({request,entries})=>{
+  const blocked=await request();
+  assert.equal(blocked.status,429);
+  assert.equal(blocked.headers.get('Retry-After'),'45');
+  assert.equal((await blocked.json()).status,'upstream_rate_limited');
+  assert.equal(entries.size,0);
+  assert.equal(calls,1);
+ });
+});
+test('browser backs off after explicit search 429 while retaining prior successful metadata',async()=>{
+ let calls=0;
+ const live='gnarly-fixture-'+Date.now();
+ await withFetch(async()=>{calls++;return Response.json({results:[{id:'youtube:ABCDEFGHIJK',source:'youtube',videoId:'ABCDEFGHIJK',title:'Fixture'}],status:'ok'})},async()=>{
+  assert.equal((await searchNativeBackend(live,{limit:9})).length,1);
+  assert.equal((await searchNativeBackend(live,{limit:9})).length,1);
+  assert.equal(calls,1,'positive metadata is reused instead of asking Render again');
+ });
+ await withFetch(async()=>{calls++;return new Response('rate limit',{status:429,headers:{'Retry-After':'30'}})},async()=>{
+  await assert.rejects(searchNativeBackend(live+'-other'),/429/);
+  await assert.rejects(searchNativeBackend(live+'-yet-another'),/rate limited/);
+  assert.equal(calls,2,'backoff prevents a repeated provider storm');
+  assert.equal((await searchNativeBackend(live,{limit:9})).length,1,'cached metadata remains usable during cooldown');
+ });
+});
