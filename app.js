@@ -8,6 +8,7 @@ import {instantSearch,personalizedRank} from './lib/live-search.js';
 import {discoveryQueries,mixDiscoveryFeed} from './lib/search-discovery.js';
 import {MUSIC_PRESETS,musicalPreset} from './lib/music-presets.js';
 import {autoLyrics,cachedAutoLyrics,prefetchAutoLyrics} from './lib/lyrics-auto.js';
+import {LyricSyncWorkshop,serializeManualLRC} from './lib/lyric-sync-workshop.js';
 import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
 import {trackAudioURL,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
 import {AudioDeliveryRecovery,PlaybackCooldown,inspectPlaybackLimit,playbackLimitMessage} from './lib/audio-delivery.js';
@@ -641,9 +642,27 @@ async function loadArtworkHue(track){if(!track?.artwork||track.artwork===icon){s
  }catch{/* third-party artwork might be CORS protected; deterministic fallback */}}
 let lyricsAIAutoSession=false;
 const lyricsAIOnce=new Set();
+const lyricWorkshop=new LyricSyncWorkshop({storage:localStorage});
+function applyLyricResult(result){
+ state.lyrics=result.lines||[];state.plainLyrics=result.plainLines||[];
+ state.lyricsSource=result.source||null;state.lyricsSynced=!!result.synced;
+ state.lyricsInstrumental=!!result.instrumental;
+ state.lyricsStatus=result.status||'Letras disponíveis';
+ state.lastLyric=-2;syncLyrics();
+ if(state.sheet==='karaoke')renderSheet();
+}
+function finishWorkshop(){
+ const result=lyricWorkshop.finish(state.current);
+ if(!result)return false;
+ state.lyricsAbort?.abort();lyricsAIController?.abort();
+ applyLyricResult(result);
+ toast('Sincronização salva neste dispositivo.');
+ return true;
+}
 async function loadAutoLyrics(track){
  state.lyricsAbort?.abort();const ac=new AbortController();state.lyricsAbort=ac;
- const immediate=cachedAutoLyrics(track);
+ const manual=lyricWorkshop.load(track);
+ const immediate=manual||cachedAutoLyrics(track);
  state.lyrics=immediate?.lines||[];state.plainLyrics=immediate?.plainLines||[];
  state.lyricsSource=immediate?.source||null;state.lyricsSynced=!!immediate?.synced;state.lyricsInstrumental=!!immediate?.instrumental;
  state.lyricsLoading=!immediate;state.lastLyric=-2;
@@ -653,7 +672,8 @@ async function loadAutoLyrics(track){
  if(immediate)return;
  try{
   const found=await autoLyrics(track,{signal:ac.signal});
-  if(ac.signal.aborted||state.current!==track)return;
+  if(ac.signal.aborted||state.current!==track||
+    state.lyricsSource==='manual'||state.lyricsSource==='tap-sync')return;
   state.lyrics=found.lines||[];state.plainLyrics=found.plainLines||[];
   state.lyricsSource=found.source;state.lyricsSynced=!!found.synced;state.lyricsInstrumental=!!found.instrumental;
   state.lyricsStatus=found.status;state.lastLyric=-2;
@@ -663,7 +683,8 @@ async function loadAutoLyrics(track){
  }finally{
   if(state.lyricsAbort===ac&&!ac.signal.aborted&&state.current===track){
    state.lyricsLoading=false;syncLyrics();if(state.sheet==='karaoke')renderSheet();
-   if(lyricsAIAutoSession&&track.source==='local'&&track.file&&!state.lyrics.length&&!state.plainLyrics.length&&!state.lyricsAIWorking&&!lyricsAIOnce.has(track.id)&&!state.lyricsStatus.includes('limitou')&&!state.lyricsInstrumental){
+   if(lyricsAIAutoSession&&track.source==='local'&&track.file&&!state.lyricsSynced&&
+    !state.lyricsAIWorking&&!lyricsAIOnce.has(track.id)&&!state.lyricsInstrumental){
     lyricsAIOnce.add(track.id);void transcribeOwnLyrics(track.file);
    }
   }
@@ -671,7 +692,7 @@ async function loadAutoLyrics(track){
 }
 let lyricsAIController=null;
 async function transcribeOwnLyrics(file){
- const track=state.current;if(!track||!file)return;
+ const track=state.current,selection=playbackSelection;if(!track||!file)return;
  if(!/^audio\//.test(file.type)&&!/\.(mp3|m4a|wav|ogg|flac|aac)$/i.test(file.name)){toast('Selecione um arquivo de áudio válido.');return}
  if(file.size>9*1024*1024){toast('Para transcrição, o áudio deve ter até 9 MB.');return}
  lyricsAIController?.abort();const ctl=new AbortController();lyricsAIController=ctl;
@@ -684,15 +705,16 @@ async function transcribeOwnLyrics(file){
    body:file,signal:ctl.signal
   });
   const response=await r.json();
-  if(state.current!==track)return;
+  if(ctl.signal.aborted||state.current!==track||playbackSelection!==selection||
+   state.lyricsSource==='manual'||state.lyricsSource==='tap-sync')return;
   if(!r.ok){state.lyricsStatus=response.error||'IA temporariamente indisponível.';return}
-  if(!response.lines?.length&&!response.plainLines?.length){
-   state.lyricsStatus=response.status||'Não foi possível reconhecer letras.';return;
-  }
-  state.lyrics=(response.lines||[]).slice(0,220);state.plainLyrics=(response.plainLines||[]).slice(0,240);
-  state.lyricsSource='whisper-ai';state.lyricsSynced=!!response.synced;
-  state.lyricsStatus=response.status||'Transcrição por IA · verifique a letra.';
-  state.lastLyric=-2;syncLyrics();
+  if(response.synced&&Array.isArray(response.lines)&&response.lines.length>=2){
+   applyLyricResult({...response,source:'whisper-ai',synced:true,
+    lines:response.lines.slice(0,220),
+    plainLines:(response.plainLines?.length?response.plainLines:response.lines.map(x=>x.text)).slice(0,240)});
+  }else if(!state.plainLyrics.length&&response.plainLines?.length){
+   applyLyricResult({...response,lines:[],plainLines:response.plainLines.slice(0,240),synced:false});
+  }else state.lyricsStatus='A IA não obteve tempos confiáveis; letra anterior preservada.';
  }catch{if(state.current===track)state.lyricsStatus='Sem conexão com o serviço de transcrição.'}
  finally{if(lyricsAIController===ctl){lyricsAIController=null;state.lyricsAIWorking=false;if(state.current===track&&state.sheet==='karaoke')renderSheet()}}
 }
@@ -816,6 +838,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
  // recording in the upcoming tail and replay it on the very next transition.
  state.queue=state.queue.filter(item=>!sameRecording(item,track));
  if(isGenericArtist(track.artist))track.artist=displayArtist(track);
+ lyricWorkshop.clear();
  audioDelivery.select(track);recoveryOperation=null;state.userPaused=false;
  state.demucsAbort?.abort();metadataAbort?.abort();invalidateMidiAnalysis();lyricsAIController?.abort();state.lyricsAIWorking=false;pads.resetSong();stems.clear();state.stemModel='';state.stemStatus='Escolha quatro Stems ou solicite separação automática.';
  closeYouTubePlayer();audio.pause();state.playing=false;state.current=track;
