@@ -13,7 +13,7 @@ export function normalizePlayerSurfaceMode(value){
 export function playerSurfaceShortLabel(value){
   return {turbulent:'TURBULENT',frosted:'FOSCO',sharp:'NÍTIDO',moving:'MOVIMENTO',ipod:'iPOD'}[normalizePlayerSurfaceMode(value)];
 }
-export function renderPlayerSurfaceMenu(selected,{skinInstalled=false}={}){
+export function renderPlayerSurfaceMenu(selected,{skinInstalled=false,upstreamLimited=false}={}){
   const mode=normalizePlayerSurfaceMode(selected);
   const base=OPTIONS.map(([id,label,glyph])=>
     `<button type="button" class="player-surface-option ${id===mode?'selected':''}" role="menuitemradio" data-player-surface="${id}" aria-checked="${String(id===mode)}"><span>${label}</span><span class="surface-option-glyph" aria-hidden="true">${mode===id?'✓':glyph}</span></button>`
@@ -21,7 +21,8 @@ export function renderPlayerSurfaceMenu(selected,{skinInstalled=false}={}){
   if(mode!=='ipod')return base;
   // Native appearance editing never imports arbitrary art or touches audio.
   const editor='<button type="button" class="player-surface-option ipod-customize-option" role="menuitem" data-player-surface-action="customize-ipod"><span>Personalizar iPod</span><span class="surface-option-glyph" aria-hidden="true">✧</span></button>';
-  return base+editor+(skinInstalled?'<button type="button" class="player-surface-option ipod-skin-option" role="menuitem" data-player-surface-action="reset-ipod-skin"><span>Voltar à carcaça padrão</span><span class="surface-option-glyph" aria-hidden="true">↺</span></button>':'');
+  const official=upstreamLimited?'<button type="button" class="player-surface-option" role="menuitem" data-player-surface-action="official-player"><span>Ouvir no YouTube</span><span class="surface-option-glyph" aria-hidden="true">↗</span></button>':'';
+  return base+official+editor+(skinInstalled?'<button type="button" class="player-surface-option ipod-skin-option" role="menuitem" data-player-surface-action="reset-ipod-skin"><span>Voltar à carcaça padrão</span><span class="surface-option-glyph" aria-hidden="true">↺</span></button>':'');
 }
 
 /** Upgrade only recognized Apple Music artwork URLs to an actually available
