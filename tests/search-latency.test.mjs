@@ -80,8 +80,8 @@ test('search results are merged across providers with incremental DOM retention'
 test('edge functions expose bounded fetch deadlines and cache public metadata only',()=>{
  const omni=readFileSync(new URL('../functions/api/omnibox.js',import.meta.url),'utf8');
  const apple=readFileSync(new URL('../functions/api/catalog.js',import.meta.url),'utf8');
- assert.match(omni,/signal:AbortSignal\.timeout\(7300\)/);
+ assert.match(omni,/signal:AbortSignal\.any\(\[request\.signal,AbortSignal\.timeout\(7300\)\]\)/);
  assert.match(omni,/if\(results\.length&&edgeCache&&cacheKey/);
- assert.match(apple,/signal:AbortSignal\.timeout\(6300\)/);
+ assert.match(apple,/signal:AbortSignal\.any\(\[request\.signal,AbortSignal\.timeout\(6300\)\]\)/);
  assert.match(apple,/if\(results\.length&&edgeCache&&cacheKey/);
 });

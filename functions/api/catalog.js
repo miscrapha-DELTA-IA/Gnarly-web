@@ -15,7 +15,7 @@ export async function onRequestGet({request,context,waitUntil}) {
     apple.searchParams.set('term',term);
     apple.searchParams.set('media','music');apple.searchParams.set('entity','song');apple.searchParams.set('limit',String(limit));
     if(offset)apple.searchParams.set('offset',String(offset));
-    const res=await fetch(apple,{headers:{'accept':'application/json'},signal:AbortSignal.timeout(6300),cf:{cacheEverything:true,cacheTtlByStatus:{'200-299':120,'400-599':-1}}});
+    const res=await fetch(apple,{headers:{'accept':'application/json'},signal:AbortSignal.any([request.signal,AbortSignal.timeout(6300)]),cf:{cacheEverything:true,cacheTtlByStatus:{'200-299':120,'400-599':-1}}});
     if(!res.ok)throw Error('Apple catalog returned '+res.status);
     const data=await res.json();
     const results=(data.results||[]).filter(x=>x.wrapperType==='track'&&x.previewUrl).map(x=>({trackId:x.trackId,trackName:x.trackName,artistName:x.artistName,collectionName:x.collectionName,artworkUrl100:x.artworkUrl100,previewUrl:x.previewUrl,trackTimeMillis:x.trackTimeMillis}));

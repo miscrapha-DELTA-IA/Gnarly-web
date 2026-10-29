@@ -89,3 +89,19 @@ test('empty search responses are not persisted as a catalogue outage',async()=>{
   await Promise.all(jobs);assert.equal(entries.size,0);
  });
 });
+test('obsolete browser searches cancel the actual edge-to-provider request',async()=>{
+ for(const kind of ['catalog','omnibox']){
+  const controller=new AbortController();let upstream;
+  await withFetch(async(_url,{signal})=>{
+   upstream=signal;
+   return new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(new DOMException('Aborted','AbortError')),{once:true}));
+  },async()=>{
+   const pending=worker.fetch(new Request('https://gnarly.test/api/'+kind+'?term=obsolete',{signal:controller.signal}),{}, {waitUntil:()=>{}});
+   assert.ok(upstream&&!upstream.aborted);
+   controller.abort();
+   const canceled=await pending;
+   assert.equal(upstream.aborted,true);
+   assert.equal(canceled.headers.get('cache-control'),'no-store');
+  });
+ }
+});

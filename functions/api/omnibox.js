@@ -24,7 +24,7 @@ export async function onRequestGet({request,env,context,waitUntil}){const q=new 
  api.searchParams.set('offset',String(offset));api.searchParams.set('limit',String(limit));
  try{
   const response=await fetch(api,{headers:{accept:'application/x-ndjson'},
-   signal:AbortSignal.timeout(7300),cf:{cacheEverything:true,cacheTtlByStatus:{'200-299':90,'400-599':-1}}});
+   signal:AbortSignal.any([request.signal,AbortSignal.timeout(7300)]),cf:{cacheEverything:true,cacheTtlByStatus:{'200-299':90,'400-599':-1}}});
   if(!response.ok)throw Error('native search unavailable');
   const raw=await response.text();
   if(raw.length>100000)throw Error('oversized');
