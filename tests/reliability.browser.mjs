@@ -11,6 +11,19 @@ const count=new Map(),cases=[],errors=[],mediaRequests=[];
 let failedRecovered=false,emptyRecovered=false,releaseOld=null,releaseSubmit=null,oldStartedResolve,submitStartedResolve;
 const oldStarted=new Promise(resolve=>oldStartedResolve=resolve);
 const submitStarted=new Promise(resolve=>submitStartedResolve=resolve);
+let releasePagingApple,releasePagingNative;
+const pagingApple=new Promise(resolve=>releasePagingApple=resolve);
+const pagingNative=new Promise(resolve=>releasePagingNative=resolve);
+const nativePage=(start,size)=>Array.from({length:size},(_,i)=>{
+ const index=start+i,videoId='NN'+String(index).padStart(9,'0');
+ return{id:'youtube:'+videoId,videoId,source:'youtube',artist:'GNARLY Reliability',duration:30,
+  title:index<20?'Native paging first '+index:'Retained native page two '+index};
+});
+const previewPage=(start,size)=>Array.from({length:size},(_,i)=>{
+ const index=start+i;return{trackId:7000+index,artistName:'GNARLY Reliability',
+  trackName:index<22?'Preview paging first '+index:'Retained preview page two '+index,
+  previewUrl:origin+'/fixture-preview.wav',trackTimeMillis:180000};
+});
 const track=(suffix,title)=>({id:'youtube:'+('Q'.repeat(10)+suffix),videoId:'Q'.repeat(10)+suffix,
  title,artist:'GNARLY Reliability',source:'youtube',duration:30,album:'Original browser fixtures'});
 const preview={trackId:6001,trackName:'Authorized preview fixture',artistName:'GNARLY Reliability',
@@ -41,6 +54,14 @@ try{
    if(term==='old delayed test'&&native){oldStartedResolve();await new Promise(resolve=>releaseOld=resolve);return json({results:[track('C','Obsolete old search')]})}
    if(term==='latest search test')return json({results:native?[track('D','Latest full song')]:[]});
    if(term==='submit once test'){if(native){submitStartedResolve();await new Promise(resolve=>releaseSubmit=resolve)}return json({results:native?[track('E','Single submitted song')]:[]})}
+   if(term==='native paging delayed apple'){
+    if(!native){await pagingApple;return json({results:[]})}
+    return json({results:Number(url.searchParams.get('offset'))===20?nativePage(20,3):nativePage(0,20)});
+   }
+   if(term==='vsprunique782'){
+    if(native){await pagingNative;return json({results:[]})}
+    return json({results:Number(url.searchParams.get('offset'))===22?previewPage(22,3):previewPage(0,22)});
+   }
    if(term==='preview fallback test')return native?json({error:'Native search temporarily unavailable'},503):json({results:[preview]});
    return json({results:[]});
   }
@@ -48,6 +69,8 @@ try{
   if(url.origin!==origin||url.pathname.startsWith('/api/')||url.pathname.startsWith('/fast-'))return route.fulfill({contentType:'application/json',body:'{"results":[],"lines":[],"plainLines":[]}'});
   try{
    const file=url.pathname==='/'?'index.html':url.pathname.slice(1),ext=path.extname(file);let body=await readFile(path.join(root,file));
+   // Negative regression probe: reproduce only the former pagination merge.
+   if(file==='app.js'&&process.env.RELIABILITY_OMIT_PAGING_STATE==='1')body=Buffer.from(body.toString().replace('p.native.push(...songs);','').replace('p.previews.push(...previews);',''));
    if(file==='app.js')body=Buffer.from(body+"\nglobalThis.__reliabilityQA={state,audio,offlineLibrary,get offlineLoaded(){return offlineLoaded},get search(){return searchPaging},freeze(){visual.stopLoop();visual.renderFrame(8);smartMode='off'}};");
    return route.fulfill({contentType:({'.js':'text/javascript','.css':'text/css','.html':'text/html','.png':'image/png','.svg':'image/svg+xml','.json':'application/json'})[ext]||'application/octet-stream',body});
   }catch{return route.fulfill({status:404,body:''})}
@@ -108,6 +131,28 @@ try{
  assert.ok(Math.abs((after.time-before.time)-(after.at-before.at)/1000*before.rate)<.6,'search does not reset or seek native source clock');
  assert.deepEqual(errors,[]);
  await page.screenshot({path:path.join(out,'mobile-recovered-search.png'),animations:'disabled'});
+ // Initial provider responses may finish after another provider has already
+ // fetched later pages. Rebuilding a merged list must preserve those pages.
+ // Keep these timing cases outside the native playback clock measurement.
+ await submit('native paging delayed apple');
+ await page.waitForFunction(()=>{const p=__reliabilityQA.search;return p?.query==='native paging delayed apple'&&p.nativeOffset===20&&!p.previewFinished});
+ await page.locator('#search-more').evaluate(button=>button.click());
+ await page.waitForFunction(()=>__reliabilityQA.state.searchResults.some(t=>t.title==='Retained native page two 22'));
+ assert.equal(await rows().count(),23);
+ releasePagingApple();await settled();
+ assert.equal(await rows().count(),23,'late Apple initial response retains native page two');
+ assert.ok((await rows().allTextContents()).some(text=>text.includes('Retained native page two 22')));
+ cases.push({name:'native paginated rows survive delayed Apple initial response',rows:23});
+ await submit('vsprunique782');
+ await page.waitForFunction(()=>{const p=__reliabilityQA.search;return p?.query==='vsprunique782'&&p.previewOffset===22&&!p.nativeFinished});
+ await page.locator('#search-more').evaluate(button=>button.click());
+ await page.waitForFunction(()=>__reliabilityQA.state.searchResults.some(t=>t.title==='Retained preview page two 24'));
+ assert.equal(await rows().count(),25);
+ releasePagingNative();await settled();
+ assert.equal(await rows().count(),25,'late native initial response retains preview page two');
+ assert.ok((await rows().allTextContents()).some(text=>text.includes('Retained preview page two 24')));
+ assert.equal(await page.evaluate(()=>__reliabilityQA.state.searchResults.filter(t=>t.title.startsWith('Retained preview page two')).every(t=>t.source==='preview')),true);
+ cases.push({name:'preview paginated rows survive delayed native initial response',rows:25});
  // Empty MIME files are valid when their extension identifies supported audio.
  // Verify durable storage and a fresh app load, then select the restored song
  // through the real library while the browser reports no network connection.
@@ -134,4 +179,4 @@ try{
  assert.deepEqual(errors,[]);
  const report={cases,audio:{before,after},requests:Object.fromEntries(count),mediaRequests,errors,scope:'Routed app shell/provider responses and original finite PCM audio; IndexedDB restoration with offline browser; no provider audio/extraction requests; not service-worker or physical Safari validation'};
  await writeFile(path.join(out,'validation.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
-}finally{releaseOld?.();releaseSubmit?.();await browser.close()}
+}finally{releaseOld?.();releaseSubmit?.();releasePagingApple();releasePagingNative();await browser.close()}
