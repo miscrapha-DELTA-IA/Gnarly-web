@@ -942,3 +942,61 @@ body{position:relative;min-height:100dvh;background:#05090a}
  .youtube-modal.official-inline .youtube-frame-wrap{min-height:205px}
  .youtube-official-footer{flex-wrap:wrap}
 }
+
+/* Unified GNARLY player: source swap, not a stacked video card. YouTube
+   controls remain fully visible and never sit beneath a GNARLY overlay. */
+.app-shell[data-audio-provider="youtube-official"] #player-section.player{
+ display:flex!important;flex-direction:column!important;justify-content:center!important;
+ width:min(100%,590px)!important;max-width:590px!important;
+ height:auto!important;min-height:0!important;aspect-ratio:auto!important;
+ padding:14px!important;margin:18px auto 24px!important;
+ overflow:visible!important;isolation:isolate;border-radius:27px!important;
+ background:linear-gradient(155deg,rgba(14,26,22,.91),rgba(5,13,13,.94))!important;
+ border:1px solid rgba(255,255,255,.15)!important;
+ box-shadow:0 25px 80px rgba(0,0,0,.27)!important;
+}
+.app-shell[data-audio-provider="youtube-official"] #player-section > :not(#youtube-player-dialog){display:none!important}
+.app-shell[data-audio-provider="youtube-official"] #player-section > #youtube-player-dialog{
+ display:block!important;position:relative;z-index:1;align-self:stretch;
+ width:100%;max-width:none;margin:0;padding:0;
+}
+.app-shell[data-audio-provider="youtube-official"] #player-section > #youtube-player-dialog[hidden]{display:none!important}
+.app-shell[data-audio-provider="youtube-official"] .youtube-modal.official-inline .youtube-modal-card{
+ width:100%;padding:0;border:0;border-radius:16px;background:transparent;box-shadow:none;
+}
+.youtube-modal.official-inline .youtube-modal-head{display:flex;gap:10px;padding:5px 3px 12px;min-width:0}
+.youtube-modal.official-inline .youtube-track-art{
+ display:block;width:48px;height:48px;min-width:48px;border-radius:10px;object-fit:cover;background:#070d0b
+}
+.youtube-modal.official-inline .youtube-track-caption{display:flex;flex:1;flex-direction:column;gap:2px;min-width:0}
+.youtube-modal.official-inline .youtube-track-caption strong{font-size:clamp(14px,3.6vw,18px)}
+.youtube-modal.official-inline .youtube-track-artist{
+ display:block;max-width:100%;font-size:11px;color:rgba(244,255,247,.70);
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+}
+.youtube-modal.official-inline .youtube-frame-wrap{
+ width:100%;aspect-ratio:16/9;min-height:200px;overflow:hidden;border-radius:13px;background:#090909
+}
+.youtube-modal.official-inline .youtube-frame-wrap iframe{display:block;inset:0;position:absolute;width:100%;height:100%;border:0}
+.youtube-official-actions{display:grid;grid-template-columns:1fr minmax(0,1.4fr) 1fr;gap:8px;margin:12px 1px 4px}
+.youtube-official-actions button{
+ border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.07);
+ color:#efffed;min-height:40px;padding:7px 9px;border-radius:12px;
+ font:700 12px/1.25 -apple-system,BlinkMacSystemFont,sans-serif;cursor:pointer
+}
+.youtube-official-actions button:disabled{opacity:.45;cursor:default}
+.youtube-official-actions button:focus-visible{outline:2px solid var(--acid,#46ff12);outline-offset:2px}
+.youtube-official-actions .youtube-native-retry{
+ border-color:color-mix(in srgb,var(--acid,#46ff12) 55%,transparent);
+ color:var(--acid,#46ff12);background:rgba(41,84,43,.17)
+}
+.youtube-native-status{margin:9px 4px 3px;font-size:11px;line-height:1.45;color:rgba(236,255,237,.75);min-height:16px}
+.youtube-modal.official-inline .youtube-official-footer{padding:8px 4px 2px;font-size:10px;opacity:.80}
+.music-official-note{padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.13);font-size:12px;line-height:1.5;color:#cbe5d0;background:rgba(5,20,12,.66)}
+@media(max-width:380px){
+ .app-shell[data-audio-provider="youtube-official"] #player-section.player{padding:10px!important;margin:14px auto 22px!important}
+ .youtube-official-actions{gap:5px}
+ .youtube-official-actions button{font-size:11px;padding:5px 3px;min-height:44px}
+ .youtube-modal.official-inline .youtube-frame-wrap{min-height:200px}
+ .youtube-modal.official-inline .youtube-official-footer{flex-wrap:wrap}
+}
