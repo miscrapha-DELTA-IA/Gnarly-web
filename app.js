@@ -698,13 +698,13 @@ function fitCompactLyric(){
 function syncLyrics(){
  karaokeStage.tick();
  const i=lyricIndex(state.lyrics,audio.currentTime||0);
- if(state.lastLyric===i)return;
- state.lastLyric=i;
  const el=$('#floating-lyrics'),line=$('#floating-line');
  el.hidden=!state.current;
  if(!state.current)return;
  const text=state.lyrics.length?(i>=0?state.lyrics[i].text:'♪ ♪ ♪'):
-  state.lyricsLoading?'Buscando letra…':state.plainLyrics.length?state.plainLyrics[0]:'Karaokê · expandir para cantar';
+  state.lyricsLoading?'Buscando letra…':state.plainLyrics.length?'Letra sem sincronização · abrir karaokê':'Karaokê · expandir para cantar';
+ if(state.lastLyric===i&&line.dataset.lyricText===text&&line.dataset.lyricStyle===state.lyricStyle)return;
+ state.lastLyric=i;line.dataset.lyricText=text;line.dataset.lyricStyle=state.lyricStyle;
  // The latest Aa Creative Editions renderer is kept intact, with escaped text.
  line.innerHTML=renderLyricArtwork(text,state.lyricStyle,{lineId:i,active:true});
  fitCompactLyric();
@@ -1687,7 +1687,7 @@ $('#dj-midi-import').addEventListener('change',e=>{const file=e.target.files?.[0
 $('#lyrics-ai-import').addEventListener('change',e=>{
  const file=e.target.files?.[0];e.target.value='';if(file)void transcribeOwnLyrics(file);
 });
-$('#lrc-import').addEventListener('change',async e=>{const file=e.target.files?.[0];if(!file)return;state.lyricsAbort?.abort();state.lyrics=parseLRC(await file.text());state.plainLyrics=[];state.lyricsSource='manual';state.lyricsSynced=true;state.lyricsStatus='Letra sincronizada importada por você';state.lastLyric=-2;syncLyrics();toast(`${state.lyrics.length} linhas sincronizadas carregadas`);if(state.sheet==='karaoke')renderSheet();e.target.value=''});
+$('#lrc-import').addEventListener('change',async e=>{const file=e.target.files?.[0];if(!file)return;state.lyricsAbort?.abort();const track=state.current,selection=playbackSelection;const text=await file.text();if(state.current!==track||playbackSelection!==selection)return;state.lyrics=parseLRC(text);state.plainLyrics=[];state.lyricsSource='manual';state.lyricsLoading=false;state.lyricsSynced=true;state.lyricsStatus='Letra sincronizada importada por você';state.lastLyric=-2;syncLyrics();toast(`${state.lyrics.length} linhas sincronizadas carregadas`);if(state.sheet==='karaoke')renderSheet();e.target.value=''});
 $('#stems-import').addEventListener('change',async e=>{const files=[...(e.target.files||[])];e.target.value='';if(!state.current)return toast('Escolha uma música primeiro');state.stemStatus='Carregando fontes Stems…';if(isModuleOpen('controls'))renderModule('controls');try{await stems.load(files);state.stemStatus='Quatro fontes reais conectadas ao mixer GNARLY.';toast('Stems prontos: voz, bateria, baixo e outros.')}catch(err){state.stemStatus=err.message;toast(err.message)}if(isModuleOpen('controls'))renderModule('controls')});
 $('#background-import').addEventListener('change',e=>{const file=e.target.files?.[0];if(!file||!file.type.startsWith('image/'))return;if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL);state.backgroundURL=URL.createObjectURL(file);state.photoAdjust=false;state.backgroundMode='custom';setSetting('backgroundMode','custom');applyBackground();if(state.sheet==='background')closeSheet();toast('Foto de fundo aplicada');e.target.value=''});
 $('#quick-playlist-button').addEventListener('click',openQuickPlaylist);
@@ -2235,7 +2235,7 @@ audio.addEventListener('loadedmetadata',()=>{
  if(!(Number(track.duration)>0)&&audio.duration<1200)track.duration=audio.duration;
  void enrichSelectedTrack(track,audio.duration);
  void enrichOfficialAlbumArt(track);
-});audio.addEventListener('seeked',()=>{stems.seek();karaokeStage.tick(true)});audio.addEventListener('ended',()=>{if(!audio.ended||state.userPaused)return;coverCharge.hide();if(state.current&&lastRecordedSelection===playbackSelection)listeningMemory.record('finish',state.current);karaokeStage.scorer.finish();karaokeStage.updateScore();(state.queue.length||smartMode!=='off')?void next():pause()});// Real browser events distinguish first-buffer extraction from a later
+});audio.addEventListener('seeked',()=>{stems.seek();syncLyrics();karaokeStage.tick(true)});audio.addEventListener('ended',()=>{if(!audio.ended||state.userPaused)return;coverCharge.hide();if(state.current&&lastRecordedSelection===playbackSelection)listeningMemory.record('finish',state.current);karaokeStage.scorer.finish();karaokeStage.updateScore();(state.queue.length||smartMode!=='off')?void next():pause()});// Real browser events distinguish first-buffer extraction from a later
 // interruption. A delayed event from a previous track never grants progress.
 function updateBufferingCue(){
  if(!state.current||state.userPaused||audio.paused||audio.ended)return;

@@ -1,7 +1,7 @@
 name: iPod Hardware Studio acceptance
 on:
   pull_request:
-    paths: ['app.js', 'index.html', 'ipod-mode.css', 'lib/ipod-*.js', 'ui/ipod-*.js', 'ui/player-surface.js', 'tests/ipod-*', 'tests/pause-resume.browser.mjs', 'styles.css', 'module-dock.css', 'ui/display-panel.js', 'tests/menu-*', '.github/workflows/ipod-hardware.yml']
+    paths: ['app.js', 'index.html', 'ipod-mode.css', 'lib/ipod-*.js', 'ui/ipod-*.js', 'ui/player-surface.js', 'tests/ipod-*', 'tests/pause-resume.browser.mjs', 'styles.css', 'module-dock.css', 'ui/display-panel.js', 'tests/menu-*', 'lib/lyrics-auto.js', 'lib/lrc.js', 'tests/lyrics-clock.browser.mjs', '.github/workflows/ipod-hardware.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -39,6 +39,10 @@ jobs:
           CHROMIUM_PATH: /usr/bin/google-chrome
           MENU_ARTIFACT_DIR: ipod-hardware-artifacts/menu-polish
         run: node tests/menu-polish.browser.mjs
+      - name: Native lyric clock and unsynchronized fallback
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+        run: node tests/lyrics-clock.browser.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
