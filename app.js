@@ -306,7 +306,7 @@ function toggleModule(name,force){
  if(isModuleOpen(name)){
   renderModule(name);
   if(name==='performance')void pads.prepareSong(state.current);
-  $('#module-'+name)?.scrollIntoView?.({block:'nearest',behavior:window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+  $('#module-'+name)?.scrollIntoView?.({block:'nearest',behavior:window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches?'instant':'smooth'});
   if(name==='controls'&&state.musicTab==='stems')void refreshCloudStemAvailability();
  }
 }
@@ -2411,7 +2411,7 @@ audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('pla
   const origin=audio.currentSrc.startsWith('blob:')?'offline':audio.currentSrc.includes('/fast-audio/')?'fast-edge':'render';
   console.debug('GNARLY startup ms',ms,'origin',origin);
   playbackStartedAt=0;
- }prepareUpcomingAudio();void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!audio.error||!state.current||state.userPaused)return;state.playing=false;updatePlayer();if(state.current.source==='youtube'){
+ }prepareUpcomingAudio();void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!audio.error||!state.current||state.userPaused||state.audioState==='official')return;state.playing=false;updatePlayer();if(state.current.source==='youtube'){
  // Ignore a late error from the previous source after another Omnibox selection.
  if(!isOffline(state.current.id)&&audio.hasAttribute('src')){
   // A prewarm 429 may arrive *after* this audio source was attached.
