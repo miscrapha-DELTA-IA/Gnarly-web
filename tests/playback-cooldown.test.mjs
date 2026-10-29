@@ -115,3 +115,19 @@ test('player consults stored global cooldown and requests cache only on first or
   if(original===undefined)delete globalThis.location;else globalThis.location=original;
  }
 });
+
+test('rapid skips cannot launch speculative jobs faster than configured budget',async()=>{
+ let now=0,calls=0;
+ const warm=new QueueAudioWarmup({
+  now:()=>now,minIntervalMs:20000,
+  fetcher:async()=>{calls++;return new Response('{"status":"preparing"}',{status:202})}
+ });
+ assert.equal(await warm.start(track),true);
+ warm.reset();
+ now=1200;
+ assert.equal(await warm.start({...track,id:'youtube:BBBBBBBBBBB',videoId:'BBBBBBBBBBB'}),false);
+ assert.equal(calls,1);
+ now=20000;
+ assert.equal(await warm.start({...track,id:'youtube:BBBBBBBBBBB',videoId:'BBBBBBBBBBB'}),true);
+ assert.equal(calls,2);
+});
