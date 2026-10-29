@@ -55,6 +55,8 @@ function midiView(){return {...pads.snapshot(),intelligence:{...midiAnalysis.har
 const audioDelivery=new AudioDeliveryRecovery();
 const playbackCooldown=new PlaybackCooldown({storage:localStorage});
 const queueAudioWarmup=new QueueAudioWarmup({
+ // Optional prewarm should never create a burst when listeners skip quickly.
+ minIntervalMs:20000,
  canPrepare:()=>!playbackCooldown.active(),
  onRateLimit:seconds=>{
   playbackCooldown.remember({code:'upstream_rate_limited',retryAfter:seconds});
