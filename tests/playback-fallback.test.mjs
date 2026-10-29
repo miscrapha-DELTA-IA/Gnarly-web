@@ -42,20 +42,32 @@ test('YouTube is a visible GNARLY page section, NOT hidden audio or a blocking p
  assert.match(css,/\[data-audio-provider="youtube-official"\] #player-section > :not\(#youtube-player-dialog\)\{display:none!important\}/);
  for(const id of ['youtube-native-retry','youtube-next','youtube-previous','youtube-track-art'])assert.match(html,new RegExp('id="'+id+'"'));
 });
-test('auto-switch after confirmed upstream rate limit, native R2 still first choice',()=>{
- const app=source('app.js');
- assert.match(app,/async function recoverNativeAudio[\s\S]*?if\(rateLimit\)\{[\s\S]*?openYouTubePlayer\(track\)/);
- assert.match(app,/const reuseSource=audio\.hasAttribute\('src'\)/);
+test('HTTP 429 never silently swaps away from GNARLY; official source requires an explicit click',()=>{
+ const app=source('app.js'),html=source('index.html'),css=source('styles.css');
+ const recovery=app.slice(app.indexOf('async function recoverNativeAudio('),app.indexOf('async function play()'));
+ assert.match(recovery,/if\(rateLimit\)\{[\s\S]*?await resumeCachedNative\(track,current\)/);
+ assert.doesNotMatch(recovery,/openYouTubePlayer\(track\)/);
+ assert.match(recovery,/reportAudioError\(playbackLimitMessage\(rateLimit\)\)/);
  assert.match(app,/cacheOnly:attempt===0&&playbackCooldown\.active\(\)/);
- assert.match(app,/const embed=officialEmbedURL\(track\),watch=officialWatchURL\(track\)/);
+ assert.match(app,/async function cachedNativeAvailable\(track\)/);
+ assert.match(app,/method:'HEAD',cache:'no-store',credentials:'omit'/);
+ assert.match(app,/\$\('#youtube-optin-button'\)\.addEventListener\('click'/);
+ assert.match(html,/id="playback-source-choice" class="playback-source-choice" hidden/);
+ assert.match(html,/id="youtube-optin-button"/);
+ assert.match(css,/\.playback-source-choice\[hidden\]\{display:none!important\}/);
  assert.match(app,/frame\.src=embed/);
  assert.match(app,/state\.audioState='official'/);
- assert.match(app,/if\(state\.audioState==='official'&&officialTrackId===state\.current\.id\)/);
- assert.match(app,/shouldUseOfficialAfterNativeFailure\(track,\{offline:!!offlineAudio\(track\.id\),error:initialError\}\)/);
- assert.match(app,/audio\.addEventListener\('error',[^\n]+state\.audioState==='official'/);
  assert.match(app,/closeYouTubePlayer\(\);audio\.pause\(\);state\.playing=false;state\.current=track/);
  assert.doesNotMatch(app,/window\.open\(['"]https:\/\/.*youtube/);
 });
+test('live search waits for a meaningful query and discovery limits its backend burst',()=>{
+ const app=source('app.js');
+ assert.match(app,/if\(live&&query\.length<3\)\{/);
+ assert.match(app,/const delay=live\?420:0/);
+ assert.match(app,/memory:listeningMemory\}\)\.slice\(0,1\)/);
+ assert.match(app,/if\(added\.length>=3\|\|playbackCooldown\.active\(\)\)return/);
+});
+
 test('official playback retains original YouTube controls and marks sound as separate',()=>{
  const app=source('app.js'),css=source('styles.css');
  assert.match(app,/audio\.pause\(\);stems\.pause\(\);state\.playing=false/);

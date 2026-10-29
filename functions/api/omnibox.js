@@ -25,6 +25,13 @@ export async function onRequestGet({request,env,context,waitUntil}){const q=new 
  try{
   const response=await fetch(api,{headers:{accept:'application/x-ndjson'},
    signal:AbortSignal.any([request.signal,AbortSignal.timeout(7300)]),cf:{cacheEverything:true,cacheTtlByStatus:{'200-299':90,'400-599':-1}}});
+  if(response.status===429){
+   const header=Number(response.headers.get('Retry-After'));
+   const seconds=Number.isFinite(header)&&header>0?Math.min(120,header):30;
+   return Response.json({results:[],status:'upstream_rate_limited'},{
+    status:429,headers:{'Retry-After':String(seconds),'Cache-Control':'no-store'}
+   });
+  }
   if(!response.ok)throw Error('native search unavailable');
   const raw=await response.text();
   if(raw.length>100000)throw Error('oversized');
