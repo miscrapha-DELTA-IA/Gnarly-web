@@ -125,6 +125,12 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
  }
  // HEAD is side-effect-free: never start metadata extraction on a cache probe.
  if(request.method==='HEAD')return reply(404,'',{'X-Gnarly-Playback-Source':'cache-miss'});
+ // A confirmed global upstream cooldown does not make R2 hits unavailable.
+ // The web player asks for *cached-only* playback after observing a real 429.
+ // A miss must NEVER issue /stream or /download or reset origin cooldown.
+ if(new URL(request.url).searchParams.get('cached-only')==='1')
+  return reply(503,'Faixa ainda não armazenada no cache',{
+   'Retry-After':'30','X-Gnarly-Playback-Source':'cache-miss-during-cooldown'});
  const youtube='https://www.youtube.com/watch?v='+id;
  const options={method:'GET',headers:range?{Range:range}:{},redirect:'manual'};
  const candidates=[
