@@ -11,6 +11,7 @@ import {autoLyrics,cachedAutoLyrics,prefetchAutoLyrics} from './lib/lyrics-auto.
 import {LyricSyncWorkshop,serializeManualLRC} from './lib/lyric-sync-workshop.js';
 import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
 import {trackAudioURL,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
+import {officialEmbedURL,officialWatchURL,canUseOfficial} from './lib/official-playback.js';
 import {AudioDeliveryRecovery,PlaybackCooldown,inspectPlaybackLimit,playbackLimitMessage} from './lib/audio-delivery.js';
 import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-library.js';
 import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from './lib/queue-audio-warmup.js';
@@ -430,15 +431,11 @@ function reportAudioError(text){
  state.audioState='error';state.playbackError=text;
  const status=$('#player-status');if(status){status.textContent=text;status.hidden=false;}
  const ipodStatus=$('#ipod-audio-status');if(ipodStatus)ipodStatus.textContent=text;
- const fallback=$('#playback-official-fallback');
- if(fallback)fallback.hidden=!(/HTTP 429/.test(text)&&state.current?.source==='youtube');
  toast(text);
 }
 function reportAudioStatus(text){
  const status=$('#player-status');if(status){status.textContent=text;status.hidden=!text;}
  const ipodStatus=$('#ipod-audio-status');if(ipodStatus)ipodStatus.textContent=text;
- const fallback=$('#playback-official-fallback');
- if(fallback)fallback.hidden=true;
 }
 function setIPodSkin(blob){
  if(ipodSkinURL){URL.revokeObjectURL(ipodSkinURL);ipodSkinURL=null}
@@ -491,8 +488,9 @@ function updateIPodScreen(){
  image.alt=track?'Capa de '+track.title:'Capa GNARLY';
  $('#ipod-screen-title').textContent=track?.title||'Sua música. Seu universo.';
  $('#ipod-screen-artist').textContent=track?displayArtist(track):'Selecione uma música';
- $('#ipod-screen-source').textContent=ipodSourceLabel(state.playing);
- const label=state.playing?'Pausar':'Reproduzir';
+ $('#ipod-screen-source').textContent=state.audioState==='official'?
+  'YOUTUBE · PLAYER OFICIAL':ipodSourceLabel(state.playing);
+ const label=state.audioState==='official'?'Ver player oficial abaixo':state.playing?'Pausar':'Reproduzir';
  $('#ipod-play-button').setAttribute('aria-label',label);
  $('#ipod-center-button').setAttribute('aria-label',label);
  $('#ipod-next-button').disabled=!canAdvancePlayback();
@@ -903,6 +901,9 @@ async function recoverNativeAudio(track,initialError=null){
   if(rateLimit){playbackCooldown.remember(rateLimit);queueAudioWarmup.cancel();}
   if(!current())return false;
   if(rateLimit){
+   // Never strand listeners on a cooldown screen. A cached-only R2 miss
+   // turns into a visible official video for the exact selected recording.
+   if(canUseOfficial(track,{offline:!!offlineAudio(track.id)})&&openYouTubePlayer(track))return true;
    state.playing=false;updatePlayer();
    reportAudioError(playbackLimitMessage(rateLimit));return false;
   }
@@ -945,6 +946,8 @@ async function recoverNativeAudio(track,initialError=null){
   if(!rateLimit)rateLimit=playbackCooldown.snapshot()||await inspectPlaybackLimit();
   if(rateLimit){playbackCooldown.remember(rateLimit);queueAudioWarmup.cancel();}
   if(!current())return false;
+  if(canUseOfficial(track,{offline:!!offlineAudio(track.id)})&&
+   (rateLimit||audio.error?.code===2||audio.error?.code===4)&&openYouTubePlayer(track))return true;
   state.playing=false;updatePlayer();
   reportAudioError(rateLimit?playbackLimitMessage(rateLimit):playbackFailureMessage(initialError,audio.error));
   return false;
@@ -954,6 +957,10 @@ async function recoverNativeAudio(track,initialError=null){
 }
 async function play(){
  if(!state.current){openSheet('search');toast('Escolha uma música na Busca ou adicione seu áudio pelo botão +.');return;}
+ if(state.audioState==='official'&&officialTrackId===state.current.id){
+  $('#youtube-player-dialog').scrollIntoView?.({block:'center',behavior:'smooth'});
+  return;
+ }
  if(recoveryOperation)return recoveryOperation;
  const track=state.current,selection=playbackSelection;
  const stillSelected=()=>state.current===track&&playbackSelection===selection&&!state.userPaused;
@@ -1014,7 +1021,7 @@ async function play(){
   if(!stillSelected())return;
   if(track.source==='youtube'&&!isOffline(track.id)){await recoverNativeAudio(track,e);}
   else{state.playing=false;updatePlayer();reportAudioError('Falha ao reproduzir a cópia local. Remova-a e baixe novamente.');}
-  if(stillSelected())console.warn('GNARLY WEB audio play:',e);
+  if(stillSelected()&&state.audioState!=='official')console.warn('GNARLY WEB audio play:',e);
  }
 }
 function pause(){coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
@@ -1203,8 +1210,38 @@ function applyPreset(id){
  toast(id==='ORIGINAL'?'Som original restaurado':id+' ativado');
 }
 function updatePresetButtons(){document.querySelectorAll('[data-preset]').forEach(b=>{const selected=b.dataset.preset===state.preset;b.classList.toggle('active',selected);b.setAttribute('aria-pressed',String(selected))})}
-function openYouTubePlayer(track){if(!/^[A-Za-z0-9_-]{11}$/.test(track?.videoId||''))return toast('Link do YouTube inválido');audio.pause();const dialog=$('#youtube-player-dialog'),frame=$('#youtube-player-frame');frame.src='https://www.youtube-nocookie.com/embed/'+track.videoId+'?autoplay=1&playsinline=1';$('#youtube-player-title').textContent=track.title;$('#youtube-player-link').href='https://www.youtube.com/watch?v='+track.videoId;dialog.hidden=false;dialog.setAttribute('aria-hidden','false');toast('Player oficial: Nightcore e reverb não podem alterar o áudio dentro do YouTube.');}
-function closeYouTubePlayer(){const dialog=$('#youtube-player-dialog');if(!dialog)return;dialog.hidden=true;dialog.setAttribute('aria-hidden','true');$('#youtube-player-frame').src='about:blank'}
+// A visible, separate, official provider surface. YouTube audio is never
+// piped through GNARLY's mixing, stems, visual signal or offline download.
+let officialTrackId=null;
+function openYouTubePlayer(track){
+ const embed=officialEmbedURL(track),watch=officialWatchURL(track);
+ if(!embed||!watch)return false;
+ if(!$('#youtube-player-dialog').hidden&&officialTrackId===track.id)return true;
+ closeYouTubePlayer();
+ const dialog=$('#youtube-player-dialog'),frame=$('#youtube-player-frame');
+ officialTrackId=track.id;
+ coverCharge.hide();audio.pause();stems.pause();state.playing=false;
+ state.audioState='official';state.playbackError='';state.userPaused=false;
+ reportAudioStatus('');
+ $('#youtube-player-title').textContent=track.title||'Reprodução oficial';
+ $('#youtube-player-link').href=watch;
+ frame.src=embed;
+ dialog.hidden=false;app.dataset.audioProvider='youtube-official';
+ // The official player must be VISIBLE before playback; the user presses
+ // YouTube's own Play control after a rate-limit transition.
+ updatePlayer();
+ if(typeof dialog.scrollIntoView==='function')dialog.scrollIntoView({
+  block:'center',behavior:window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'
+ });
+ return true;
+}
+function closeYouTubePlayer(){
+ const dialog=$('#youtube-player-dialog');
+ if(!dialog||dialog.hidden)return;
+ dialog.hidden=true;$('#youtube-player-frame').src='about:blank';
+ officialTrackId=null;delete app.dataset.audioProvider;
+ if(state.audioState==='official')state.audioState='idle';
+}
 function toggleFavorite(){if(!state.current){openSheet('library');return}const at=state.favorites.findIndex(x=>x.id===state.current.id);if(at>=0){state.favorites.splice(at,1);listeningMemory.record('unlike',state.current);toast('Removido dos favoritos')}else{state.favorites.push(state.current);listeningMemory.record('like',state.current);toast('Adicionado aos favoritos')}setSetting('favorites',JSON.stringify(state.favorites.filter(x=>x.source!=='local').slice(-100)));updatePlayer();if(state.sheet==='favorites')renderSheet()}
 function closeQuickPlaylist(){
  const menu=$('#quick-playlist-popover'),button=$('#quick-playlist-button');
@@ -2000,9 +2037,6 @@ async function toggleMicRecording(){
 $('#record-button').addEventListener('click',()=>void toggleMicRecording());
 $('#karaoke-expand-button').addEventListener('click',e=>{karaokeStage.open(e.currentTarget);if(state.sheet)closeSheet()});
 $('#play-button').addEventListener('click',()=>state.playing?pause():void play());
-$('#playback-official-fallback').addEventListener('click',()=>{
- if(state.current?.source==='youtube')openYouTubePlayer(state.current);
-});
 $('#youtube-close').addEventListener('click',closeYouTubePlayer);
 $('#youtube-player-dialog').addEventListener('click',e=>{if(e.target.id==='youtube-player-dialog')closeYouTubePlayer()});
 document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>applyPreset(b.dataset.preset)));
