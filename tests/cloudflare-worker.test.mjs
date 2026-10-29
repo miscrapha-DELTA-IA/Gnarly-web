@@ -14,6 +14,8 @@ const route=(path,method='GET',body,bindings={})=>worker.fetch(
 test('Wrangler uploads only dist, never node_modules or the git root',()=>{
  assert.equal(config.assets.directory,'./dist');
  assert.equal(config.main,'./src/worker.js');
+ assert.ok(config.compatibility_flags.includes('enable_request_signal'),
+  'Next/canceled requests must abort edge origin work');
  assert.deepEqual(config.assets.run_worker_first,['/api/*','/fast-audio/*','/fast-prepare/*']);
  assert.deepEqual(config.r2_buckets,[{binding:'GNARLY_AUDIO_R2',bucket_name:'gnarly-cache'}]);
  assert.notEqual(config.assets.directory,'.');
