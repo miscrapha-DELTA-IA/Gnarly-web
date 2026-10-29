@@ -11,7 +11,7 @@ import {autoLyrics,cachedAutoLyrics,prefetchAutoLyrics} from './lib/lyrics-auto.
 import {LyricSyncWorkshop,serializeManualLRC} from './lib/lyric-sync-workshop.js';
 import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
 import {trackAudioURL,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
-import {officialEmbedURL,officialWatchURL,canUseOfficial} from './lib/official-playback.js';
+import {officialEmbedURL,officialWatchURL,canUseOfficial,shouldUseOfficialAfterNativeFailure} from './lib/official-playback.js';
 import {AudioDeliveryRecovery,PlaybackCooldown,inspectPlaybackLimit,playbackLimitMessage} from './lib/audio-delivery.js';
 import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-library.js';
 import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from './lib/queue-audio-warmup.js';
@@ -946,8 +946,11 @@ async function recoverNativeAudio(track,initialError=null){
   if(!rateLimit)rateLimit=playbackCooldown.snapshot()||await inspectPlaybackLimit();
   if(rateLimit){playbackCooldown.remember(rateLimit);queueAudioWarmup.cancel();}
   if(!current())return false;
-  if(canUseOfficial(track,{offline:!!offlineAudio(track.id)})&&
-   (rateLimit||audio.error?.code===2||audio.error?.code===4)&&openYouTubePlayer(track))return true;
+  // Exhausted native recovery: also handle decode (3), unsupported formats,
+  // and opaque network failures that never exposed a usable MediaError code.
+  // Never interpret a user-gesture rejection or an abort as provider failure.
+  if(shouldUseOfficialAfterNativeFailure(track,{offline:!!offlineAudio(track.id),error:initialError})&&
+   openYouTubePlayer(track))return true;
   state.playing=false;updatePlayer();
   reportAudioError(rateLimit?playbackLimitMessage(rateLimit):playbackFailureMessage(initialError,audio.error));
   return false;
