@@ -9,7 +9,7 @@ import {discoveryQueries,mixDiscoveryFeed} from './lib/search-discovery.js';
 import {MUSIC_PRESETS,musicalPreset} from './lib/music-presets.js';
 import {autoLyrics,cachedAutoLyrics,prefetchAutoLyrics} from './lib/lyrics-auto.js';
 import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
-import {trackAudioURL,selectMusicResults,playbackFailureMessage,isGnarlyPagesHost} from './lib/playback-source.js';
+import {trackAudioURL,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
 import {AudioDeliveryRecovery,PlaybackCooldown,inspectPlaybackLimit,playbackLimitMessage} from './lib/audio-delivery.js';
 import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-library.js';
 import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from './lib/queue-audio-warmup.js';
@@ -2265,9 +2265,15 @@ audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('pla
   playbackStartedAt=0;
  }prepareUpcomingAudio();void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!audio.error||!state.current||state.userPaused)return;state.playing=false;updatePlayer();if(state.current.source==='youtube'){
  // Ignore a late error from the previous source after another Omnibox selection.
- if(!isOffline(state.current.id)&&audio.hasAttribute('src')&&audio.src===new URL(trackAudioURL(state.current,{
-  attempt:audioDelivery.attempt,cacheOnly:playbackCooldown.active()
- }),location.href).href)void recoverNativeAudio(state.current);
+ if(!isOffline(state.current.id)&&audio.hasAttribute('src')){
+  // A prewarm 429 may arrive *after* this audio source was attached.
+  // Match both normal and R2-only URLs without missing the media error.
+  const attempt=audioDelivery.attempt;
+  const normal=trackAudioURL(state.current,{attempt});
+  const cacheOnly=trackAudioURL(state.current,{attempt,cacheOnly:true});
+  if([normal,cacheOnly].some(url=>url&&audio.src===new URL(url,location.href).href))
+   void recoverNativeAudio(state.current);
+ }
   else if(isOffline(state.current.id))reportAudioError('Áudio offline indisponível. Remova e baixe novamente.');
  }else reportAudioError('Não foi possível carregar o áudio.');});
 // Source swaps can trigger an asynchronous browser reset to 1x. Repair only
