@@ -561,7 +561,8 @@ function closePlayerSurfaceMenu(restoreFocus=false){
 function openPlayerSurfaceMenu(){
  if(state.sheet)closeSheet();
  const menu=$('#player-surface-menu');
- menu.innerHTML=renderPlayerSurfaceMenu(state.playerSurfaceMode,{skinInstalled:!!ipodSkinURL});
+ menu.innerHTML=renderPlayerSurfaceMenu(state.playerSurfaceMode,{skinInstalled:!!ipodSkinURL,
+  upstreamLimited:playbackCooldown.active()&&state.current?.source==='youtube'});
  menu.hidden=false;
  $('#player-surface-button').setAttribute('aria-expanded','true');
  $('#ipod-menu-button').setAttribute('aria-expanded','true');
@@ -1745,7 +1746,10 @@ $('#player-surface-button').addEventListener('click',()=>{
 $('#player-surface-menu').addEventListener('click',e=>{
  const action=e.target.closest('[data-player-surface-action]');
  if(action){
-  if(action.dataset.playerSurfaceAction==='customize-ipod'){
+  if(action.dataset.playerSurfaceAction==='official-player'){
+   closePlayerSurfaceMenu();
+   if(state.current?.source==='youtube')openYouTubePlayer(state.current);
+  }else if(action.dataset.playerSurfaceAction==='customize-ipod'){
    action.disabled=true;
    void ensureIPodHardware().then(studio=>{closePlayerSurfaceMenu();studio.open()}).catch(()=>{
     action.disabled=false;
