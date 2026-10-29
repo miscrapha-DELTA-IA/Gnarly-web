@@ -1,0 +1,52 @@
+name: Playback, Smart Queue and search recovery
+on:
+  pull_request:
+    paths:
+      - 'app.js'
+      - 'lib/catalog.js'
+      - 'lib/playback-source.js'
+      - 'lib/audio-delivery.js'
+      - 'lib/smart-queue.js'
+      - 'lib/listening-intelligence.js'
+      - 'lib/queue-audio-warmup.js'
+      - 'lib/offline-library.js'
+      - 'functions/api/catalog.js'
+      - 'functions/api/omnibox.js'
+      - 'functions/fast-audio/**'
+      - 'functions/fast-prepare/**'
+      - 'functions/_lib/**'
+      - 'tests/reliability.browser.mjs'
+      - 'tests/queue-continuity.browser.mjs'
+      - '.github/workflows/playback-reliability.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser test prerequisites
+        run: |
+          npm install --no-audit --no-fund
+          npm install --no-save playwright@1.56.1
+      - name: Search retries, stale responses and offline library continuity
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+          RELIABILITY_ARTIFACT_DIR: reliability-artifacts/search
+        run: node tests/reliability.browser.mjs
+      - name: Smart Queue refill, native transport and rapid navigation
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+          QUEUE_ARTIFACT_DIR: reliability-artifacts/queue
+        run: node tests/queue-continuity.browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playback-search-queue-reliability
+          path: reliability-artifacts
+          if-no-files-found: ignore

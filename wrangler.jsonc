@@ -3,6 +3,7 @@
   "name": "gnarly-web",
   "main": "./src/worker.js",
   "compatibility_date": "2026-10-25",
+  "compatibility_flags": ["enable_request_signal"],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",

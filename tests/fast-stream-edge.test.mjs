@@ -6,6 +6,7 @@ import {fastPrepareURL,trackAudioURL,isGnarlyPagesHost} from '../lib/playback-so
 import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from '../lib/queue-audio-warmup.js';
 
 const audio=new Uint8Array(4096).fill(7);
+audio.set([0,0,0,24,102,116,121,112,77,52,65,32],0); // bounded M4A ftyp prefix
 const track={source:'youtube',id:'youtube:ABCDEFGHIJK',videoId:'ABCDEFGHIJK'};
 const request=(path,options={})=>new Request('https://gnarly-web-pages.pages.dev'+path,options);
 function mockBucket({present=true,range=false}={}){
