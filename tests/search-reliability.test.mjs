@@ -52,11 +52,13 @@ test('Worker execution context persists successful public metadata for both sear
    return kind==='catalog'?Response.json({results:[appleResult]}):
     new Response(JSON.stringify({id:'ABCDEFGHIJK',title:'Fixture',artist:'GNARLY'})+'\n');
   },async({request,entries,jobs})=>{
-   assert.equal((await request()).status,200);
+   const first=await request();assert.equal(first.status,200);
+   assert.equal(first.headers.get('X-Gnarly-Search-Cache'),'MISS');
    await Promise.all(jobs);
    assert.equal(jobs.length,1,'top-level waitUntil is used by Workers and Pages');
    assert.equal(entries.size,1);
-   assert.equal((await request()).status,200);
+   const cached=await request();assert.equal(cached.status,200);
+   assert.equal(cached.headers.get('X-Gnarly-Search-Cache'),'HIT');
    assert.equal(calls,1,'repeat search reuses successful edge metadata');
   });
  }

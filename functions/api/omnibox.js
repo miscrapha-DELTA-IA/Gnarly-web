@@ -13,7 +13,9 @@ export async function onRequestGet({request,env,context,waitUntil}){const q=new 
  const edgeCache=globalThis.caches?.default;
  const cacheKey=edgeCache?new Request(request.url,{method:'GET'}):null;
  if(edgeCache&&cacheKey){
-  try{const cached=await edgeCache.match(cacheKey);if(cached)return cached}catch{}
+  try{const cached=await edgeCache.match(cacheKey);if(cached){
+   const hit=new Response(cached.body,cached);hit.headers.set('X-Gnarly-Search-Cache','HIT');return hit;
+  }}catch{}
  }
  const params=new URL(request.url).searchParams;
  const offset=Math.min(80,Math.max(0,Number.parseInt(params.get('offset')||'0',10)||0));
@@ -28,7 +30,7 @@ export async function onRequestGet({request,env,context,waitUntil}){const q=new 
   if(raw.length>100000)throw Error('oversized');
   const results=parseBackendNDJSON(raw,limit);
   const result=Response.json({results,status:'ok'},{headers:{
-   'cache-control':'public,max-age=120','x-content-type-options':'nosniff'
+   'cache-control':'public,max-age=120','x-content-type-options':'nosniff','X-Gnarly-Search-Cache':'MISS'
   }});
   const defer=waitUntil||(context?.waitUntil?job=>context.waitUntil(job):null);
   if(results.length&&edgeCache&&cacheKey&&defer)
