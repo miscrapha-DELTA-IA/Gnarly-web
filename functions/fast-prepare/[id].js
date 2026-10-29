@@ -32,9 +32,14 @@ export async function onRequestPost({params,request,env,originTimeoutMs=10000},f
     'Content-Type':'application/json','Cache-Control':'no-store'
    }});
   }
+  const originReason=response.headers?.get('X-Download-Error');
+  const providerLimited=response.status===429&&originReason==='upstream_rate_limited';
   discardAudioBody(response);
-  return new Response('Preparation unavailable',{status:response.status===429?429:503,
-   headers:{'Cache-Control':'no-store','Retry-After':retryAfter(response,'20')}});
+  // Worker-local queue pressure should not trigger the global YouTube
+  // cooldown. Only a confirmed upstream 429 is classified that way.
+  return new Response('Preparation unavailable',{status:providerLimited?429:503,
+   headers:{'Cache-Control':'no-store','Retry-After':retryAfter(response,'20'),
+    ...(providerLimited?{'X-Download-Error':'upstream_rate_limited'}:{})}});
  }catch(error){
   return new Response('Origin unavailable',{status:request.signal?.aborted?499:error?.name==='TimeoutError'?504:503,
    headers:{'Cache-Control':'no-store','Retry-After':'20'}});
