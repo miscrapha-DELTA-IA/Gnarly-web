@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {renderPlayerSurfaceMenu} from '../ui/player-surface.js';
-import {officialEmbedURL,officialWatchURL,officialVideoId,canUseOfficial} from '../lib/official-playback.js';
+import {officialEmbedURL,officialWatchURL,officialVideoId,canUseOfficial,shouldUseOfficialAfterNativeFailure} from '../lib/official-playback.js';
 
 const source=file=>readFileSync(new URL('../'+file,import.meta.url),'utf8');
 const track={id:'youtube:ABCDEFGHIJK',source:'youtube',videoId:'ABCDEFGHIJK',title:'Example recording'};
@@ -15,6 +15,15 @@ test('official YouTube integration is built from a validated canonical recording
  assert.equal(canUseOfficial({...track,source:'local'}),false);
  assert.equal(canUseOfficial(track,{offline:true}),false);
  assert.equal(canUseOfficial(track),true);
+});
+test('after native recovery, every valid remote media failure switches to official playback, except user gesture/abort',()=>{
+ for(const error of [null,{name:'NotSupportedError'},{name:'TypeError'},{name:'EncodingError'}])
+  assert.equal(shouldUseOfficialAfterNativeFailure(track,{error}),true);
+ for(const error of [{name:'NotAllowedError'},{name:'AbortError'}])
+  assert.equal(shouldUseOfficialAfterNativeFailure(track,{error}),false);
+ assert.equal(shouldUseOfficialAfterNativeFailure(track,{offline:true}),false);
+ assert.equal(shouldUseOfficialAfterNativeFailure({...track,source:'local'}),false);
+ assert.equal(shouldUseOfficialAfterNativeFailure({...track,videoId:'invalid'}),false);
 });
 test('YouTube is a visible GNARLY page section, NOT hidden audio or a blocking pop-up',()=>{
  const html=source('index.html'),css=source('styles.css');
@@ -38,6 +47,7 @@ test('auto-switch after confirmed upstream rate limit, native R2 still first cho
  assert.match(app,/frame\.src=embed/);
  assert.match(app,/state\.audioState='official'/);
  assert.match(app,/if\(state\.audioState==='official'&&officialTrackId===state\.current\.id\)/);
+ assert.match(app,/shouldUseOfficialAfterNativeFailure\(track,\{offline:!!offlineAudio\(track\.id\),error:initialError\}\)/);
  assert.match(app,/audio\.addEventListener\('error',[^\n]+state\.audioState==='official'/);
  assert.match(app,/closeYouTubePlayer\(\);audio\.pause\(\);state\.playing=false;state\.current=track/);
  assert.doesNotMatch(app,/window\.open\(['"]https:\/\/.*youtube/);
