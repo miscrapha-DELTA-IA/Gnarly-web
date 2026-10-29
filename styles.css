@@ -849,3 +849,17 @@ body{position:relative;min-height:100dvh;background:#05090a}
 .music-switch span{position:relative;pointer-events:none;flex:0 0 52px}
 @media(hover:hover){.display-lead button:hover,.display-layout-btn:hover,.display-group-head button:hover{background-color:rgba(255,255,255,.11)}}
 @media(prefers-reduced-motion:reduce){.app-shell .omnibox-toggle .omnibox-chevron{transition:none}.app-shell .topbar #search-toggle:hover .eye-gesture-arrow,.app-shell .topbar #search-toggle:focus-visible .eye-gesture-arrow{transform:translateX(-50%)}}
+
+/* A confirmed upstream 429 is not solved with another extraction attempt.
+   Give listeners an explicit path to the official player (separate engine). */
+.playback-official-fallback{
+ display:inline-flex;align-items:center;justify-content:center;gap:7px;
+ background:color-mix(in srgb,var(--acid,#46ff12) 14%,rgba(9,17,14,.94));
+ color:#f5fff2;border:1px solid color-mix(in srgb,var(--acid,#46ff12) 54%,#ffffff21);
+ border-radius:999px;padding:10px 15px;margin:9px auto 3px;
+ font-size:12px;font-weight:750;letter-spacing:.01em;
+ box-shadow:0 3px 18px #0005;
+}
+.playback-official-fallback[hidden]{display:none!important}
+.playback-official-fallback:hover{border-color:var(--acid,#46ff12)}
+.playback-official-fallback:focus-visible{outline:2px solid var(--acid,#46ff12);outline-offset:3px}
