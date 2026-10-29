@@ -4,6 +4,9 @@ export async function fetchAudioHeaders(fetcher,url,options,{signal,timeoutMs=40
  if(signal?.aborted)throw new DOMException('Request canceled','AbortError');
  if(timeoutMs<=0)throw new DOMException('Origin headers timed out','TimeoutError');
  const controller=new AbortController();let timer,abort;
+ // Keep user cancellation attached for the whole response body, after the
+ // header deadline and its explicit listener have been cleaned up.
+ const upstreamSignal=signal?AbortSignal.any([signal,controller.signal]):controller.signal;
  const stopped=new Promise((_,reject)=>{
   abort=()=>{controller.abort();reject(new DOMException('Request canceled','AbortError'))};
   signal?.addEventListener('abort',abort,{once:true});
@@ -11,9 +14,9 @@ export async function fetchAudioHeaders(fetcher,url,options,{signal,timeoutMs=40
    controller.abort();reject(new DOMException('Origin headers timed out','TimeoutError'));
   },Math.max(1,timeoutMs));
  });
- const pending=Promise.resolve().then(()=>fetcher(url,{...options,signal:controller.signal}));
+ const pending=Promise.resolve().then(()=>fetcher(url,{...options,signal:upstreamSignal}));
  // If a non-conforming fetch ignores cancellation, release its eventual body.
- void pending.then(response=>{if(controller.signal.aborted)discardAudioBody(response)},()=>{});
+ void pending.then(response=>{if(upstreamSignal.aborted)discardAudioBody(response)},()=>{});
  try{return await Promise.race([pending,stopped])}
  finally{clearTimeout(timer);signal?.removeEventListener('abort',abort)}
 }

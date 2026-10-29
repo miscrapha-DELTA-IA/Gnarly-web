@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {handleFastAudio,validByteRange} from '../functions/fast-audio/[id].js';
 import {onRequestPost as prepare} from '../functions/fast-prepare/[id].js';
-import {validAudioResponse} from '../functions/_lib/origin-audio.js';
+import {fetchAudioHeaders,validAudioResponse} from '../functions/_lib/origin-audio.js';
 const id='ABCDEFGHIJK';
 const req=(options={})=>new Request('https://gnarly-web.miscrapha.workers.dev/fast-audio/'+id,options);
 const ctx=(options={})=>({request:req(),params:{id},env:{},...options});
@@ -29,6 +29,14 @@ test('rapid navigation cancellation aborts pending origin work and never starts 
  });
  await ready;controller.abort();const result=await job;
  assert.equal(result.status,499);assert.equal(calls,1);assert.equal(aborted,true);
+});
+test('after headers, the header deadline is cleared while user cancellation still reaches the stream',async()=>{
+ const controller=new AbortController();let upstreamSignal;
+ const response=await fetchAudioHeaders(async(url,{signal})=>{upstreamSignal=signal;return audio()},'https://origin.test/audio',{}, {signal:controller.signal,timeoutMs:8});
+ await new Promise(resolve=>setTimeout(resolve,12));
+ assert.equal(upstreamSignal.aborted,false,'the header deadline must not become a song-length limit');
+ controller.abort();assert.equal(upstreamSignal.aborted,true,'Next must still cancel an established origin response');
+ await response.body.cancel();
 });
 test('a request canceled before selection does not touch R2 or origin',async()=>{
  const controller=new AbortController();controller.abort();let calls=0;
