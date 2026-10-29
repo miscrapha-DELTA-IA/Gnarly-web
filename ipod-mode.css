@@ -9,7 +9,7 @@
 }
 .app-shell[data-player-surface-mode="ipod"] #player-section.player::before,
 .app-shell[data-player-surface-mode="ipod"] #player-section.player::after{display:none!important}
-.app-shell[data-player-surface-mode="ipod"] #player-section>:not(#ipod-device):not(#player-surface-menu){display:none!important}
+.app-shell[data-player-surface-mode="ipod"] #player-section>:not(#ipod-device):not(#player-surface-menu):not(#youtube-player-dialog){display:none!important}
 .app-shell[data-player-surface-mode="ipod"] #ipod-device{position:absolute;inset:0;width:100%;height:100%;display:block!important}
 .gnarly-ipod{
  --ipod-body:#c3cdcf;--ipod-frame:#c4ced1;--ipod-wheel:#263038;--ipod-center:#1a2128;
@@ -258,3 +258,18 @@
 .gnarly-ipod .ipod-body{contain:paint}
 .gnarly-ipod[data-ipod-pattern="none"] .ipod-print{display:none}
 .ipod-studio input[aria-invalid="true"]{border-color:#d58e86}
+
+/* A source change does not erase the user's iPod selection. While the
+   official source is active, use a compliant visible player card; returning
+   to native audio restores the precise original iPod shell automatically. */
+.app-shell[data-audio-provider="youtube-official"][data-player-surface-mode="ipod"] #player-section.player{
+ width:min(100%,590px)!important;max-width:590px!important;
+ aspect-ratio:auto!important;height:auto!important;min-height:0!important;
+ padding:14px!important;margin:18px auto 24px!important;
+ border-radius:27px!important;overflow:visible!important;
+ background:linear-gradient(155deg,rgba(14,26,22,.91),rgba(5,13,13,.94))!important;
+ border:1px solid rgba(255,255,255,.15)!important;
+ box-shadow:0 25px 80px rgba(0,0,0,.27)!important;
+}
+.app-shell[data-audio-provider="youtube-official"][data-player-surface-mode="ipod"] #player-section #ipod-device{display:none!important}
+.app-shell[data-audio-provider="youtube-official"][data-player-surface-mode="ipod"] #player-section > #youtube-player-dialog{display:block!important}
