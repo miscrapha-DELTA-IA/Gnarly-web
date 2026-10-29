@@ -427,11 +427,15 @@ function reportAudioError(text){
  state.audioState='error';state.playbackError=text;
  const status=$('#player-status');if(status){status.textContent=text;status.hidden=false;}
  const ipodStatus=$('#ipod-audio-status');if(ipodStatus)ipodStatus.textContent=text;
+ const fallback=$('#playback-official-fallback');
+ if(fallback)fallback.hidden=!(/HTTP 429/.test(text)&&state.current?.source==='youtube');
  toast(text);
 }
 function reportAudioStatus(text){
  const status=$('#player-status');if(status){status.textContent=text;status.hidden=!text;}
  const ipodStatus=$('#ipod-audio-status');if(ipodStatus)ipodStatus.textContent=text;
+ const fallback=$('#playback-official-fallback');
+ if(fallback)fallback.hidden=true;
 }
 function setIPodSkin(blob){
  if(ipodSkinURL){URL.revokeObjectURL(ipodSkinURL);ipodSkinURL=null}
@@ -1889,6 +1893,9 @@ async function toggleMicRecording(){
 $('#record-button').addEventListener('click',()=>void toggleMicRecording());
 $('#karaoke-expand-button').addEventListener('click',e=>{karaokeStage.open(e.currentTarget);if(state.sheet)closeSheet()});
 $('#play-button').addEventListener('click',()=>state.playing?pause():void play());
+$('#playback-official-fallback').addEventListener('click',()=>{
+ if(state.current?.source==='youtube')openYouTubePlayer(state.current);
+});
 $('#youtube-close').addEventListener('click',closeYouTubePlayer);
 $('#youtube-player-dialog').addEventListener('click',e=>{if(e.target.id==='youtube-player-dialog')closeYouTubePlayer()});
 document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>applyPreset(b.dataset.preset)));
