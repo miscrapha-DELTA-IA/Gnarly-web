@@ -1236,11 +1236,13 @@ function openYouTubePlayer(track){
  $('#youtube-player-link').href=watch;
  $('#youtube-native-status').textContent='Fundo e temas animados continuam ativos. Stems e efeitos exigem áudio GNARLY.';
  $('#youtube-native-retry').disabled=false;
+ $('#youtube-native-retry').dataset.cacheReady='no';
+ $('#youtube-native-retry').textContent='Áudio GNARLY';
  frame.src=embed;
  dialog.hidden=false;app.dataset.audioProvider='youtube-official';
  // The official player must be VISIBLE before playback; the user presses
  // YouTube's own Play control after a rate-limit transition.
- updatePlayer();
+ updatePlayer();renderModule('controls');
  if(typeof dialog.scrollIntoView==='function')dialog.scrollIntoView({
   block:'center',behavior:window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'
  });
@@ -1252,33 +1254,46 @@ function closeYouTubePlayer(){
  dialog.hidden=true;$('#youtube-player-frame').src='about:blank';
  officialTrackId=null;delete app.dataset.audioProvider;
  if(state.audioState==='official')state.audioState='idle';
+ renderModule('controls');
 }
 /** Only probe the R2 cache or an existing offline file. HEAD never starts
  * a new provider extraction or bypasses an active HTTP 429 cooldown. */
+/** Safari requires the actual play() call in a fresh user gesture after
+ * asynchronous cache checks. An offline copy can switch immediately; an R2
+ * hit arms the next tap rather than risking a NotAllowedError autoplay denial. */
 async function tryNativeFromOfficial(){
  const track=state.current,selection=playbackSelection;
  if(!track||state.audioState!=='official'||officialTrackId!==track.id)return;
  const button=$('#youtube-native-retry'),status=$('#youtube-native-status');
+ const switchNative=()=>{
+  closeYouTubePlayer();
+  audio.pause();audio.removeAttribute('src');audioDelivery.select(track);
+  state.playing=false;state.audioState='idle';state.userPaused=false;
+  updatePlayer();renderModule('controls');void play();
+ };
+ if(offlineAudio(track.id)||button.dataset.cacheReady==='yes'){
+  switchNative();
+  return;
+ }
  button.disabled=true;status.textContent='Verificando áudio GNARLY já disponível…';
- let available=!!offlineAudio(track.id);
- if(!available&&isGnarlyPagesHost(location.hostname)){
+ let cached=false;
+ if(isGnarlyPagesHost(location.hostname)){
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),4000);
   try{
    const url=trackAudioURL(track,{cacheOnly:true});
    const response=await fetch(url,{method:'HEAD',credentials:'omit',cache:'no-store',signal:controller.signal});
-   available=response.ok&&response.headers.get('X-Gnarly-Playback-Source')==='r2-edge';
+   cached=response.ok&&response.headers.get('X-Gnarly-Playback-Source')==='r2-edge';
   }catch{}finally{clearTimeout(timeout)}
  }
  if(state.current!==track||playbackSelection!==selection||state.audioState!=='official')return;
  button.disabled=false;
- if(!available){
+ if(!cached){
   status.textContent='Faixa ainda não armazenada no GNARLY. Player oficial e fundo visual continuam disponíveis.';
   return;
  }
- closeYouTubePlayer();
- audio.pause();audio.removeAttribute('src');audioDelivery.select(track);
- state.playing=false;state.audioState='idle';state.userPaused=false;
- updatePlayer();void play();
+ button.dataset.cacheReady='yes';
+ button.textContent='▶ Voltar ao GNARLY';
+ status.textContent='Cópia R2 disponível. Toque novamente para iniciar áudio GNARLY com efeitos e stems.';
 }
 function toggleFavorite(){if(!state.current){openSheet('library');return}const at=state.favorites.findIndex(x=>x.id===state.current.id);if(at>=0){state.favorites.splice(at,1);listeningMemory.record('unlike',state.current);toast('Removido dos favoritos')}else{state.favorites.push(state.current);listeningMemory.record('like',state.current);toast('Adicionado aos favoritos')}setSetting('favorites',JSON.stringify(state.favorites.filter(x=>x.source!=='local').slice(-100)));updatePlayer();if(state.sheet==='favorites')renderSheet()}
 function closeQuickPlaylist(){
