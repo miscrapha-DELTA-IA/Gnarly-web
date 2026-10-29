@@ -80,7 +80,7 @@ test('music loading indicator follows actual playback events and is cancelled on
  const app=source('app.js');
  for(const value of ["coverCharge.show('loading')","coverCharge.show('buffering')","coverCharge.show('recovering')"])
   assert.ok(app.includes(value),value);
- assert.match(app,/audio\.addEventListener\('playing',\(\)=>\{if\(!state\.current\|\|state\.userPaused\|\|audio\.paused\|\|audio\.ended\)return;coverCharge\.hide\(\)/, 'Stale playing events cannot clear a newer loading cue or resume paused queue work');
+ assert.match(app,/audio\.addEventListener\('playing',\(\)=>\{if\(!state\.current\|\|state\.userPaused\|\|audio\.paused\|\|audio\.ended\)return;hideOptionalOfficialSource\(\);coverCharge\.hide\(\)/, 'Stale playing events cannot clear a newer loading cue or resume paused queue work');
  assert.match(app,/function pause\(\)\{coverCharge\.hide\(\)/);
  assert.match(app,/function reportAudioError\(text\)\{\s*coverCharge\.hide\(\)/);
  assert.match(app,/playbackSelection\+\+;navigationRevision\+\+;nextDiscovery=null;invalidateSmartFill\(\);coverCharge\.hide\(\)/,
