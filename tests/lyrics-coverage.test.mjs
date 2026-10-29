@@ -51,9 +51,9 @@ test('search fallback tries only one LRCLIB search before lyrics.ovh',async()=>{
 test('non-synced backup is accurately marked as unsynchronized',async()=>{
  const song={...track,title:'Plain Backup'};
  const original=globalThis.fetch;let n=0;
- try{globalThis.fetch=async()=>{n++;return result(n===3?{lyrics:'Verse one\nVerse two'}:n===2?[]:{status:404})};
+ try{globalThis.fetch=async()=>{n++;return result(n===4?{lyrics:'Verse one\nVerse two'}:n===2||n===3?[]:{status:404})};
  const lyrics=await autoLyrics(song);
- assert.equal(n,3);assert.equal(lyrics.source,'lyrics.ovh');
+ assert.equal(n,4);assert.equal(lyrics.source,'lyrics.ovh');
  assert.equal(lyrics.synced,false);assert.deepEqual(lyrics.lines,[]);
  }finally{globalThis.fetch=original}
 });
