@@ -70,7 +70,7 @@ test('detected upstream cooldown aborts further rapid retries, including mid-ses
 test('player uses actual status endpoint before deciding to retry media error 4',async()=>{
  const {readFileSync}=await import('node:fs');
  const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
- assert.match(source,/async function recoverNativeAudio[\s\S]*?let rateLimit=await inspectPlaybackLimit\(\)/);
+ assert.match(source,/async function recoverNativeAudio[\s\S]*?let rateLimit=playbackCooldown\.snapshot\(\)\|\|await inspectPlaybackLimit\(\)/);
  assert.match(source,/rateLimit\?playbackLimitMessage\(rateLimit\):playbackFailureMessage/);
  const publicSource=readFileSync(new URL('../lib/playback-source.js',import.meta.url),'utf8');
  assert.doesNotMatch(publicSource,/Pode ser 403\/422/,'a media error is not proof of a 403/422 response');
