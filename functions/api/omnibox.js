@@ -6,7 +6,7 @@ const allowedBackend=(value)=>{try{const u=new URL(value);return u.protocol==='h
 const validVideo=/^[a-zA-Z0-9_-]{11}$/;
 const clean=(x)=>String(x??'').trim().slice(0,180);
 export function parseBackendNDJSON(text,maxResults=15){const output=[],seen=new Set();for(const line of String(text).split(/\r?\n/).slice(0,40)){if(!line.trim())continue;let item;try{item=JSON.parse(line)}catch{continue}if(!validVideo.test(item?.id||'')||seen.has(item.id)||item.is_live===true)continue;seen.add(item.id);const thumbnail=typeof item.thumbnail==='string'&&item.thumbnail.startsWith('https://')?item.thumbnail:`https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`;output.push({id:'youtube:'+item.id,videoId:item.id,title:clean(item.title),artist:isGenericArtist(item.artist)?'Artista não identificado':clean(item.artist),album:clean(item.album||''),artwork:thumbnail,duration:Number(item.duration)||0,source:'youtube',playableMode:'youtube-embed'});if(output.length===maxResults)break}return output.filter(x=>x.title)}
-export async function onRequestGet({request,env,context}){const q=new URL(request.url).searchParams.get('term')?.trim().slice(0,140)||'';if(q.length<1)return Response.json({error:'Termo muito curto'},{status:400});
+export async function onRequestGet({request,env,context,waitUntil}){const q=new URL(request.url).searchParams.get('term')?.trim().slice(0,140)||'';if(q.length<1)return Response.json({error:'Termo muito curto'},{status:400});
  const backend=allowedBackend(env?.GNARLY_BACKEND_URL||'https://nightcorelab.onrender.com');
  if(!backend)return Response.json({results:[],status:'backend_not_configured'});
  // Public metadata only: edge-cache successful results, never failures.
@@ -22,7 +22,7 @@ export async function onRequestGet({request,env,context}){const q=new URL(reques
  api.searchParams.set('offset',String(offset));api.searchParams.set('limit',String(limit));
  try{
   const response=await fetch(api,{headers:{accept:'application/x-ndjson'},
-   signal:AbortSignal.timeout(7300),cf:{cacheEverything:true,cacheTtl:90}});
+   signal:AbortSignal.timeout(7300),cf:{cacheEverything:true,cacheTtlByStatus:{'200-299':90,'400-599':-1}}});
   if(!response.ok)throw Error('native search unavailable');
   const raw=await response.text();
   if(raw.length>100000)throw Error('oversized');
@@ -30,8 +30,9 @@ export async function onRequestGet({request,env,context}){const q=new URL(reques
   const result=Response.json({results,status:'ok'},{headers:{
    'cache-control':'public,max-age=120','x-content-type-options':'nosniff'
   }});
-  if(results.length&&edgeCache&&cacheKey&&context?.waitUntil)
-   context.waitUntil(edgeCache.put(cacheKey,result.clone()).catch(()=>{}));
+  const defer=waitUntil||(context?.waitUntil?job=>context.waitUntil(job):null);
+  if(results.length&&edgeCache&&cacheKey&&defer)
+   defer(edgeCache.put(cacheKey,result.clone()).catch(()=>{}));
   return result;
  }catch{
   return Response.json({results:[],status:'backend_unavailable'},
