@@ -9,8 +9,8 @@ import {discoveryQueries,mixDiscoveryFeed} from './lib/search-discovery.js';
 import {MUSIC_PRESETS,musicalPreset} from './lib/music-presets.js';
 import {autoLyrics,cachedAutoLyrics,prefetchAutoLyrics} from './lib/lyrics-auto.js';
 import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
-import {trackAudioURL,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
-import {AudioDeliveryRecovery,inspectPlaybackLimit,playbackLimitMessage} from './lib/audio-delivery.js';
+import {trackAudioURL,selectMusicResults,playbackFailureMessage,isGnarlyPagesHost} from './lib/playback-source.js';
+import {AudioDeliveryRecovery,PlaybackCooldown,inspectPlaybackLimit,playbackLimitMessage} from './lib/audio-delivery.js';
 import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-library.js';
 import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from './lib/queue-audio-warmup.js';
 import {quickPlaylistMarkup} from './ui/quick-playlist.js';
@@ -53,7 +53,13 @@ const pads=new PerformancePads(engine);
 const midiAnalysis={busy:false,status:'MIDI estimado, sem alterar a reprodução.',notes:[],duration:0,harmony:null,abort:null,trackId:null,revision:0};
 function midiView(){return {...pads.snapshot(),intelligence:{...midiAnalysis.harmony,notes:midiAnalysis.notes.length,ready:midiAnalysis.notes.length>0,busy:midiAnalysis.busy,status:midiAnalysis.status}}}
 const audioDelivery=new AudioDeliveryRecovery();
-const queueAudioWarmup=new QueueAudioWarmup();
+const playbackCooldown=new PlaybackCooldown({storage:localStorage});
+const queueAudioWarmup=new QueueAudioWarmup({
+ canPrepare:()=>!playbackCooldown.active(),
+ onRateLimit:seconds=>{
+  playbackCooldown.remember({code:'upstream_rate_limited',retryAfter:seconds});
+ }
+});
 /** Avoid competing with the active song's first buffer. Once at least eight
  * seconds are available, prepare precisely ONE next song in the background.
  * The backend keeps accepted work alive even if the browser changes tracks.
@@ -68,7 +74,7 @@ function bufferedAudioAhead(element){
 }
 function prepareUpcomingAudio(){
  const next=state.queue[0];
- if(!next||isOffline(next.id)||audio.paused||state.userPaused||bufferedAudioAhead(audio)<8)return;
+ if(!next||isOffline(next.id)||audio.paused||state.userPaused||playbackCooldown.active()||bufferedAudioAhead(audio)<8)return;
  if(canWarmImmediately({current:state.current,next,online:navigator.onLine,
   saveData:navigator.connection?.saveData,effectiveType:navigator.connection?.effectiveType
  }))void queueAudioWarmup.start(next);
@@ -404,7 +410,9 @@ function updateBadges(){
 // Same media source as Stage72's AudioDownloadManager: Render /download.
 // Do not start an external player or load a file picker as an implicit fallback.
 function prepareNativeAudio(track,attempt=0){
- const source=offlineAudio(track.id)||trackAudioURL(track,{attempt});
+ const source=offlineAudio(track.id)||trackAudioURL(track,{
+  attempt,cacheOnly:attempt===0&&playbackCooldown.active()
+ });
  if(!source)return false;
  // HTMLMediaElement.src is absolute, including when assigned /fast-audio/… .
  // Comparing it with a relative path restarts the same resource on every Play.
@@ -839,7 +847,8 @@ async function recoverNativeAudio(track,initialError=null){
   // HTMLMediaElement hides HTTP status codes. Read-only backend diagnosis
   // avoids repeatedly hammering a provider currently returning HTTP 429.
   const current=()=>state.current===track&&playbackSelection===selection&&audioDelivery.generation===generation&&!state.userPaused;
-  let rateLimit=await inspectPlaybackLimit();
+  let rateLimit=playbackCooldown.snapshot()||await inspectPlaybackLimit();
+  if(rateLimit){playbackCooldown.remember(rateLimit);queueAudioWarmup.cancel();}
   if(!current())return false;
   if(rateLimit){
    state.playing=false;updatePlayer();
@@ -868,8 +877,8 @@ async function recoverNativeAudio(track,initialError=null){
     }catch(failure){
      // The upstream 429 can appear on the first retry: stop the *rest* of
      // the burst immediately rather than spending the retry budget in seconds.
-     rateLimit=await inspectPlaybackLimit();
-     if(rateLimit){
+     rateLimit=playbackCooldown.snapshot()||await inspectPlaybackLimit();
+     if(rateLimit){playbackCooldown.remember(rateLimit);queueAudioWarmup.cancel();
       const limited=new Error('Provider rate limited');
       limited.name='UpstreamRateLimitedError';
       throw limited;
@@ -881,7 +890,8 @@ async function recoverNativeAudio(track,initialError=null){
   if(!current())return false;
   if(recovered){coverCharge.hide();state.audioState='playing';state.playbackError='';reportAudioStatus('');return true;}
   // A cooldown can begin while the bounded retry attempt is in progress.
-  if(!rateLimit)rateLimit=await inspectPlaybackLimit();
+  if(!rateLimit)rateLimit=playbackCooldown.snapshot()||await inspectPlaybackLimit();
+  if(rateLimit){playbackCooldown.remember(rateLimit);queueAudioWarmup.cancel();}
   if(!current())return false;
   state.playing=false;updatePlayer();
   reportAudioError(rateLimit?playbackLimitMessage(rateLimit):playbackFailureMessage(initialError,audio.error));
@@ -2255,7 +2265,9 @@ audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('pla
   playbackStartedAt=0;
  }prepareUpcomingAudio();void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!audio.error||!state.current||state.userPaused)return;state.playing=false;updatePlayer();if(state.current.source==='youtube'){
  // Ignore a late error from the previous source after another Omnibox selection.
- if(!isOffline(state.current.id)&&audio.hasAttribute('src')&&audio.src===new URL(trackAudioURL(state.current,{attempt:audioDelivery.attempt}),location.href).href)void recoverNativeAudio(state.current);
+ if(!isOffline(state.current.id)&&audio.hasAttribute('src')&&audio.src===new URL(trackAudioURL(state.current,{
+  attempt:audioDelivery.attempt,cacheOnly:playbackCooldown.active()
+ }),location.href).href)void recoverNativeAudio(state.current);
   else if(isOffline(state.current.id))reportAudioError('Áudio offline indisponível. Remova e baixe novamente.');
  }else reportAudioError('Não foi possível carregar o áudio.');});
 // Source swaps can trigger an asynchronous browser reset to 1x. Repair only
