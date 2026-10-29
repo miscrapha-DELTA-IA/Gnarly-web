@@ -1633,6 +1633,7 @@ async function maybeFillSmartQueue({force=false}={}){
     updatePlayer();prefetchNextLyrics();return;
    }
    const cached=[...state.searchResults,...state.history,...state.favorites,...state.queue];
+   const related=mode==='mix'?listeningMemory.affinityArtists(anchor.artist,1)[0]:null;
    const added=[];
    const publish=candidates=>{
     if(!current())return;
@@ -1654,8 +1655,13 @@ async function maybeFillSmartQueue({force=false}={}){
    // Do not emit additional speculative search requests while the origin is
    // rate-limited, or when enough known songs are already in the queue.
    if(added.length>=3||playbackCooldown.active())return;
-   const remote=await searchNativeBackend(query,{signal:controller.signal}).catch(()=>[]);
-   publish(remote);
+   // Two bounded catalogue requests only when an actual smart Mix needs them.
+   // Preserve the fast affinity response if the primary artist lookup stalls.
+   const primary=searchNativeBackend(query,{signal:controller.signal}).catch(()=>[]);
+   const affinity=related&&related!==query
+    ?searchNativeBackend(related,{signal:controller.signal}).catch(()=>[])
+    :Promise.resolve([]);
+   await Promise.all([primary.then(publish),affinity.then(publish)]);
    if(!current())return;
    if(!added.length){
     smartStatus='Sem novas faixas verificadas para '+mode+'. Sua fila foi preservada.';
