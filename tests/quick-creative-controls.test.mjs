@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {cycleValue,bindQuickCreative} from '../lib/quick-creative-controls.js';
@@ -74,4 +75,26 @@ test('binding disposal removes every event listener',()=>{
  const dispose=bindQuickCreative(el,{cycle:()=>{},expand:()=>{}});
  dispose();
  assert.ok([...el.listeners.values()].every(x=>x.length===0));
+});
+
+test('quick theme, experience and Aa changes are silent without silencing important warnings',()=>{
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ const section=(from,to)=>{
+  const start=app.indexOf(from),end=app.indexOf(to,start+from.length);
+  assert.ok(start>=0&&end>start,'Missing selection handler: '+from);
+  return app.slice(start,end);
+ };
+ // Tapping any of the three header shortcuts must never display a snackbar.
+ for(const [start,end] of [
+  ["bindQuickCreative($('#theme-button')","bindQuickCreative($('#experience-button')"],
+  ["bindQuickCreative($('#experience-button')","bindQuickCreative($('#lyric-style-button')"],
+  ["bindQuickCreative($('#lyric-style-button')","$('#background-button').addEventListener"]
+ ])assert.doesNotMatch(section(start,end),/\btoast\s*\(/);
+ // Manual palette and GNARLY 2 visual refinements are silent too.
+ assert.doesNotMatch(section('function selectVisualTheme(next)','function configureGnarly2Lock'),/\btoast\s*\(/);
+ assert.doesNotMatch(section('function configureGnarly2Lock(id)','const QUICK_LYRIC_STYLES'),/\btoast\s*\(/);
+ assert.doesNotMatch(section('if(target.dataset.materialLayer)','if(target.dataset.stemPreset)'),/\btoast\s*\(/);
+ // Audio and server errors are intentionally still shown.
+ assert.match(app,/function reportAudioError\(text\)[\s\S]*?toast\(text\)/);
+ assert.match(app,/toast\('Não foi possível aplicar baixo\/reverb:/);
 });
