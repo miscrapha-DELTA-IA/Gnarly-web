@@ -80,10 +80,13 @@ test('music loading indicator follows actual playback events and is cancelled on
  const app=source('app.js');
  for(const value of ["coverCharge.show('loading')","coverCharge.show('buffering')","coverCharge.show('recovering')"])
   assert.ok(app.includes(value),value);
- assert.match(app,/audio\.addEventListener\('playing',\(\)=>\{coverCharge\.hide\(\)/);
+ assert.match(app,/audio\.addEventListener\('playing',\(\)=>\{if\(!state\.current\|\|state\.userPaused\|\|audio\.paused\|\|audio\.ended\)return;coverCharge\.hide\(\)/, 'Stale playing events cannot clear a newer loading cue or resume paused queue work');
  assert.match(app,/function pause\(\)\{coverCharge\.hide\(\)/);
  assert.match(app,/function reportAudioError\(text\)\{\s*coverCharge\.hide\(\)/);
- assert.match(app,/playbackSelection\+\+;coverCharge\.hide\(\)/);
+ assert.match(app,/playbackSelection\+\+;navigationRevision\+\+;nextDiscovery=null;invalidateSmartFill\(\);coverCharge\.hide\(\)/,
+  'Selection cancels stale transport/discovery work before hiding its loading cue');
+ assert.match(app,/function pause\(\)\{coverCharge\.hide\(\);clearNextDiscoveryStatus\(\);navigationRevision\+\+;nextDiscovery=null;invalidateSmartFill\(\)/,
+  'Pause hides the cue and cancels pending automatic navigation');
  assert.match(app,/audio\.addEventListener\('stalled'/);
  assert.match(app,/window\.addEventListener\('beforeunload',\(\)=>\{coverCharge\.destroy\(\)/);
  // The only HTMLAudioElement remains the existing player; no fetch or fake percentage.

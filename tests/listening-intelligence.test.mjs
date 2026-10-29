@@ -56,6 +56,16 @@ test('manual queue survives mode switch and automatic provenance can be promoted
  assert.deepEqual(markAutoTracks([d],'mix').map(t=>t._gnarlyAutoMode),['mix']);
  assert.equal(manual[0]._gnarlyAutoMode,undefined);
 });
+test('consumed session recordings and provider aliases do not immediately refill the automatic queue',()=>{
+ const alias={...a,id:'youtube:ZZZZZZZZZZZ',videoId:'ZZZZZZZZZZZ'};
+ const result=recommendTracks({mode:'mix',anchor,candidates:[a,alias,b,c],recent:[a,b]});
+ assert.deepEqual(result.map(x=>x.id),[c.id]);
+ // A manually pending recording still stays in its original queue order;
+ // recommendation filtering does not mutate the existing tail.
+ const pending=[a,b];
+ recommendTracks({mode:'mix',anchor,candidates:[a,b,c],existing:pending,recent:[a,b]});
+ assert.deepEqual(pending,[a,b]);
+});
 test('Omnibox empty discovery is independent from active queue and does not repeat rows',()=>{
  const mem=new ListeningMemory(storage());mem.record('like',d);
  const rows=discoverySuggestions({history:[a,b,c,d,d],favorites:[d,a],queue:[b,anchor],memory:mem});

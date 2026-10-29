@@ -31,7 +31,8 @@ test('stale interrupted play promise never recovers an obsolete recording',()=>{
 test('Next looks up an eligible smart queue candidate without stopping the current audio',()=>{
  const block=app.slice(app.indexOf('async function next(){'),app.indexOf('function prefetchNextLyrics()'));
  assert.match(block,/await maybeFillSmartQueue\(\{force:true\}\)/);
- assert.match(block,/if\(state\.current!==startingTrack\)return/);
+ assert.match(block,/if\(state\.current!==startingTrack\|\|playbackSelection!==selection\|\|navigationRevision!==revision\)return/,
+  'Pending Next must stop after track changes, same-track reselection, pause or Previous');
  assert.match(block,/else toast\('Fila vazia\. Adicione outra música para avançar\.'\)/);
  assert.match(app,/nexttrack:\(\)=>\{void next\(\)\}/);
  assert.match(app,/e\.key==='MediaTrackNext'\)void next\(\)/);
