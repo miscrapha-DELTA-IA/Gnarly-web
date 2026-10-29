@@ -694,7 +694,7 @@ async function loadAutoLyrics(track){
  if(immediate)return;
  try{
   const found=await autoLyrics(track,{signal:ac.signal});
-  if(ac.signal.aborted||state.current!==track||
+  if(ac.signal.aborted||state.current!==track||lyricWorkshop.active||
     state.lyricsSource==='manual'||state.lyricsSource==='tap-sync')return;
   state.lyrics=found.lines||[];state.plainLyrics=found.plainLines||[];
   state.lyricsSource=found.source;state.lyricsSynced=!!found.synced;state.lyricsInstrumental=!!found.instrumental;
@@ -1750,6 +1750,7 @@ function handleCommand(command){switch(command){
   if(!lyricWorkshop.start(state.current,verses)){
    toast('É preciso ter ao menos dois versos para sincronizar.');break;
   }
+  state.lyricsAbort?.abort();state.lyricsLoading=false;
   if(!state.plainLyrics.length){
    state.plainLyrics=verses;state.lyricsStatus='Letra fornecida por você · marque os versos';
    state.lastLyric=-2;syncLyrics();
@@ -1783,7 +1784,28 @@ $('#dj-midi-import').addEventListener('change',e=>{const file=e.target.files?.[0
 $('#lyrics-ai-import').addEventListener('change',e=>{
  const file=e.target.files?.[0];e.target.value='';if(file)void transcribeOwnLyrics(file);
 });
-$('#lrc-import').addEventListener('change',async e=>{const file=e.target.files?.[0];if(!file)return;state.lyricsAbort?.abort();const track=state.current,selection=playbackSelection;const text=await file.text();if(state.current!==track||playbackSelection!==selection)return;state.lyrics=parseLRC(text);state.plainLyrics=[];state.lyricsSource='manual';state.lyricsLoading=false;state.lyricsSynced=true;state.lyricsStatus='Letra sincronizada importada por você';state.lastLyric=-2;syncLyrics();toast(`${state.lyrics.length} linhas sincronizadas carregadas`);if(state.sheet==='karaoke')renderSheet();e.target.value=''});
+$('#lrc-import').addEventListener('change',async e=>{
+ const file=e.target.files?.[0];e.target.value='';if(!file)return;
+ const track=state.current,selection=playbackSelection;if(!track)return;
+ const text=await file.text();
+ if(state.current!==track||playbackSelection!==selection)return;
+ const lines=parseLRC(text).slice(0,280);
+ if(lines.length>=2){
+  lyricWorkshop.clear();
+  state.lyricsAbort?.abort();lyricsAIController?.abort();
+  lyricWorkshop.save(track,lines);
+  applyLyricResult({lines,plainLines:lines.map(x=>x.text),synced:true,
+   source:'manual',status:'Letra .lrc sincronizada e salva neste dispositivo'});
+  state.lyricsLoading=false;toast(lines.length+' linhas sincronizadas importadas');
+ }else{
+  const plain=text.slice(0,24000).split(/\r?\n/).map(x=>x.trim()).filter(Boolean).slice(0,280);
+  if(plain.length<2){toast('Arquivo sem linhas de letra válidas.');return}
+  state.lyricsAbort?.abort();lyricsAIController?.abort();lyricWorkshop.clear();
+  applyLyricResult({lines:[],plainLines:plain,synced:false,source:'user-text',
+   status:'Texto importado · use Sincronizar ao vivo para marcar os tempos'});
+  state.lyricsLoading=false;
+ }
+});
 $('#stems-import').addEventListener('change',async e=>{const files=[...(e.target.files||[])];e.target.value='';if(!state.current)return toast('Escolha uma música primeiro');state.stemStatus='Carregando fontes Stems…';if(isModuleOpen('controls'))renderModule('controls');try{await stems.load(files);state.stemStatus='Quatro fontes reais conectadas ao mixer GNARLY.';toast('Stems prontos: voz, bateria, baixo e outros.')}catch(err){state.stemStatus=err.message;toast(err.message)}if(isModuleOpen('controls'))renderModule('controls')});
 $('#background-import').addEventListener('change',e=>{const file=e.target.files?.[0];if(!file||!file.type.startsWith('image/'))return;if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL);state.backgroundURL=URL.createObjectURL(file);state.photoAdjust=false;state.backgroundMode='custom';setSetting('backgroundMode','custom');applyBackground();if(state.sheet==='background')closeSheet();toast('Foto de fundo aplicada');e.target.value=''});
 $('#quick-playlist-button').addEventListener('click',openQuickPlaylist);
