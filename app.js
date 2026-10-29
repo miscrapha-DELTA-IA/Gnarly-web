@@ -426,12 +426,19 @@ function prepareNativeAudio(track,attempt=0){
  if(audio.src!==url){audio.preload='auto';audio.src=url;engine.restoreSpeed();}
  return true;
 }
+function showOptionalOfficialSource(){
+ const choice=$('#playback-source-choice');
+ if(choice)choice.hidden=!(state.current&&canUseOfficial(state.current,{offline:!!offlineAudio(state.current.id)}));
+}
+function hideOptionalOfficialSource(){const choice=$('#playback-source-choice');if(choice)choice.hidden=true;}
 function reportAudioError(text){
  coverCharge.hide();
  state.audioState='error';state.playbackError=text;
  const status=$('#player-status');if(status){status.textContent=text;status.hidden=false;}
  const ipodStatus=$('#ipod-audio-status');if(ipodStatus)ipodStatus.textContent=text;
- toast(text);
+ showOptionalOfficialSource();
+ // Keep a persistent, compact source choice instead of repeating an intrusive 429 toast.
+ if(!/HTTP 429|limitou novas músicas/i.test(text))toast(text);
 }
 function reportAudioStatus(text){
  const status=$('#player-status');if(status){status.textContent=text;status.hidden=!text;}
@@ -852,6 +859,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
   if(playbackBackstack.length>30)playbackBackstack.shift();
  }
  playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();
+ hideOptionalOfficialSource();
  queueAudioWarmup.reset();closeQuickPlaylist();
  // Commit queue navigation at selection time. The old 'playing' callback
  // left the next item at queue[0] while buffering, so rapid Next taps
@@ -894,6 +902,41 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
  if(isModuleOpen('performance'))void pads.prepareSong(track);
  if(state.sheet&&['library','queue','search','lyric-style'].includes(state.sheet))renderSheet();
 }
+// During an upstream cooldown, check existing R2 media before concluding that
+// GNARLY playback is unavailable. HEAD never starts extraction.
+async function cachedNativeAvailable(track){
+ if(offlineAudio(track.id))return true;
+ if(!isGnarlyPagesHost(location.hostname))return false;
+ const url=trackAudioURL(track,{cacheOnly:true});
+ if(!url)return false;
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),2500);
+ try{
+  const response=await fetch(url,{method:'HEAD',cache:'no-store',credentials:'omit',signal:controller.signal});
+  return response.ok&&response.headers.get('X-Gnarly-Playback-Source')==='r2-edge';
+ }catch{return false}finally{clearTimeout(timer)}
+}
+async function resumeCachedNative(track,isCurrent){
+ if(!await cachedNativeAvailable(track)||!isCurrent())return false;
+ const url=offlineAudio(track.id)||trackAudioURL(track,{cacheOnly:true});
+ if(!url)return false;
+ audio.pause();audio.src=new URL(url,location.href).href;engine.restoreSpeed();
+ try{
+  const started=audio.play(),unlocked=resumePlayerAudio();
+  await Promise.all([started,unlocked]);
+  if(!isCurrent())return false;
+  coverCharge.hide();state.playing=true;state.audioState='playing';state.playbackError='';
+  reportAudioStatus('');updatePlayer();return true;
+ }catch(error){
+  if(!isCurrent())return false;
+  if(error?.name==='NotAllowedError'){
+   // Safari may require another gesture after the asynchronous cache probe.
+   coverCharge.hide();state.playing=false;state.audioState='idle';
+   reportAudioStatus('Áudio GNARLY já disponível no cache. Toque Play para iniciar.');
+   updatePlayer();return true;
+  }
+  return false;
+ }
+}
 async function recoverNativeAudio(track,initialError=null){
  const selection=playbackSelection,generation=audioDelivery.generation;
  if(!track||track.source!=='youtube'||state.current!==track||state.userPaused)return false;
@@ -907,9 +950,8 @@ async function recoverNativeAudio(track,initialError=null){
   if(rateLimit){playbackCooldown.remember(rateLimit);queueAudioWarmup.cancel();}
   if(!current())return false;
   if(rateLimit){
-   // Never strand listeners on a cooldown screen. A cached-only R2 miss
-   // turns into a visible official video for the exact selected recording.
-   if(canUseOfficial(track,{offline:!!offlineAudio(track.id)})&&openYouTubePlayer(track))return true;
+   if(await resumeCachedNative(track,current))return true;
+   if(!current())return false;
    state.playing=false;updatePlayer();
    reportAudioError(playbackLimitMessage(rateLimit));return false;
   }
@@ -952,11 +994,11 @@ async function recoverNativeAudio(track,initialError=null){
   if(!rateLimit)rateLimit=playbackCooldown.snapshot()||await inspectPlaybackLimit();
   if(rateLimit){playbackCooldown.remember(rateLimit);queueAudioWarmup.cancel();}
   if(!current())return false;
-  // Exhausted native recovery: also handle decode (3), unsupported formats,
-  // and opaque network failures that never exposed a usable MediaError code.
-  // Never interpret a user-gesture rejection or an abort as provider failure.
-  if(shouldUseOfficialAfterNativeFailure(track,{offline:!!offlineAudio(track.id),error:initialError})&&
-   openYouTubePlayer(track))return true;
+  // A different edge POP may already have the song even when the origin fails.
+  // The YouTube video is deliberately opt-in; never swap the entire GNARLY
+  // player and disable its visual/audio features without the listener asking.
+  if(await resumeCachedNative(track,current))return true;
+  if(!current())return false;
   state.playing=false;updatePlayer();
   reportAudioError(rateLimit?playbackLimitMessage(rateLimit):playbackFailureMessage(initialError,audio.error));
   return false;
@@ -988,6 +1030,7 @@ async function play(){
   state.audioState='loading';
   reportAudioStatus(isOffline(track.id)?'Abrindo música offline…':'Preparando áudio…');
  }
+ hideOptionalOfficialSource();
  // Both remote and offline tracks. Only audible readiness stops this cue.
  if(audio.paused||audio.readyState<3)coverCharge.show('loading');
  else coverCharge.hide();
@@ -1229,7 +1272,7 @@ function openYouTubePlayer(track){
  closeYouTubePlayer();
  const dialog=$('#youtube-player-dialog'),frame=$('#youtube-player-frame');
  officialTrackId=track.id;
- coverCharge.hide();audio.pause();stems.pause();state.playing=false;
+ hideOptionalOfficialSource();coverCharge.hide();audio.pause();stems.pause();state.playing=false;
  state.audioState='official';state.playbackError='';state.userPaused=false;
  reportAudioStatus('');
  $('#youtube-player-title').textContent=track.title||'Reprodução oficial';
@@ -1590,7 +1633,6 @@ async function maybeFillSmartQueue({force=false}={}){
     updatePlayer();prefetchNextLyrics();return;
    }
    const cached=[...state.searchResults,...state.history,...state.favorites,...state.queue];
-   const related=mode==='mix'?listeningMemory.affinityArtists(anchor.artist,1)[0]:null;
    const added=[];
    const publish=candidates=>{
     if(!current())return;
@@ -1609,10 +1651,11 @@ async function maybeFillSmartQueue({force=false}={}){
    // Known complete recordings are immediately usable. A slow optional taste
    // lookup cannot hold the current song's successor hostage to its timeout.
    publish(cached);
-   if(added.length>=7)return;
-   const remote=searchNativeBackend(query,{signal:controller.signal}).catch(()=>[]);
-   const extra=related?searchNativeBackend(related,{signal:controller.signal}).catch(()=>[]):Promise.resolve([]);
-   await Promise.all([remote.then(publish),extra.then(publish)]);
+   // Do not emit additional speculative search requests while the origin is
+   // rate-limited, or when enough known songs are already in the queue.
+   if(added.length>=3||playbackCooldown.active())return;
+   const remote=await searchNativeBackend(query,{signal:controller.signal}).catch(()=>[]);
+   publish(remote);
    if(!current())return;
    if(!added.length){
     smartStatus='Sem novas faixas verificadas para '+mode+'. Sua fila foi preservada.';
@@ -2097,6 +2140,7 @@ $('#record-button').addEventListener('click',()=>void toggleMicRecording());
 $('#karaoke-expand-button').addEventListener('click',e=>{karaokeStage.open(e.currentTarget);if(state.sheet)closeSheet()});
 $('#play-button').addEventListener('click',()=>state.playing?pause():void play());
 $('#youtube-close').addEventListener('click',closeYouTubePlayer);
+$('#youtube-optin-button').addEventListener('click',()=>{if(state.current&&canUseOfficial(state.current,{offline:!!offlineAudio(state.current.id)}))openYouTubePlayer(state.current)});
 $('#youtube-native-retry').addEventListener('click',()=>void tryNativeFromOfficial());
 $('#youtube-next').addEventListener('click',()=>void next());
 $('#youtube-previous').addEventListener('click',previous);
@@ -2195,7 +2239,7 @@ async function fetchSearchDiscovery(page){
  page.started=true;
  const valid=()=>searchPaging===page&&page.revision===searchCounter&&
   !page.controller.signal.aborted&&!state.searchTerm;
- const cached=Date.now()-discoveryRemoteCache.savedAt<180000&&discoveryRemoteCache.items.length;
+ const cached=Date.now()-discoveryRemoteCache.savedAt<900000&&discoveryRemoteCache.items.length;
  if(cached){
   page.remote=discoveryRemoteCache.items;
   page.finished=true;page.failed=false;
@@ -2203,7 +2247,7 @@ async function fetchSearchDiscovery(page){
   return;
  }
  const queries=discoveryQueries({favorites:state.favorites,history:state.history,
-  memory:listeningMemory});
+  memory:listeningMemory}).slice(0,1); // One discovery query, not a burst on every empty search.
  const batches=queries.map(()=>[]);
  const merge=()=>{
   const out=[];
@@ -2430,9 +2474,15 @@ async function runSearch(raw,{live=false}={}){
   nativeFailed:false,previewFailed:false,controller:new AbortController()};
  searchPaging=page;
  refreshLiveResults(page);
- // Single-letter results appear locally now. The first remote discovery is
- // small, and every new keystroke cancels obsolete network work.
- const delay=live?(query.length===1?250:210):0;
+ // Keystrokes must NOT generate remote searches for every one/two-letter
+ // prefix. Local favorites, history, offline and cached results remain instant.
+ // Enter explicitly searches even short terms.
+ if(live&&query.length<3){
+  page.nativeFinished=true;page.previewFinished=true;
+  refreshLiveResults(page,state.searchResults.length?'':'Continue digitando ou pressione Enter para buscar.');
+  return;
+ }
+ const delay=live?420:0;
  if(delay)searchDebounce=setTimeout(()=>{searchDebounce=null;void fetchLiveSearch(page)},delay);
  else void fetchLiveSearch(page);
 }
@@ -2467,7 +2517,7 @@ audio.addEventListener('waiting',()=>{
  if(state.current&&!state.userPaused&&!audio.paused&&!audio.ended)
   reportAudioStatus(state.audioState==='loading'?'Preparando áudio…':'Estabilizando sinal de áudio…');
 });
-audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;coverCharge.hide();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
+audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;hideOptionalOfficialSource();coverCharge.hide();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
   const ms=Math.round(performance.now()-playbackStartedAt);
   const origin=audio.currentSrc.startsWith('blob:')?'offline':audio.currentSrc.includes('/fast-audio/')?'fast-edge':'render';
   console.debug('GNARLY startup ms',ms,'origin',origin);
