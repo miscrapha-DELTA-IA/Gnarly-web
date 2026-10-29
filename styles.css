@@ -863,3 +863,31 @@ body{position:relative;min-height:100dvh;background:#05090a}
 .playback-official-fallback[hidden]{display:none!important}
 .playback-official-fallback:hover{border-color:var(--acid,#46ff12)}
 .playback-official-fallback:focus-visible{outline:2px solid var(--acid,#46ff12);outline-offset:3px}
+
+/* GNARLY LIVE LYRIC SYNC — compact studio panel, never overlaid on the player. */
+.lyric-sync-workshop{
+ margin:12px 0 16px;padding:14px 14px 12px;border-radius:16px;
+ border:1px solid color-mix(in srgb,var(--acid,#46ff12) 32%,#ffffff25);
+ background:linear-gradient(142deg,color-mix(in srgb,var(--acid,#46ff12) 9%,#151518),
+  rgba(13,16,17,.87));
+ box-shadow:inset 0 1px #ffffff16;
+}
+.lyric-sync-workshop>strong{font-size:12px;letter-spacing:.075em;color:var(--acid,#46ff12)}
+.lyric-sync-workshop .section-note{margin:9px 0;font-size:12px;line-height:1.5}
+.lyric-sync-next{
+ margin:11px 0;padding:17px 13px;border-radius:12px;
+ background:rgba(0,0,0,.34);border:1px solid #ffffff18;
+ font-weight:770;font-size:clamp(15px,4vw,22px);line-height:1.35;
+ text-align:center;overflow-wrap:anywhere;
+}
+.lyric-sync-workshop textarea{
+ display:block;width:100%;min-height:110px;max-height:220px;resize:vertical;
+ padding:12px;margin:9px 0;border-radius:10px;
+ border:1px solid #ffffff45;background:rgba(1,8,5,.56);color:#f5fff2;
+ font:inherit;font-size:13px;line-height:1.55;
+}
+.lyric-sync-workshop textarea:focus-visible{
+ outline:2px solid var(--acid,#46ff12);outline-offset:2px;
+}
+.lyric-sync-workshop .lyrics-actions{display:flex;gap:8px;flex-wrap:wrap}
+.lyric-sync-workshop .lyrics-actions button{min-height:40px;touch-action:manipulation}
