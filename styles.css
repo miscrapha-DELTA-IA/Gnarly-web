@@ -891,3 +891,54 @@ body{position:relative;min-height:100dvh;background:#05090a}
 }
 .lyric-sync-workshop .lyrics-actions{display:flex;gap:8px;flex-wrap:wrap}
 .lyric-sync-workshop .lyrics-actions button{min-height:40px;touch-action:manipulation}
+
+/* Official YouTube playback is a first-class, VISIBLE page section.
+ * Its native controls/branding must never be covered by GNARLY overlays. */
+.app-shell .youtube-modal.official-inline{
+ position:relative;inset:auto;z-index:1;display:block;place-items:unset;
+ width:100%;max-width:590px;margin:0 auto 18px;padding:0;
+ background:none;overflow:visible;
+}
+.app-shell .youtube-modal.official-inline[hidden]{display:none!important}
+.youtube-modal.official-inline .youtube-modal-card{
+ width:100%;padding:13px;border-radius:22px;
+ background:linear-gradient(145deg,rgba(3,20,9,.95),rgba(13,20,19,.94));
+ border:1px solid color-mix(in srgb,var(--acid,#46ff12) 34%,#ffffff1f);
+ box-shadow:0 14px 40px #0008,inset 0 1px #ffffff18;
+}
+.youtube-modal.official-inline .youtube-modal-head{
+ display:flex;align-items:center;justify-content:space-between;gap:12px;
+ padding:4px 4px 12px;
+}
+.youtube-modal.official-inline .youtube-modal-head>div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.youtube-modal.official-inline .youtube-modal-head strong{
+ font-size:clamp(13px,3.6vw,18px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.youtube-modal.official-inline .youtube-official-kicker{
+ font-size:10px;font-weight:800;letter-spacing:.13em;color:var(--acid,#46ff12);
+}
+.youtube-modal.official-inline .youtube-frame-wrap{
+ position:relative;width:100%;aspect-ratio:16/9;min-height:200px;
+ overflow:hidden;border-radius:12px;background:#080808;
+}
+/* YouTube requires at least 200x200 physical pixels for the player viewport. */
+.youtube-modal.official-inline .youtube-frame-wrap iframe{
+ position:absolute;inset:0;width:100%;height:100%;border:none;
+}
+.youtube-official-footer{
+ display:flex;align-items:center;justify-content:space-between;gap:8px;
+ padding:12px 5px 3px;font-size:11px;line-height:1.35;color:#d0dfd1;
+}
+.youtube-official-footer a{color:var(--acid,#46ff12);white-space:nowrap;font-weight:850}
+.youtube-modal.official-inline .youtube-modal-head .icon-button{width:42px;height:42px;flex:0 0 42px;font-size:23px}
+.app-shell[data-audio-provider="youtube-official"] #player-section .progress-block,
+.app-shell[data-audio-provider="youtube-official"] #player-section .transport{
+ opacity:.38;
+}
+/* Keep navigation physically usable, but do not pretend the native time slider
+ * or speed/reverb controls can control the separate YouTube sound. */
+.app-shell[data-audio-provider="youtube-official"] #seek-slider{pointer-events:none}
+@media(max-width:360px){
+ .youtube-modal.official-inline .youtube-frame-wrap{min-height:205px}
+ .youtube-official-footer{flex-wrap:wrap}
+}
