@@ -137,6 +137,11 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
   new URL('/stream?url='+encodeURIComponent(youtube),RENDER),
   new URL('/download?delivery=browser&url='+encodeURIComponent(youtube),RENDER)
  ];
+ // /stream checks the backend's local cache, while /download checks R2
+ // before enforcing its provider cooldown. A *confirmed* upstream 429 from
+ // /stream must still allow this one cache-first /download lookup.
+ // It cannot issue a new extraction while the backend's global cooldown runs.
+ let confirmedProviderLimit=null;
  for(let index=0;index<candidates.length;index++){
   let upstream;
   try{upstream=await fetchAudioHeaders(fetcher,candidates[index].href,options,{
@@ -147,13 +152,23 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
     'Retry-After':'8','X-Gnarly-Playback-Source':'origin-timeout'});
    continue;
   }
+  // A real YouTube/provider cooldown is different from our own queue-full or
+  // access-control 429. Only the former may do a single cache-first lookup.
+  if(index===0&&upstream.status===429&&
+   upstream.headers.get('X-Download-Error')==='upstream_rate_limited'){
+   confirmedProviderLimit=retryAfter(upstream,'300');
+   discardAudioBody(upstream);
+   continue;
+  }
   if([401,403,416,429,503,504].includes(upstream.status)){
-   const headers={'X-Gnarly-Playback-Source':'origin-unavailable'};
-   if([429,503,504].includes(upstream.status))headers['Retry-After']=retryAfter(upstream);
-   if(upstream.status===416&&/^bytes \*\/\d+$/.test(upstream.headers.get('Content-Range')||''))
+   const status=confirmedProviderLimit&&[429,503,504].includes(upstream.status)?429:upstream.status;
+   const headers={'X-Gnarly-Playback-Source':confirmedProviderLimit?'origin-rate-limited':'origin-unavailable'};
+   if(confirmedProviderLimit&&status===429)headers['Retry-After']=confirmedProviderLimit;
+   else if([429,503,504].includes(status))headers['Retry-After']=retryAfter(upstream);
+   if(status===416&&/^bytes \*\/\d+$/.test(upstream.headers.get('Content-Range')||''))
     headers['Content-Range']=upstream.headers.get('Content-Range');
    discardAudioBody(upstream);
-   return reply(upstream.status,'Audio source temporarily unavailable',headers);
+   return reply(status,'Audio source temporarily unavailable',headers);
   }
   if(!validAudioResponse(upstream)){discardAudioBody(upstream);continue}
   const headers=audioHeaders(index===0?'progressive-origin':'extraction-origin',
@@ -166,12 +181,16 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
   if(!upstream.headers.has('content-range'))headers.delete('content-range');
   // Write-through only a complete, bounded progressive AAC stream.
   // The browser receives its tee immediately; R2 writes never block first audio.
-  const body=index===0?promoteCompleteStream({upstream,bucket:env?.GNARLY_AUDIO_R2,
-   id,waitUntil:contextWaitUntil}):upstream.body;
+  // Both progressive and complete /download media may safely populate edge R2.
+  // Only fully received, bounded, valid M4A is ever stored; Range fragments
+  // and aborted downloads are rejected by promoteCompleteStream.
+  const body=promoteCompleteStream({upstream,bucket:env?.GNARLY_AUDIO_R2,
+   id,waitUntil:contextWaitUntil});
   return new Response(body,{status:upstream.status,headers});
  }
- return reply(503,'Audio source temporarily unavailable',{'Retry-After':'8',
-  'X-Gnarly-Playback-Source':'unavailable'});
+ return reply(confirmedProviderLimit?429:503,'Audio source temporarily unavailable',{
+  'Retry-After':confirmedProviderLimit||'8',
+  'X-Gnarly-Playback-Source':confirmedProviderLimit?'origin-rate-limited':'unavailable'});
 }
 export const onRequestGet=ctx=>handleFastAudio(ctx);
 export const onRequestHead=ctx=>handleFastAudio(ctx);

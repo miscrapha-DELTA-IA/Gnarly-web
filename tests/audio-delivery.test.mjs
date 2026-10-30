@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {AudioDeliveryRecovery,retryableMediaFailure,inspectPlaybackLimit,playbackLimitMessage} from '../lib/audio-delivery.js';
+import {AudioDeliveryRecovery,retryableMediaFailure,inspectPlaybackLimit,inspectPlaybackStatus,resolvePlaybackCooldown,PlaybackCooldown,playbackLimitMessage} from '../lib/audio-delivery.js';
 const a = {id:'youtube:dQw4w9WgXcQ',videoId:'dQw4w9WgXcQ',source:'youtube'};
 test('only recover transient browser transport errors, not autoplay or cancellations',()=>{
  assert.equal(retryableMediaFailure(null,{code:2}),true);
@@ -70,8 +70,42 @@ test('detected upstream cooldown aborts further rapid retries, including mid-ses
 test('player uses actual status endpoint before deciding to retry media error 4',async()=>{
  const {readFileSync}=await import('node:fs');
  const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
- assert.match(source,/async function recoverNativeAudio[\s\S]*?let rateLimit=playbackCooldown\.snapshot\(\)\|\|await inspectPlaybackLimit\(\)/);
+ assert.match(source,/async function recoverNativeAudio[\s\S]*?let rateLimit=await resolvePlaybackCooldown\(playbackCooldown\)/);
  assert.match(source,/rateLimit\?playbackLimitMessage\(rateLimit\):playbackFailureMessage/);
  const publicSource=readFileSync(new URL('../lib/playback-source.js',import.meta.url),'utf8');
  assert.doesNotMatch(publicSource,/Pode ser 403\/422/,'a media error is not proof of a 403/422 response');
+});
+
+test('fresh backend ready releases a stale locally remembered 5-minute block',async()=>{
+ const limiter=new PlaybackCooldown({now:()=>1234});
+ limiter.remember({code:'upstream_rate_limited',retryAfter:300});
+ let calls=0;
+ const result=await resolvePlaybackCooldown(limiter,{inspect:async()=>{
+  calls++;return {code:'ready'};
+ }});
+ assert.equal(result,null);assert.equal(limiter.active(),false);assert.equal(calls,1);
+ const status=await inspectPlaybackStatus({fetcher:async()=>({
+  ok:true,json:async()=>({status:'ready',retry_after:0})
+ })});
+ assert.deepEqual(status,{code:'ready'});
+});
+
+test('inaccessible backend cannot clear a known provider cooldown',async()=>{
+ const limiter=new PlaybackCooldown({now:()=>0});
+ limiter.remember({code:'upstream_rate_limited',retryAfter:300});
+ const status=await resolvePlaybackCooldown(limiter,{inspect:async()=>null});
+ assert.equal(status.retryAfter,300);
+ assert.equal(limiter.active(),true);
+});
+
+test('backend new retry-after replaces old local cooldown instead of extending it',async()=>{
+ let now=0;
+ const limiter=new PlaybackCooldown({now:()=>now});
+ limiter.remember({code:'upstream_rate_limited',retryAfter:300});
+ now=1000;
+ const state=await resolvePlaybackCooldown(limiter,{inspect:async()=>({
+  code:'upstream_rate_limited',retryAfter:40
+ })});
+ assert.equal(state.retryAfter,40);
+ assert.equal(limiter.snapshot().retryAfter,40);
 });

@@ -103,7 +103,7 @@ test('player consults stored global cooldown and requests cache only on first or
  assert.match(app,/new PlaybackCooldown\(\{storage:localStorage\}\)/);
  assert.match(app,/canPrepare:\(\)=>!playbackCooldown\.active\(\)/);
  assert.match(app,/cacheOnly:attempt===0&&playbackCooldown\.active\(\)/);
- assert.match(app,/playbackCooldown\.snapshot\(\)\|\|await inspectPlaybackLimit\(\)/);
+ assert.match(app,/await resolvePlaybackCooldown\(playbackCooldown\)/);
  assert.match(app,/playbackCooldown\.remember\(rateLimit\)/);
  assert.match(app,/queueAudioWarmup\.cancel\(\)/);
  const original=globalThis.location;

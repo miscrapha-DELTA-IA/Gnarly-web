@@ -12,7 +12,7 @@ import {LyricSyncWorkshop,serializeManualLRC} from './lib/lyric-sync-workshop.js
 import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
 import {trackAudioURL,isGnarlyPagesHost,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
 import {officialEmbedURL,officialWatchURL,canUseOfficial,shouldUseOfficialAfterNativeFailure} from './lib/official-playback.js';
-import {AudioDeliveryRecovery,PlaybackCooldown,inspectPlaybackLimit,playbackLimitMessage} from './lib/audio-delivery.js';
+import {AudioDeliveryRecovery,PlaybackCooldown,resolvePlaybackCooldown,playbackLimitMessage} from './lib/audio-delivery.js';
 import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-library.js';
 import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from './lib/queue-audio-warmup.js';
 import {quickPlaylistMarkup} from './ui/quick-playlist.js';
@@ -946,7 +946,7 @@ async function recoverNativeAudio(track,initialError=null){
   // HTMLMediaElement hides HTTP status codes. Read-only backend diagnosis
   // avoids repeatedly hammering a provider currently returning HTTP 429.
   const current=()=>state.current===track&&playbackSelection===selection&&audioDelivery.generation===generation&&!state.userPaused;
-  let rateLimit=playbackCooldown.snapshot()||await inspectPlaybackLimit();
+  let rateLimit=await resolvePlaybackCooldown(playbackCooldown);
   if(rateLimit){playbackCooldown.remember(rateLimit);queueAudioWarmup.cancel();}
   if(!current())return false;
   if(rateLimit){
@@ -978,7 +978,7 @@ async function recoverNativeAudio(track,initialError=null){
     }catch(failure){
      // The upstream 429 can appear on the first retry: stop the *rest* of
      // the burst immediately rather than spending the retry budget in seconds.
-     rateLimit=playbackCooldown.snapshot()||await inspectPlaybackLimit();
+     rateLimit=await resolvePlaybackCooldown(playbackCooldown);
      if(rateLimit){playbackCooldown.remember(rateLimit);queueAudioWarmup.cancel();
       const limited=new Error('Provider rate limited');
       limited.name='UpstreamRateLimitedError';
@@ -991,7 +991,7 @@ async function recoverNativeAudio(track,initialError=null){
   if(!current())return false;
   if(recovered){coverCharge.hide();state.audioState='playing';state.playbackError='';reportAudioStatus('');return true;}
   // A cooldown can begin while the bounded retry attempt is in progress.
-  if(!rateLimit)rateLimit=playbackCooldown.snapshot()||await inspectPlaybackLimit();
+  if(!rateLimit)rateLimit=await resolvePlaybackCooldown(playbackCooldown);
   if(rateLimit){playbackCooldown.remember(rateLimit);queueAudioWarmup.cancel();}
   if(!current())return false;
   // A different edge POP may already have the song even when the origin fails.
