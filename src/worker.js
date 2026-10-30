@@ -7,8 +7,10 @@ export {KaraokeRoom} from './karaoke-relay.js';
 import {onRequestGet as catalog} from '../functions/api/catalog.js';
 import {onRequestGet as omnibox} from '../functions/api/omnibox.js';
 import {onRequestGet as audiusSearch} from '../functions/api/audius-search.js';
+import {onRequestGet as jamendoSearch} from '../functions/api/jamendo-search.js';
 import {onRequestGet as r2Available} from '../functions/api/r2-available.js';
 import {handleAudiusAudio} from '../functions/audius-audio/[id].js';
+import {handleJamendoAudio} from '../functions/jamendo-audio/[id].js';
 import {onRequestPost as stemsTicket} from '../functions/api/stems-ticket.js';
 import {onRequestGet as metadata} from '../functions/api/metadata.js';
 import {onRequestGet as artwork} from '../functions/api/artwork.js';
@@ -18,6 +20,7 @@ import {onRequestPost as fastPrepare} from '../functions/fast-prepare/[id].js';
 const ALLOW=Object.freeze({
   '/api/catalog': {method:'GET', handler:catalog},
   '/api/audius-search': {method:'GET', handler:audiusSearch},
+  '/api/jamendo-search': {method:'GET', handler:jamendoSearch},
   '/api/r2-available': {method:'GET', handler:r2Available},
   '/api/omnibox': {method:'GET', handler:omnibox},
   '/api/metadata': {method:'GET', handler:metadata},
@@ -61,6 +64,10 @@ export default {
     if(audiusId)return handleAudiusAudio({request,params:{id:audiusId[1]}});
     if(url.pathname.startsWith('/audius-audio/'))
       return new Response('Invalid Audius ID',{status:400,headers:{'cache-control':'no-store'}});
+    const jamendoId=/^\/jamendo-audio\/(\d{1,16})$/.exec(url.pathname);
+    if(jamendoId)return handleJamendoAudio({request,params:{id:jamendoId[1]},env});
+    if(url.pathname.startsWith('/jamendo-audio/'))
+      return new Response('Invalid Jamendo ID',{status:400,headers:{'cache-control':'no-store'}});
     const prepareId=/^\/fast-prepare\/([A-Za-z0-9_-]{11})$/.exec(url.pathname);
     if(prepareId){
       if(request.method!=='POST')return methodNotAllowed('POST');
