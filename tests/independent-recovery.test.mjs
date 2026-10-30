@@ -42,7 +42,7 @@ test('Play resets terminal MediaError for same URL without replaying a failed ev
  const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(source,/function prepareNativeAudio[\s\S]*?else if\(audio\.error\)\{[\s\S]*?audio\.load\(\)/);
  assert.match(source,/if\(resetMedia\)\{[\s\S]*?else\{audio\.load\(\);\}/);
- assert.match(source,/async function recoverIndependentAudio[\s\S]*?findIndependentRecording\(track/);
+ assert.match(source,/async function recoverIndependentAudio[\s\S]*?sourceRouter\.resolve\(track/);
  assert.match(source,/if\(await recoverIndependentAudio\(track,current\)\)return true/);
  assert.match(source,/const source=offlineAudio\(track\.id\)\|\|trackAudioURL\(track,\{\s*attempt\s*\}\)/);
  assert.doesNotMatch(source,/attempt,cacheOnly:attempt===0&&playbackCooldown\.active\(\)/,
