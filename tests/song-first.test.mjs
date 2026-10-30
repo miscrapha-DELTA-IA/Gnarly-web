@@ -11,8 +11,7 @@ const other={id:'youtube:BBBBBBBBBBB',source:'youtube',videoId:'BBBBBBBBBBB',
 const identical={id:'youtube:CCCCCCCCCCC',source:'youtube',videoId:'CCCCCCCCCCC',
  title:'So FN',artist:'Nine Vicious',playbackAvailability:'r2',duration:172};
 test('requested song remains above unrelated fully playable sources',()=>{
- assert.deepEqual(rankRequestedSongFirst([junk,other,target],'Nine Vicious So FN'),
- [target,other,junk].sort((a,b)=>songMatchScore(b,'Nine Vicious So FN')-songMatchScore(a,'Nine Vicious So FN')));
+ assert.deepEqual(rankRequestedSongFirst([junk,other,target],'Nine Vicious So FN'),[target,junk,other]);
  assert.equal(rankRequestedSongFirst([junk,target],'Nine Vicious So FN')[0].id,target.id);
 });
 test('availability can break a tie ONLY between the same identified recording',()=>{
