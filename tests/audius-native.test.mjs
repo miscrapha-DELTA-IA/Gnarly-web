@@ -123,9 +123,14 @@ test('an untrusted redirect, invalid content type and real provider throttles fa
 });
 
 test('Cloudflare Worker dispatch matches Pages routes, never a third-party iframe',async()=>{
- const search=await worker.fetch(new Request('https://gnarly.test/api/audius-search?term=sample'),{},
-  {waitUntil:()=>{}});
- assert.ok([200,503].includes(search.status),'network-independent route is mounted');
+ const originalFetch=globalThis.fetch;
+ globalThis.fetch=async()=>Response.json({data:[raw()]});
+ try{
+  const search=await worker.fetch(new Request('https://gnarly.test/api/audius-search?term=sample'),{},
+   {waitUntil:()=>{}});
+  assert.equal(search.status,200);
+  assert.equal((await search.json()).results[0].source,'audius');
+ }finally{globalThis.fetch=originalFetch;}
  const reject=await worker.fetch(new Request('https://gnarly.test/audius-audio/bad!'),{},
   {waitUntil:()=>{}});
  assert.equal(reject.status,400);
