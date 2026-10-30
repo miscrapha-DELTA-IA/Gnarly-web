@@ -40,7 +40,8 @@ export async function onRequestGet({request,env},cache=globalThis.caches?.defaul
     const track=cachedTrack(object);
     if(!track||seen.has(track.id))continue;
     seen.add(track.id);
-    if(needle&&!normalize(track.artist+' '+track.title).includes(needle))continue;
+    const searchable=track.artist==='Artista não identificado'?track.title:track.artist+' '+track.title;
+    if(needle&&!normalize(searchable).includes(needle))continue;
     results.push(track);
    }
    if(!response.truncated||!response.cursor)break;
