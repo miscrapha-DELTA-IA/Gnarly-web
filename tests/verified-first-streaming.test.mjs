@@ -34,7 +34,7 @@ test('Smart Mix accepts only verified whole tracks, never arbitrary YouTube list
  assert.match(source,/searchReadyAudio\(query,\{limit:24,signal:controller\.signal\}\)/);
  assert.match(source,/searchAudius\(query,\{limit:20,signal:controller\.signal\}\)/);
  assert.doesNotMatch(source,/const primary=searchNativeBackend\(query,\{signal:controller\.signal\}\)/);
- assert.match(source,/state\.searchResults=verifiedFirst\(personalizedRank/);
+ assert.match(source,/state\.searchResults=rankRequestedSongFirst\(personalizedRank/);
  assert.match(source,/YouTube · áudio não verificado/);
 });
 
