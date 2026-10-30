@@ -99,3 +99,13 @@ test('iPod MENU keeps access to the official provider while preserving customiza
  assert.doesNotMatch(renderPlayerSurfaceMenu('sharp',{upstreamLimited:true}),/official-player/);
  assert.match(source('app.js'),/action\.dataset\.playerSurfaceAction==='official-player'/);
 });
+
+test('recovery startup watchdog cannot cancel its own bounded source resolution',()=>{
+ const app=source('app.js');
+ const guard=app.slice(app.indexOf('function stopUnresponsivePlayback('),app.indexOf('function watchPlayback('));
+ assert.match(guard,/if\(recoveryOperation\)\{[\s\S]*?return;/);
+ assert.ok(guard.indexOf('if(recoveryOperation){')<guard.indexOf('state.userPaused=true'));
+ assert.match(app,/settleAudioStart\(started,unlocked,\{timeoutMs:5200\}\)/);
+ assert.match(app,/settleAudioStart\(start,unlock,\{timeoutMs:5200\}\)/);
+ assert.match(app,/settleAudioStart\(start,unlock,\{timeoutMs:4800\}\)/);
+});
