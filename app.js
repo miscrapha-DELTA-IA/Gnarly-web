@@ -1207,12 +1207,12 @@ async function play(){
   }
   if(!stillSelected())return;
   if(track.source==='youtube'&&!isOffline(track.id)){await recoverNativeAudio(track,e);}
-  else{state.playing=false;updatePlayer();reportAudioError((track.source==='audius'||track.source==='jamendo')?'A fonte independente não conseguiu transmitir esta faixa. Escolha outra música.':
+  else{state.playing=false;updatePlayer();reportAudioError(track.source==='audius'?'O Audius não conseguiu transmitir esta faixa. Escolha outra música.':track.source==='jamendo'?'O Jamendo não conseguiu transmitir esta faixa. Escolha outra música.':
   track.source==='preview'?'Não foi possível reproduzir a prévia oficial.':'Falha ao reproduzir a cópia local. Remova-a e baixe novamente.');}
   if(stillSelected()&&state.audioState!=='official')console.warn('GNARLY WEB audio play:',e);
  }
 }
-function pause(){sourceRouter.cancel();coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
+function pause(){coverCharge.hide();clearNextDiscoveryStatus();sourceRouter.cancel();navigationRevision++;nextDiscovery=null;invalidateSmartFill();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
 let nextDiscovery=null;
 function clearNextDiscoveryStatus(){if(nextDiscovery)reportAudioStatus('')}
 async function next(){
@@ -2692,7 +2692,7 @@ audio.addEventListener('waiting',()=>{
  if(state.current&&!state.userPaused&&!audio.paused&&!audio.ended)
   reportAudioStatus(state.audioState==='loading'?'Preparando áudio…':'Estabilizando sinal de áudio…');
 });
-audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;sourceRouter.cancel();hideOptionalOfficialSource();coverCharge.hide();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
+audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;hideOptionalOfficialSource();coverCharge.hide();sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
   const ms=Math.round(performance.now()-playbackStartedAt);
   const origin=audio.currentSrc.startsWith('blob:')?'offline':audio.currentSrc.includes('/fast-audio/')?'fast-edge':'render';
   console.debug('GNARLY startup ms',ms,'origin',origin);
