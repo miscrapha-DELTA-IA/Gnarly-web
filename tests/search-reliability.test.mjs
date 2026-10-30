@@ -106,18 +106,45 @@ test('obsolete browser searches cancel the actual edge-to-provider request',asyn
  }
 });
 
-test('429 from search proxy is passed through without being cached as success',async()=>{
+test('old backend local search 429 is classified as busy 503 with no upstream lock',async()=>{
  let calls=0;
  await edgeCase('/api/omnibox?term=limited',async()=>{
   calls++;
-  return new Response('origin limited',{status:429,headers:{'Retry-After':'45'}});
+  return new Response('local worker busy',{status:429,headers:{'Retry-After':'45'}});
  },async({request,entries})=>{
   const blocked=await request();
-  assert.equal(blocked.status,429);
-  assert.equal(blocked.headers.get('Retry-After'),'45');
-  assert.equal((await blocked.json()).status,'upstream_rate_limited');
+  assert.equal(blocked.status,503);
+  assert.equal(blocked.headers.get('Retry-After'),'1');
+  assert.equal(blocked.headers.get('X-Search-Error'),'search_busy');
+  assert.equal((await blocked.json()).status,'backend_busy');
   assert.equal(entries.size,0);
   assert.equal(calls,1);
+ });
+});
+test('explicit genuine upstream 429 retains rate limit and never enters search metadata cache',async()=>{
+ await edgeCase('/api/omnibox?term=provider-limited',async()=>new Response('blocked',{status:429,
+  headers:{'Retry-After':'45','X-Search-Error':'upstream_rate_limited'}}),
+  async({request,entries})=>{
+   const response=await request();
+   assert.equal(response.status,429);
+   assert.equal((await response.json()).status,'upstream_rate_limited');
+   assert.equal(response.headers.get('Retry-After'),'45');
+   assert.equal(entries.size,0);
+ });
+});
+test('busy local metadata can retry once and recover immediately without cooldown',async()=>{
+ let calls=0;
+ const term='busy-retry-'+Date.now();
+ await withFetch(async()=>{
+  calls++;
+  if(calls===1)return Response.json({results:[],status:'backend_busy'},{
+   status:503,headers:{'X-Search-Error':'search_busy','Retry-After':'1'}});
+  return Response.json({results:[{source:'youtube',id:'youtube:ABCDEFGHIJK',
+   videoId:'ABCDEFGHIJK',title:'Original',artist:'Real Artist'}],status:'ok'});
+ },async()=>{
+  const recovered=await searchNativeBackend(term);
+  assert.equal(recovered[0].title,'Original');
+  assert.equal(calls,2);
  });
 });
 test('verified complete-track metadata remains useful on a short catalogue outage',async()=>{
