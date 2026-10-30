@@ -4,6 +4,7 @@ import {parseLRC,lyricIndex} from './lib/lrc.js';
 import {LyricTransportSync} from './lib/lyric-transport-sync.js';
 import {searchCatalog,searchNativeBackend,resolveTrackMetadata} from './lib/catalog.js';
 import {searchAudius,audiusPlaybackURL} from './lib/audius-catalog.js';
+import {searchReadyAudio} from './lib/r2-ready-catalog.js';
 import {findIndependentRecording} from './lib/independent-recovery.js';
 import {applyMetadata,enrichSearchCredits,isGenericArtist,inferredCredit,displayArtist,reconcileCatalogCredits} from './lib/metadata-intelligence.js';
 import {OmniboxSession,classifyIntent,rank,normalKey} from './lib/omnibox.js';
@@ -1075,14 +1076,23 @@ function stopUnresponsivePlayback(track,selection){
  if(state.current!==track||playbackSelection!==selection||state.userPaused)return;
  if(audio.readyState>=3&&!audio.paused){playbackStallGuard.clear();coverCharge.hide();return}
  playbackStallGuard.clear();
+ const youtube=track.source==='youtube'&&!isOffline(track.id);
+ // Stop the hung browser request; unlike pause(), do not mark an involuntary
+ // transport timeout as a user pause. Read the real origin status and try
+ // existing R2 or an exact independent recording without re-extracting.
+ if(youtube&&!recoveryOperation){
+  state.audioState='recovering';
+  audio.pause();audio.removeAttribute('src');audio.load();
+  state.playing=false;updatePlayer();
+  void recoverNativeAudio(track,{name:'TimeoutError'});
+  return;
+ }
  state.userPaused=true;
  audioDelivery.cancel();recoveryOperation=null;
- audio.pause();
- audio.removeAttribute('src');
+ audio.pause();audio.removeAttribute('src');
  audio.load(); // Abort a hung request and settle any pending play().
  state.playing=false;
- reportAudioError(track.source==='youtube'&&playbackCooldown.active()?playbackLimitMessage(playbackCooldown.snapshot()):
-  'O servidor não entregou áudio a tempo. Toque Play para tentar novamente ou selecione uma música offline.');
+ reportAudioError('O servidor não entregou áudio a tempo. Use uma faixa marcada como pronta no R2, Audius ou sua biblioteca offline.');
  updatePlayer();
 }
 function watchPlayback(track,selection,phase='startup'){
@@ -1147,6 +1157,9 @@ async function play(){
   // An old play() promise is routinely rejected when Next swaps the source.
   // A stale or canceled request must never become a visible playback failure.
   if(!stillSelected())return;
+  // Watchdog abort is recovery, not a second instruction to restart the
+  // already-failed origin media element.
+  if(recoveryOperation||state.audioState==='recovering')return;
   if(e?.name==='AbortError'){
    // WebKit may also abort the current track's initial play during its own
    // source selection. Restart the SAME native source once, without retrying
@@ -1557,7 +1570,7 @@ function mediaList(tracks,context,startIndex=0){
  if(!tracks.length)return '<p class="section-note">Nenhuma música por aqui ainda.</p>';
  return '<div class="media-list">'+tracks.map((tr,i)=>{
   const label=safe(tr.title),attrs=' data-context="'+safe(context)+'" data-index="'+(startIndex+i)+'"';
-  const source=isOffline(tr.id)?'✓ Áudio offline':tr.source==='audius'?'Audius · música completa':tr.source==='preview'?'Prévia · 30 s':tr.source==='youtube'?'GNARLY · origem YouTube':'Arquivo local';
+  const source=isOffline(tr.id)?'✓ Áudio offline':tr.playbackAvailability==='r2'?'✓ Pronta no GNARLY · R2':tr.source==='audius'?'Audius · música completa':tr.source==='preview'?'Prévia · 30 s':tr.source==='youtube'?'GNARLY · origem YouTube':'Arquivo local';
   const play='<button data-action="play"'+attrs+' aria-label="Reproduzir '+label+'">'+svg('play')+'</button>';
   const actions=context==='queue'
    ? '<button data-action="remove"'+attrs+' aria-label="Remover '+label+' da fila">×</button>'
@@ -2353,7 +2366,7 @@ async function fetchSearchDiscovery(page){
  }
  const queries=discoveryQueries({favorites:state.favorites,history:state.history,
   memory:listeningMemory}).slice(0,1); // One discovery query, not a burst on every empty search.
- const batches=queries.map(()=>[]),independent=[];
+ const batches=queries.map(()=>[]),independent=[],ready=[];
  const merge=()=>{
   const out=[];
   for(let i=0;i<16;i++)for(const batch of batches)if(batch[i])out.push(batch[i]);
@@ -2362,8 +2375,8 @@ async function fetchSearchDiscovery(page){
  const refresh=()=>{
   if(!valid())return;
   const originals=merge();
-  page.remote=playbackCooldown.active()?[...independent,...originals]:
-   [...originals,...independent];
+  page.remote=playbackCooldown.active()?[...ready,...independent,...originals]:
+   [...ready,...originals,...independent];
   refreshSearchDiscovery(page);
  };
  // Discovery must not wait for a YouTube *metadata* failure before showing
@@ -2372,10 +2385,12 @@ async function fetchSearchDiscovery(page){
  const native=Promise.allSettled(queries.map((query,i)=>searchNativeBackend(query,{
   limit:14,signal:page.controller.signal
  }).then(songs=>{if(valid()){batches[i]=songs;refresh();}})));
+ const fromR2=searchReadyAudio('',{limit:24,signal:page.controller.signal})
+  .then(songs=>{if(valid()){ready.push(...songs);refresh();}}).catch(()=>{});
  const alternate=searchAudius(mainQuery,{limit:14,signal:page.controller.signal})
   .then(songs=>{if(valid()){independent.push(...songs);refresh();}})
   .catch(()=>{});
- await Promise.allSettled([native,alternate]);
+ await Promise.allSettled([native,alternate,fromR2]);
  if(!valid())return;
  // Previews are explicitly marked; they do not replace full tracks.
  if(!page.remote.length){
@@ -2395,10 +2410,11 @@ function refreshLiveResults(page,info=''){
  // Keep independent Apple preview results visible when YouTube responds.
  // Never reclassify previews as full songs: rank only deduplicates identical
  // recordings, prioritizing the real native entry when both exist.
- const available=[...page.native,...page.audius,...page.previews];
- const ordered=playbackCooldown.active()?[...page.audius,...page.native,...page.previews]:available;
+ const native=page.native.filter(x=>!page.ready.some(r=>r.id===x.id));
+ const available=[...page.ready,...native,...page.audius,...page.previews];
+ const ordered=playbackCooldown.active()?[...page.ready,...page.audius,...native,...page.previews]:available;
  state.searchResults=personalizedRank(page.query,[...page.local,...ordered],searchPreferenceContext());
- const waiting=!page.nativeFinished||!page.audiusFinished||!page.previewFinished;
+ const waiting=!page.readyFinished||!page.nativeFinished||!page.audiusFinished||!page.previewFinished;
  const status=info||(!state.searchResults.length?(waiting?'Buscando músicas…':
   page.nativeFailed||page.audiusFailed||page.previewFailed?'Não foi possível consultar os catálogos agora. Toque em Buscar para tentar novamente.':
   'Nenhuma música encontrada. Tente outro termo.'):
@@ -2416,6 +2432,10 @@ async function fetchLiveSearch(page){
  page.started=true;
  const {query,controller}=page,size=query.length===1?8:SEARCH_PAGE_SIZE;
  const valid=()=>searchPaging===page&&page.revision===searchCounter&&!controller.signal.aborted;
+ const ready=searchReadyAudio(query,{limit:24,signal:controller.signal}).then(songs=>{
+  if(!valid())return [];
+  page.ready=songs;refreshLiveResults(page);return songs;
+ }).catch(()=>[]).finally(()=>{if(valid()){page.readyFinished=true;refreshLiveResults(page)}});
  const native=searchNativeBackend(query,{limit:size,signal:controller.signal}).then(songs=>{
   if(!valid())return [];
   page.native=songs;
@@ -2452,7 +2472,7 @@ async function fetchLiveSearch(page){
  }).catch(error=>{if(valid())page.previewFailed=true;return []}).finally(()=>{
   if(valid()){page.previewFinished=true;refreshLiveResults(page)}
  });
- const [songs,previews]=await Promise.all([native,preview,audius]);
+ const [songs,previews]=await Promise.all([native,preview,audius,ready]);
  if(!valid())return;
  enrichSearchCredits(songs,previews);
  page.previewBuffer=songs.length?personalizedRank(query,previews,searchPreferenceContext()):[];
@@ -2558,7 +2578,7 @@ async function runSearch(raw,{live=false}={}){
  const existing=searchPaging;
  if(existing?.query===query&&existing.started&&state.sheet==='search'){
   const pending=existing.kind==='discovery'?!existing.finished:
-   !existing.nativeFinished||!existing.audiusFinished||!existing.previewFinished;
+   !existing.nativeFinished||!existing.audiusFinished||!existing.readyFinished||!existing.previewFinished;
   const retryable=existing.failed||existing.nativeFailed||existing.audiusFailed||existing.previewFailed||!state.searchResults.length;
   if(pending||!retryable){
    if(!query&&existing.kind==='discovery')refreshSearchDiscovery(existing);
@@ -2591,9 +2611,9 @@ async function runSearch(raw,{live=false}={}){
   state.searchResults=[];displaySearch([]);return;
  }
  const options=searchInstantOptions(query);
- const page={query,revision,local:instantSearch(query,options),native:[],audius:[],previews:[],
+ const page={query,revision,local:instantSearch(query,options),native:[],ready:[],audius:[],previews:[],
   nativeOffset:0,nativeMore:false,previewOffset:0,previewMore:false,previewBuffer:[],
-  loading:false,stalled:false,started:false,nativeFinished:false,audiusFinished:false,previewFinished:false,
+  loading:false,stalled:false,started:false,nativeFinished:false,readyFinished:false,audiusFinished:false,previewFinished:false,
   nativeFailed:false,audiusFailed:false,previewFailed:false,controller:new AbortController()};
  searchPaging=page;
  refreshLiveResults(page);
@@ -2601,7 +2621,7 @@ async function runSearch(raw,{live=false}={}){
  // prefix. Local favorites, history, offline and cached results remain instant.
  // Enter explicitly searches even short terms.
  if(live&&query.length<3){
-  page.nativeFinished=true;page.audiusFinished=true;page.previewFinished=true;
+  page.nativeFinished=true;page.readyFinished=true;page.audiusFinished=true;page.previewFinished=true;
   refreshLiveResults(page,state.searchResults.length?'':'Continue digitando ou pressione Enter para buscar.');
   return;
  }
