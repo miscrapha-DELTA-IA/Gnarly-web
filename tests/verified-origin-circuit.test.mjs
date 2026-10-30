@@ -16,7 +16,7 @@ test('edge reads actual upstream cooldown without extracting new audio',async()=
  assert.equal(r.headers.get('X-Gnarly-Playback-Source'),'origin-rate-limited');
  assert.equal(calls[0],'https://nightcorelab.onrender.com/playback-status');
  assert.equal(calls.length,2,'exactly one additional cache-only request');
- assert.match(calls[1],/\\/download\\?/);
+ assert.ok(calls[1].includes('/download?'));
  assert.match(calls[1],/cache_only=1/);
  assert.equal(calls.some(u=>u.includes('/stream?')),false);
 });
