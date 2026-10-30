@@ -24,7 +24,7 @@ export async function onRequestGet({request,env,context,waitUntil}){const q=new 
  api.searchParams.set('offset',String(offset));api.searchParams.set('limit',String(limit));
  try{
   const response=await fetch(api,{headers:{accept:'application/x-ndjson'},
-   signal:AbortSignal.any([request.signal,AbortSignal.timeout(7300)]),cf:{cacheEverything:true,cacheTtlByStatus:{'200-299':90,'400-599':-1}}});
+   signal:AbortSignal.any([request.signal,AbortSignal.timeout(7300)]),cf:{cacheEverything:true,cacheTtlByStatus:{'200-299':900,'400-599':-1}}});
   if(response.status===429){
    const header=Number(response.headers.get('Retry-After'));
    const seconds=Number.isFinite(header)&&header>0?Math.min(120,header):30;
@@ -37,7 +37,7 @@ export async function onRequestGet({request,env,context,waitUntil}){const q=new 
   if(raw.length>100000)throw Error('oversized');
   const results=parseBackendNDJSON(raw,limit);
   const result=Response.json({results,status:'ok'},{headers:{
-   'cache-control':'public,max-age=120','x-content-type-options':'nosniff','X-Gnarly-Search-Cache':'MISS'
+   'cache-control':'public,max-age=900','x-content-type-options':'nosniff','X-Gnarly-Search-Cache':'MISS'
   }});
   const defer=waitUntil||(context?.waitUntil?job=>context.waitUntil(job):null);
   if(results.length&&edgeCache&&cacheKey&&defer)
