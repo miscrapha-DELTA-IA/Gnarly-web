@@ -47,7 +47,7 @@ export async function onRequestGet({request,context,waitUntil},fetcher=fetch){
     for(let hop=0;hop<3;hop++){
      const current=new URL(url);
      if(current.protocol!=='https:'||current.username||current.password||
-      !/^(?:[a-z0-9-]+\\.)*audius\\.(?:co|org)$/i.test(current.hostname))throw Error('untrusted_redirect');
+      !/^(?:[a-z0-9-]+\.)*audius\.(?:co|org)$/i.test(current.hostname))throw Error('untrusted_redirect');
      const resp=await fetcher(url,{method:'GET',signal,
       headers:{Accept:'application/json'},redirect:'manual',credentials:'omit'});
      if([301,302,303,307,308].includes(resp.status)){
