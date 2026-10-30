@@ -6,7 +6,8 @@ import {searchCatalog,searchNativeBackend,resolveTrackMetadata} from './lib/cata
 import {searchAudius,audiusPlaybackURL} from './lib/audius-catalog.js';
 import {searchReadyAudio} from './lib/r2-ready-catalog.js';
 import {readyQueueCandidates} from './lib/verified-playback.js';
-import {rankRequestedSongFirst,matchingIndependentTracks} from './lib/song-first.js';
+import {rankRequestedSongFirst} from './lib/song-first.js';
+import {curateOfficialSearch,unrequestedVersion} from './lib/official-search.js';
 import {VerifiedSourceRouter} from './lib/verified-source-router.js';
 import {applyMetadata,enrichSearchCredits,isGenericArtist,inferredCredit,displayArtist,reconcileCatalogCredits} from './lib/metadata-intelligence.js';
 import {OmniboxSession,classifyIntent,rank,normalKey} from './lib/omnibox.js';
@@ -2437,19 +2438,20 @@ async function fetchSearchDiscovery(page){
 }
 function refreshLiveResults(page,info=''){
  if(searchPaging!==page||page.revision!==searchCounter)return;
- // Keep independent Apple preview results visible when YouTube responds.
- // Never reclassify previews as full songs: rank only deduplicates identical
- // recordings, prioritizing the real native entry when both exist.
- const native=page.native.filter(x=>!page.ready.some(r=>r.id===x.id));
- const available=[...native,...page.ready,...matchingIndependentTracks(page.audius,page.query),...page.previews];
- // An exact query must outrank source availability: never insert unrelated
- // content ahead of the song the listener deliberately searched for.
+ // The visible Omnibox is an official-song catalogue, NOT a public audio
+ // aggregator. Audius and Jamendo belong only to invisible same-recording
+ // recovery after the listener selects a song.
+ const result=curateOfficialSearch(page.query,{
+  native:page.native,ready:page.ready,previews:page.previews
+ });
+ const available=result.songs;
  state.searchResults=rankRequestedSongFirst(personalizedRank(page.query,[...page.local,...available],searchPreferenceContext()),page.query,{offline:isOffline});
- const waiting=!page.readyFinished||!page.nativeFinished||!page.audiusFinished||!page.previewFinished;
- const status=info||(!state.searchResults.length?(waiting?'Buscando músicas…':
-  page.nativeFailed||page.audiusFailed||page.previewFailed?'Não foi possível consultar os catálogos agora. Toque em Buscar para tentar novamente.':
-  'Nenhuma música encontrada. Tente outro termo.'):
-  page.nativeFailed?'Origem YouTube temporariamente indisponível. Músicas Audius e prévias continuam abaixo.':'');
+ const waiting=!page.readyFinished||!page.nativeFinished||!page.previewFinished;
+ const status=info||(!state.searchResults.length?(waiting?'Buscando músicas oficiais…':
+  page.nativeFailed||page.previewFailed?'Catálogo temporariamente indisponível. Pressione Buscar para tentar novamente.':
+  'Nenhuma música oficial correspondente. Tente outros termos.'):
+  page.nativeFailed?'YouTube Music indisponível. Exibindo apenas metadados/prévias oficiais da Apple (não o áudio completo).':
+  result.mode==='apple-previews'?'Prévia oficial de 30 segundos; áudio completo não confirmado nesta busca.':'');
  state.searchError=status;
  displaySearch(state.searchResults,status);
  if(available.length)omnibox.cacheResults(page.query,available);
@@ -2483,15 +2485,6 @@ async function fetchLiveSearch(page){
  }).catch(error=>{if(valid())page.nativeFailed=true;return []}).finally(()=>{
   if(valid()){page.nativeFinished=true;refreshLiveResults(page)}
  });
- const audius=searchAudius(query,{limit:query.length===1?10:14,
-  signal:controller.signal}).then(items=>{
-  if(!valid())return [];
-  page.audius=items;
-  refreshLiveResults(page);
-  return items;
- }).catch(error=>{if(valid())page.audiusFailed=true;return []}).finally(()=>{
-  if(valid()){page.audiusFinished=true;refreshLiveResults(page)}
- });
  const preview=searchCatalog(query,{limit:query.length===1?12:PREVIEW_PAGE_SIZE,
   signal:controller.signal}).then(items=>{
   if(!valid())return [];
@@ -2503,10 +2496,10 @@ async function fetchLiveSearch(page){
  }).catch(error=>{if(valid())page.previewFailed=true;return []}).finally(()=>{
   if(valid()){page.previewFinished=true;refreshLiveResults(page)}
  });
- const [songs,previews]=await Promise.all([native,preview,audius,ready]);
+ const [songs,previews]=await Promise.all([native,preview,ready]);
  if(!valid())return;
  enrichSearchCredits(songs,previews);
- page.previewBuffer=songs.length?personalizedRank(query,previews,searchPreferenceContext()):[];
+ page.previewBuffer=songs.length?[]:personalizedRank(query,previews,searchPreferenceContext());
  refreshLiveResults(page);
 }
 const searchResultKey=item=>normalKey((item.artist||'')+' '+(item.title||''))||String(item.id||'');
@@ -2580,7 +2573,7 @@ async function loadMoreSearchResults(manual=false){
    // A slower first response from the other provider still refreshes the
    // merged list. Retain these pages in that merge instead of losing rows.
    p.native.push(...songs);
-   added=appendSearchResults(personalizedRank(p.query,songs,searchPreferenceContext()));
+   added=appendSearchResults(personalizedRank(p.query,curateOfficialSearch(p.query,{native:songs}).songs,searchPreferenceContext()));
    if(!added)p.nativeMore=false; // Old proxies may repeat the first page.
   }
   if(!p.nativeMore&&!added&&p.previewBuffer.length)
@@ -2591,7 +2584,7 @@ async function loadMoreSearchResults(manual=false){
    p.previewOffset+=previews.length;
    p.previewMore=previews.length>=PREVIEW_PAGE_SIZE&&p.previewOffset<200;
    p.previews.push(...previews);
-   added=appendSearchResults(personalizedRank(p.query,previews,searchPreferenceContext()));
+   if(!p.native.length)added=appendSearchResults(personalizedRank(p.query,curateOfficialSearch(p.query,{previews}).songs,searchPreferenceContext()));
    if(!added)p.previewMore=false;
   }
  }catch(error){
@@ -2642,9 +2635,10 @@ async function runSearch(raw,{live=false}={}){
   state.searchResults=[];displaySearch([]);return;
  }
  const options=searchInstantOptions(query);
- const page={query,revision,local:instantSearch(query,options),native:[],ready:[],audius:[],previews:[],
+ const page={query,revision,local:instantSearch(query,options).filter(x=>
+  !['audius','jamendo'].includes(x.source)&&!unrequestedVersion(x,query)),native:[],ready:[],audius:[],previews:[],
   nativeOffset:0,nativeMore:false,previewOffset:0,previewMore:false,previewBuffer:[],
-  loading:false,stalled:false,started:false,nativeFinished:false,readyFinished:false,audiusFinished:false,previewFinished:false,
+  loading:false,stalled:false,started:false,nativeFinished:false,readyFinished:false,audiusFinished:true,previewFinished:false,
   nativeFailed:false,audiusFailed:false,previewFailed:false,controller:new AbortController()};
  searchPaging=page;
  refreshLiveResults(page);
@@ -2656,7 +2650,9 @@ async function runSearch(raw,{live=false}={}){
   refreshLiveResults(page,state.searchResults.length?'':'Continue digitando ou pressione Enter para buscar.');
   return;
  }
- const delay=live?420:0;
+ // Local suggestions stay instant. Remote queries are debounced to avoid
+ // hammering a single search slot for each temporary typed prefix.
+ const delay=live?760:0;
  if(delay)searchDebounce=setTimeout(()=>{searchDebounce=null;void fetchLiveSearch(page)},delay);
  else void fetchLiveSearch(page);
 }
