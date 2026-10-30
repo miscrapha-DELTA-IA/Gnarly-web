@@ -4,6 +4,7 @@ import {parseLRC,lyricIndex} from './lib/lrc.js';
 import {LyricTransportSync} from './lib/lyric-transport-sync.js';
 import {searchCatalog,searchNativeBackend,resolveTrackMetadata} from './lib/catalog.js';
 import {searchAudius,audiusPlaybackURL} from './lib/audius-catalog.js';
+import {findIndependentRecording} from './lib/independent-recovery.js';
 import {applyMetadata,enrichSearchCredits,isGenericArtist,inferredCredit,displayArtist,reconcileCatalogCredits} from './lib/metadata-intelligence.js';
 import {OmniboxSession,classifyIntent,rank,normalKey} from './lib/omnibox.js';
 import {instantSearch,personalizedRank} from './lib/live-search.js';
@@ -96,7 +97,7 @@ const offlinePending=new Set();
 let offlineLoaded=false,offlineStatus='Preparando biblioteca offline…';
 const isOffline=id=>offlineURLs.has(id);
 const offlineAudio=id=>offlineURLs.get(id)||null;
-let recoveryOperation=null;
+let recoveryOperation=null,independentRecoveryController=null;
 const icon='/assets/gnarly-icon.png';
 const artEnvironment=()=>({
  viewportWidth:window.innerWidth,viewportHeight:window.innerHeight,
@@ -419,7 +420,7 @@ function updateBadges(){
 // Do not start an external player or load a file picker as an implicit fallback.
 function prepareNativeAudio(track,attempt=0){
  const source=offlineAudio(track.id)||trackAudioURL(track,{
-  attempt,cacheOnly:attempt===0&&playbackCooldown.active()
+  attempt
  });
  if(!source)return false;
  // HTMLMediaElement.src is absolute, including when assigned /fast-audio/… .
@@ -428,6 +429,11 @@ function prepareNativeAudio(track,attempt=0){
  // Only start the native extraction when the user requests Play; once started,
  // let the media element buffer ahead instead of forcing metadata-only mode.
  if(audio.src!==url){audio.preload='auto';audio.src=url;engine.restoreSpeed();}
+ else if(audio.error){
+  // MediaError is sticky: a second play() on the same failed source does not
+  // restart media resource selection unless load() explicitly resets it.
+  audio.preload='auto';audio.load();engine.restoreSpeed();
+ }
  return true;
 }
 function showOptionalOfficialSource(){
@@ -871,6 +877,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
  }
  playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();
  playbackStallGuard.clear();lyricTransportSync.stop();
+ independentRecoveryController?.abort();independentRecoveryController=null;
  hideOptionalOfficialSource();
  queueAudioWarmup.reset();closeQuickPlaylist();
  // Commit queue navigation at selection time. The old 'playing' callback
@@ -950,6 +957,43 @@ async function resumeCachedNative(track,isCurrent){
   return false;
  }
 }
+/** One verified same-recording alternative, still inside GNARLY's <audio>.
+ * Never silently substitute a remix or merely related title.
+ */
+async function recoverIndependentAudio(track,isCurrent){
+ if(!isCurrent())return false;
+ const controller=new AbortController();
+ independentRecoveryController?.abort();independentRecoveryController=controller;
+ reportAudioStatus('Verificando a mesma gravação em outra fonte…');
+ const alternative=await findIndependentRecording(track,{signal:controller.signal});
+ if(independentRecoveryController===controller)independentRecoveryController=null;
+ if(controller.signal.aborted||!isCurrent()||!alternative)return false;
+ // selectTrack refreshes artwork, lyric identity, Web Audio source and queue
+ // consistently, rather than disguising an Audius stream as YouTube audio.
+ selectTrack(alternative,false);
+ const chosen=state.current,selection=playbackSelection;
+ if(!chosen||chosen!==alternative||!audio.hasAttribute('src'))return false;
+ state.audioState='loading';reportAudioStatus('Conectando à gravação alternativa no Audius…');
+ coverCharge.show('loading');watchPlayback(chosen,selection);
+ try{
+  const start=audio.play(),unlock=resumePlayerAudio();
+  await Promise.all([start,unlock]);
+  if(state.current!==chosen||playbackSelection!==selection||state.userPaused)return true;
+  coverCharge.hide();playbackStallGuard.clear();
+  state.playing=true;state.audioState='playing';state.playbackError='';
+  reportAudioStatus('');updatePlayer();return true;
+ }catch(error){
+  if(state.current!==chosen||playbackSelection!==selection)return true;
+  coverCharge.hide();playbackStallGuard.clear();state.playing=false;
+  if(error?.name==='NotAllowedError'||error?.name==='AbortError'){
+   state.audioState='idle';state.userPaused=false;
+   reportAudioStatus('Gravação equivalente encontrada. Toque Play para iniciar.');
+   updatePlayer();return true;
+  }
+  reportAudioError('A fonte alternativa também não conseguiu entregar esta gravação.');
+  updatePlayer();return true;
+ }
+}
 async function recoverNativeAudio(track,initialError=null){
  const selection=playbackSelection,generation=audioDelivery.generation;
  if(!track||track.source!=='youtube'||state.current!==track||state.userPaused)return false;
@@ -964,6 +1008,7 @@ async function recoverNativeAudio(track,initialError=null){
   if(!current())return false;
   if(rateLimit){
    if(await resumeCachedNative(track,current))return true;
+   if(await recoverIndependentAudio(track,current))return true;
    if(!current())return false;
    state.playing=false;updatePlayer();
    reportAudioError(playbackLimitMessage(rateLimit));return false;
@@ -1011,6 +1056,7 @@ async function recoverNativeAudio(track,initialError=null){
   // The YouTube video is deliberately opt-in; never swap the entire GNARLY
   // player and disable its visual/audio features without the listener asking.
   if(await resumeCachedNative(track,current))return true;
+  if(await recoverIndependentAudio(track,current))return true;
   if(!current())return false;
   state.playing=false;updatePlayer();
   reportAudioError(rateLimit?playbackLimitMessage(rateLimit):playbackFailureMessage(initialError,audio.error));
@@ -1053,17 +1099,31 @@ async function play(){
  const reuseSource=audio.hasAttribute('src')&&!audio.error&&state.audioState!=='error';
  // Pause cancels pending recovery, but preserves its successful source/attempt.
  // Only an actual failure starts a fresh bounded retry session.
- if(state.audioState==='error'||audio.error)audioDelivery.select(track);
+ const resetMedia=state.audioState==='error'||!!audio.error;
+ if(resetMedia)audioDelivery.select(track);
  state.userPaused=false;
  if(track.source==='youtube'){
   if(!reuseSource&&!prepareNativeAudio(track,audioDelivery.attempt)){reportAudioError('ID de música inválido. Escolha outro resultado.');return;}
   if(!reuseSource||audio.readyState<2){
    state.audioState='loading';reportAudioStatus(isOffline(track.id)?'Abrindo música offline…':'Conectando ao GNARLY · preparando áudio…');
   }else reportAudioStatus('');
- }else if(audio.readyState<3){
-  if(!audio.hasAttribute('src')){reportAudioError('Esta faixa não possui uma origem de áudio válida.');return;}
-  state.audioState='loading';
-  reportAudioStatus(isOffline(track.id)?'Abrindo música offline…':'Preparando áudio…');
+ }else{
+  if(resetMedia){
+   // Audius / local / preview may leave HTMLMediaElement in terminal error.
+   // Restart the same canonical media URL on the next *explicit* Play.
+   const source=offlineAudio(track.id)||
+    (track.source==='audius'?audiusPlaybackURL(track):track.url);
+   if(!source){reportAudioError('Esta faixa não possui uma origem de áudio válida.');return}
+   const url=new URL(source,location.href).href;
+   if(audio.src!==url){audio.src=url;}
+   else{audio.load();}
+   engine.restoreSpeed();
+  }
+  if(audio.readyState<3){
+   if(!audio.hasAttribute('src')){reportAudioError('Esta faixa não possui uma origem de áudio válida.');return;}
+   state.audioState='loading';
+   reportAudioStatus(isOffline(track.id)?'Abrindo música offline…':'Preparando áudio…');
+  }
  }
  hideOptionalOfficialSource();
  // Both remote and offline tracks. Only audible readiness stops this cue.
@@ -2548,7 +2608,7 @@ audio.addEventListener('play',()=>{if(!state.current||state.userPaused||audio.pa
  if(stems.ready)stems.sync();updateProgress();syncLyrics();
  // Warm one upcoming recording in the last 75 seconds, never full playlists.
  const nextTrack=state.queue[0];
- if(state.playing&&!audio.paused&&!isOffline(nextTrack?.id)&&canWarmNext({
+ if(state.playing&&!audio.paused&&nextTrack?.source==='youtube'&&!isOffline(nextTrack?.id)&&canWarmNext({
   current:state.current,next:nextTrack,
   remaining:(Number.isFinite(audio.duration)?audio.duration:Infinity)-(audio.currentTime||0),
   online:navigator.onLine,saveData:navigator.connection?.saveData,
