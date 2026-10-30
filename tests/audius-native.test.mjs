@@ -174,7 +174,8 @@ test('Cloudflare Worker dispatch matches Pages routes, never a third-party ifram
   {waitUntil:()=>{}});
  assert.equal(reject.status,400);
  const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
- assert.match(source,/const audius=searchAudius\(query/);
+ assert.match(source,/const result=curateOfficialSearch\(page\.query/);
+ assert.doesNotMatch(source,/const audius=searchAudius\(query/);
  assert.match(source,/track.source==='audius'\?audiusPlaybackURL\(track\):track.url/);
  assert.match(source,/Audius · música completa/);
  assert.match(source,/track.source==='audius'\?'O Audius não conseguiu/);
