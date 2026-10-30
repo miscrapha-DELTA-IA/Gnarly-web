@@ -5,7 +5,8 @@ import {LyricTransportSync} from './lib/lyric-transport-sync.js';
 import {searchCatalog,searchNativeBackend,resolveTrackMetadata} from './lib/catalog.js';
 import {searchAudius,audiusPlaybackURL} from './lib/audius-catalog.js';
 import {searchReadyAudio} from './lib/r2-ready-catalog.js';
-import {verifiedFirst,readyQueueCandidates} from './lib/verified-playback.js';
+import {readyQueueCandidates} from './lib/verified-playback.js';
+import {rankRequestedSongFirst,matchingIndependentTracks} from './lib/song-first.js';
 import {findIndependentRecording} from './lib/independent-recovery.js';
 import {applyMetadata,enrichSearchCredits,isGenericArtist,inferredCredit,displayArtist,reconcileCatalogCredits} from './lib/metadata-intelligence.js';
 import {OmniboxSession,classifyIntent,rank,normalKey} from './lib/omnibox.js';
@@ -2351,11 +2352,11 @@ function searchInstantOptions(query){
 function refreshSearchDiscovery(page,{loading=false,failed=page.failed===true}={}){
  if(searchPaging!==page||page.revision!==searchCounter||state.searchTerm)return;
  const locals=searchInstantOptions('');
- state.searchResults=verifiedFirst(mixDiscoveryFeed({
+ state.searchResults=mixDiscoveryFeed({
   favorites:locals.favorites,history:locals.history,playlists:locals.playlists,
   offline:locals.offline,queue:locals.queue,remote:page.remote,
   previous:page.previous,current:state.current,max:36
- }),{offline:isOffline});
+ });
  const info=loading&&!state.searchResults.length?'Descobrindo músicas…':
   failed?'Catálogo indisponível. Mostrando suas músicas salvas.':'';
  state.searchError=info;
@@ -2375,7 +2376,7 @@ async function fetchSearchDiscovery(page){
  }
  const queries=discoveryQueries({favorites:state.favorites,history:state.history,
   memory:listeningMemory}).slice(0,1); // One discovery query, not a burst on every empty search.
- const batches=queries.map(()=>[]),independent=[],ready=[];
+ const batches=queries.map(()=>[]);
  const merge=()=>{
   const out=[];
   for(let i=0;i<16;i++)for(const batch of batches)if(batch[i])out.push(batch[i]);
@@ -2384,8 +2385,9 @@ async function fetchSearchDiscovery(page){
  const refresh=()=>{
   if(!valid())return;
   const originals=merge();
-  page.remote=playbackCooldown.active()?[...ready,...independent,...originals]:
-   [...ready,...originals,...independent];
+  // Empty discovery is user-taste-first. Never fill the front page with
+  // unrelated cached or Audius tracks merely because the provider is alive.
+  page.remote=originals;
   refreshSearchDiscovery(page);
  };
  // Discovery must not wait for a YouTube *metadata* failure before showing
@@ -2394,12 +2396,9 @@ async function fetchSearchDiscovery(page){
  const native=Promise.allSettled(queries.map((query,i)=>searchNativeBackend(query,{
   limit:14,signal:page.controller.signal
  }).then(songs=>{if(valid()){batches[i]=songs;refresh();}})));
- const fromR2=searchReadyAudio('',{limit:24,signal:page.controller.signal})
-  .then(songs=>{if(valid()){ready.push(...songs);refresh();}}).catch(()=>{});
- const alternate=searchAudius(mainQuery,{limit:14,signal:page.controller.signal})
-  .then(songs=>{if(valid()){independent.push(...songs);refresh();}})
-  .catch(()=>{});
- await Promise.allSettled([native,alternate,fromR2]);
+ // Only requested/affinity matches are eligible for recovery, not an
+ // anonymous feed of unrelated open tracks. No provider-catalogue burst here.
+ await native;
  if(!valid())return;
  // Previews are explicitly marked; they do not replace full tracks.
  if(!page.remote.length){
@@ -2420,9 +2419,10 @@ function refreshLiveResults(page,info=''){
  // Never reclassify previews as full songs: rank only deduplicates identical
  // recordings, prioritizing the real native entry when both exist.
  const native=page.native.filter(x=>!page.ready.some(r=>r.id===x.id));
- const available=[...page.ready,...native,...page.audius,...page.previews];
- const ordered=playbackCooldown.active()?[...page.ready,...page.audius,...native,...page.previews]:available;
- state.searchResults=verifiedFirst(personalizedRank(page.query,[...page.local,...ordered],searchPreferenceContext()),{offline:isOffline});
+ const available=[...native,...page.ready,...matchingIndependentTracks(page.audius,page.query),...page.previews];
+ // An exact query must outrank source availability: never insert unrelated
+ // content ahead of the song the listener deliberately searched for.
+ state.searchResults=rankRequestedSongFirst(personalizedRank(page.query,[...page.local,...available],searchPreferenceContext()),page.query,{offline:isOffline});
  const waiting=!page.readyFinished||!page.nativeFinished||!page.audiusFinished||!page.previewFinished;
  const status=info||(!state.searchResults.length?(waiting?'Buscando músicas…':
   page.nativeFailed||page.audiusFailed||page.previewFailed?'Não foi possível consultar os catálogos agora. Toque em Buscar para tentar novamente.':
