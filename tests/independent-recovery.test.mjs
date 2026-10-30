@@ -18,7 +18,7 @@ test('switch only exact artist/title and near-identical duration, preserving rec
  }
  assert.equal(exactIndependentRecording({...requested,artist:'YouTube Music'},[match]),null);
  assert.equal(exactIndependentRecording({...requested,duration:0},[match]),null);
- assert.equal(exactIndependentRecording(requested,[match,{...match,id:'audius:DIFFERENT'}]),null,
+ assert.equal(exactIndependentRecording(requested,[match,{...match,id:'audius:DIFFERENT',audiusId:'DIFFERENT'}]),null,
   'ambiguous duplicate metadata cannot silently overwrite chosen recording');
 });
 
