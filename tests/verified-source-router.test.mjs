@@ -161,7 +161,7 @@ test('GNARLY media starts first and independent verification cannot block user p
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  const play=app.slice(app.indexOf('async function play(){'),app.indexOf('function pause(){'));
  assert.match(play,/const start=audio\.play\(\),unlock=resumePlayerAudio\(\)/);
- assert.match(play,/void sourceRouter\.resolve\(track\)\.then/);
+ assert.match(play,/void sourceRouter\.resolve\(track,\{known:state\.searchResults\}\)\.then/);
  assert.ok(play.indexOf('const start=audio.play(),unlock=resumePlayerAudio()')<
   play.indexOf('void sourceRouter.resolve(track).then'));
  assert.match(play,/if\(!alternative\|\|!stillSelected\(\)\|\|/);
@@ -180,4 +180,15 @@ test('Worker exposes canonical Jamendo routes without offering unauthorized exte
  assert.equal(invalid.status,400);
  const disabled=await worker.fetch(new Request('https://gnarly.test/jamendo-audio/123456'),{},context);
  assert.equal(disabled.status,503);
+});
+
+test('known exact independent Omnibox metadata skips catalogue request but still needs audio bytes',async()=>{
+ let catalogCalls=0,probes=0;
+ const router=new VerifiedSourceRouter({providers:[
+  {id:'audius',search:async()=>{catalogCalls++;return []},url:()=>audius.url}
+ ],probe:async url=>{probes++;return url===audius.url}});
+ const result=await router.resolve(selected,{known:[{...audius,title:'Wrong song'},audius]});
+ assert.equal(result.source,'audius');
+ assert.equal(catalogCalls,0);
+ assert.equal(probes,1);
 });
