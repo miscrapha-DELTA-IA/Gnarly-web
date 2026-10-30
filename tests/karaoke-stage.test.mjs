@@ -88,7 +88,7 @@ test('expanded-stage scroll and controls are owned by karaoke, not the page or q
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.doesNotMatch(js,/active\.scrollIntoView/);
  assert.match(js,/reader\.scrollTo\(/);
- assert.match(js,/centerActiveLine\(active\)/);
+ assert.match(js,/centerActiveLine\(active(?:,\{instant:[^}]+\})?\)/);
  assert.match(js,/case 'karaoke-stage-fullscreen'/);
  assert.match(js,/case 'karaoke-stage-play'/);
  assert.match(js,/karaoke-stage-feedback/);
