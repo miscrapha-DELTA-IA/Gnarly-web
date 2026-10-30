@@ -48,7 +48,7 @@ test('read-only playback status identifies backend 429 without hitting a media e
  assert.equal(requested.options.cache,'no-store');
  assert.equal(requested.options.credentials,'omit');
  assert.match(playbackLimitMessage(limit),/HTTP 429/);
- assert.match(playbackLimitMessage(limit),/5 min/);
+ assert.match(playbackLimitMessage(limit),/Esperar cinco minutos NÃO garante recuperação/);
 });
 test('playback diagnosis fails open without fabricating provider errors',async()=>{
  assert.equal(await inspectPlaybackLimit({fetcher:async()=>({ok:true,json:async()=>({status:'ready',retry_after:0})})}),null);
@@ -108,4 +108,19 @@ test('backend new retry-after replaces old local cooldown instead of extending i
  })});
  assert.equal(state.retryAfter,40);
  assert.equal(limiter.snapshot().retryAfter,40);
+});
+
+test('a known YouTube cooldown cannot launch a fresh origin extraction on Play',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ const play=source.slice(source.indexOf('async function play(){'),source.indexOf('function pause(){'));
+ const cooldown=play.indexOf("playbackCooldown.active()&&");
+ const prepare=play.indexOf("prepareNativeAudio(track,audioDelivery.attempt)");
+ assert.ok(cooldown>=0&&prepare>cooldown,
+  'known cooldown gate must precede native source creation');
+ assert.match(play,/let ready=track\.playbackAvailability==='r2'/);
+ assert.match(play,/if\(!ready\)ready=await cachedNativeAvailable\(track\)/);
+ assert.match(play,/if\(!nativeCacheOnly\)\{[\s\S]*?reportAudioError\(playbackLimitMessage\(playbackCooldown\.snapshot\(\)\)\);[\s\S]*?return;/);
+ assert.match(play,/!nativeCacheOnly&&!prepareNativeAudio/);
+ assert.match(play,/audio\.src=new URL\(r2URL,location\.href\)\.href/);
 });
