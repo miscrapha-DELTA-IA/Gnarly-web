@@ -32,6 +32,17 @@ results.push({check:'render-health',status:health.status,error:health.error,
  r2_enabled:health.body?.r2_enabled});
 results.push({check:'render-playback',status:status.status,error:status.error,
  origin_state:status.body?.status,retry_after:status.body?.retry_after});
+for(const endpoint of [
+ 'https://api.audius.co/v1/tracks/search?query=electronic&limit=2&app_name=Gnarly',
+ 'https://discoveryprovider.audius.co/v1/tracks/search?query=electronic&limit=2&app_name=Gnarly'
+]){
+ const direct=await get(endpoint,{timeout:8500});
+ results.push({check:'provider-direct',host:new URL(endpoint).hostname,
+  status:direct.status,error:direct.error,type:direct.type,
+  fields:direct.body&&typeof direct.body==='object'?Object.keys(direct.body).slice(0,8):[],
+  entries:Array.isArray(direct.body?.data)?direct.body.data.length:null,
+  error_text:String(direct.body?.error||direct.body?.message||'').slice(0,180)});
+}
 let playable=false;
 for(const term of ['electronic','house']){
  const listing=await get(origin+'/api/audius-search?term='+encodeURIComponent(term)+'&limit=15');
