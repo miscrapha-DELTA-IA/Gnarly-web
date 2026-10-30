@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {curateOfficialSearch,unrequestedVersion} from '../lib/official-search.js';
+import {curateOfficialSearch,unrequestedVersion,relevantSong} from '../lib/official-search.js';
 const yt=(id,title='Original Song',artist='Real Artist')=>({
  id:'youtube:'+id,videoId:id,source:'youtube',title,artist,duration:180});
 const original=yt('ABCDEFGHIJK');
@@ -53,4 +53,17 @@ test('Search uses curated native music only and no Audius request on every keyst
  assert.match(app,/const delay=live\?760:0/);
  const recovery=app.slice(app.indexOf('async function recoverIndependentAudio'),app.indexOf('async function recoverNativeAudio'));
  assert.match(recovery,/sourceRouter.resolve\(track/);
+});
+
+test('native YouTube hits need actual artist/title relevance; a video ID alone is not enough',()=>{
+ const missing=yt('FGHIJKLMNOP','Some Other Song','Other Artist');
+ const weak=yt('GHIJKLMNOPQ','Original unrelated podcast','Unrelated Presenter');
+ const exact=yt('HIJKLMNOPQR','Original Song','Real Artist');
+ const r=curateOfficialSearch('Real Artist Original Song',{native:[missing,weak,exact],ready:[missing]});
+ assert.deepEqual(r.songs.map(x=>x.id),[exact.id]);
+ assert.equal(relevantSong(missing,'Real Artist Original Song'),false);
+});
+test('official artist-only queries still return song catalogue recordings',()=>{
+ const song=yt('IJKLMNOPQRS','Never Said Goodbye','Real Artist');
+ assert.equal(curateOfficialSearch('Real Artist',{native:[song]}).songs[0].id,song.id);
 });

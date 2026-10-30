@@ -52,6 +52,7 @@ import {createFullscreenController} from './lib/fullscreen-controller.js';
 import {karaokeStageMarkup,KaraokeStage} from './ui/karaoke-stage.js';
 import {createCoverCharge} from './lib/cover-charge.js';
 import {PlaybackStallGuard} from './lib/playback-stall-guard.js';
+import {settleAudioStart} from './lib/audio-start-deadline.js';
 
 const $=(selector)=>document.querySelector(selector);
 const app=$('#app-shell'), background=$('#gnarly-background'), audio=$('#player-audio'), visual=new FluidVisual($('#fluid-canvas'));
@@ -950,7 +951,7 @@ async function resumeCachedNative(track,isCurrent){
  audio.pause();audio.src=new URL(url,location.href).href;engine.restoreSpeed();
  try{
   const started=audio.play(),unlocked=resumePlayerAudio();
-  await Promise.all([started,unlocked]);
+  await settleAudioStart(started,unlocked,{timeoutMs:5200});
   if(!isCurrent())return false;
   coverCharge.hide();state.playing=true;state.audioState='playing';state.playbackError='';
   reportAudioStatus('');updatePlayer();return true;
@@ -985,7 +986,7 @@ async function recoverIndependentAudio(track,isCurrent,verifiedAlternative=null)
  coverCharge.show('loading');watchPlayback(chosen,selection);
  try{
   const start=audio.play(),unlock=resumePlayerAudio();
-  await Promise.all([start,unlock]);
+  await settleAudioStart(start,unlock,{timeoutMs:5200});
   if(state.current!==chosen||playbackSelection!==selection||state.userPaused)return true;
   coverCharge.hide();playbackStallGuard.clear();
   state.playing=true;state.audioState='playing';state.playbackError='';
@@ -1041,10 +1042,14 @@ async function recoverNativeAudio(track,initialError=null){
     try{
      engine.restoreSpeed();
      const start=audio.play(),unlock=resumePlayerAudio();
-     await Promise.all([unlock,start]);
+     await settleAudioStart(start,unlock,{timeoutMs:4800});
      restore();
      return true;
     }catch(failure){
+     if(failure?.name==='AudioStartTimeoutError'&&current()){
+      // End a hung browser fetch before trying a fresh URL or exact backup.
+      audio.pause();audio.removeAttribute('src');audio.load();
+     }
      // The upstream 429 can appear on the first retry: stop the *rest* of
      // the burst immediately rather than spending the retry budget in seconds.
      rateLimit=await resolvePlaybackCooldown(playbackCooldown);
@@ -1094,12 +1099,22 @@ function stopUnresponsivePlayback(track,selection){
   void recoverNativeAudio(track,{name:'TimeoutError'});
   return;
  }
+ if(recoveryOperation){
+  // Recovery has its own bounded cache/provider/attempt deadlines. An old
+  // startup watchdog must not classify its pending work as a user pause.
+  state.audioState='recovering';
+  reportAudioStatus('Verificando áudio em cache e fontes equivalentes…');
+  return;
+ }
  state.userPaused=true;
  audioDelivery.cancel();recoveryOperation=null;
  audio.pause();audio.removeAttribute('src');
  audio.load(); // Abort a hung request and settle any pending play().
  state.playing=false;
- reportAudioError('O servidor não entregou áudio a tempo. Use uma faixa marcada como pronta no R2, Audius ou sua biblioteca offline.');
+ reportAudioError(track.source==='audius'?'O Audius não entregou áudio reproduzível para esta gravação.':
+  track.source==='jamendo'?'O Jamendo não entregou áudio reproduzível para esta gravação.':
+  track.source==='preview'?'A prévia oficial não pôde ser carregada.':
+  'O áudio desta gravação não chegou a tempo. Verifique a disponibilidade da fonte e tente novamente.');
  updatePlayer();
 }
 function watchPlayback(track,selection,phase='startup'){
