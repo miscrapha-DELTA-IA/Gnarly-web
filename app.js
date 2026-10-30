@@ -972,7 +972,7 @@ async function recoverIndependentAudio(track,isCurrent,verifiedAlternative=null)
  const controller=new AbortController();
  independentRecoveryController?.abort();independentRecoveryController=controller;
  reportAudioStatus('Verificando a mesma gravação em outra fonte…');
- const alternative=verifiedAlternative||await sourceRouter.resolve(track,{signal:controller.signal});
+ const alternative=verifiedAlternative||await sourceRouter.resolve(track,{signal:controller.signal,known:state.searchResults});
  if(independentRecoveryController===controller)independentRecoveryController=null;
  if(controller.signal.aborted||!isCurrent()||!alternative)return false;
  // selectTrack refreshes artwork, lyric identity, Web Audio source and queue
@@ -1168,7 +1168,7 @@ async function play(){
   // only each provider's own metadata and first verified audio bytes are read.
   // A cache/local track always wins; do not interrupt audible native playback.
   if(track.source==='youtube'&&!isOffline(track.id)){
-   void sourceRouter.resolve(track).then(alternative=>{
+   void sourceRouter.resolve(track,{known:state.searchResults}).then(alternative=>{
     if(!alternative||!stillSelected()||
        state.audioState==='playing'||audio.readyState>=3)return;
     void recoverIndependentAudio(track,stillSelected,alternative);
