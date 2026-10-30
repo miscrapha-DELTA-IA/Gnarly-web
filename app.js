@@ -1777,7 +1777,10 @@ async function maybeFillSmartQueue({force=false}={}){
     searchAudius(query,{limit:20,signal:controller.signal}).catch(()=>[])
    ]).then(batches=>publish(batches.flat()));
    const affinity=related&&related!==query
-    ?searchAudius(related,{limit:14,signal:controller.signal}).then(publish).catch(()=>{})
+    ?Promise.all([
+      searchReadyAudio(related,{limit:16,signal:controller.signal}).catch(()=>[]),
+      searchAudius(related,{limit:14,signal:controller.signal}).catch(()=>[])
+     ]).then(batches=>publish(batches.flat()))
     :Promise.resolve();
    await Promise.all([primary,affinity]);
    if(!current())return;
