@@ -108,6 +108,19 @@ test('Audius streaming uses same-origin native audio body and honors partial Ran
  assert.deepEqual([...new Uint8Array(await res.arrayBuffer())],[...audio]);
 });
 
+test('official JSON stream indirection is permitted only for trusted provider hosts',async()=>{
+ const ctx={request:new Request('https://gnarly.test/audius-audio/aB12345'),params:{id:'aB12345'}};
+ let calls=0;
+ const response=await handleAudiusAudio(ctx,async()=>{
+  calls++;
+  return calls===1?Response.json({data:'https://audio.audius.co/stream/abc'}):
+   new Response(new Uint8Array([73,68,51,3]),{headers:{'Content-Type':'audio/mpeg'}});
+ });
+ assert.equal(response.status,200);assert.equal(calls,2);
+ assert.equal(response.headers.get('X-Gnarly-Playback-Source'),'audius-native');
+ const denied=await handleAudiusAudio(ctx,async()=>Response.json({data:'https://evil.example/audio.mp3'}));
+ assert.equal(denied.status,502);
+});
 test('an untrusted redirect, invalid content type and real provider throttles fail closed',async()=>{
  const request=new Request('https://gnarly.test/audius-audio/aB12345');
  const ctx={request,params:{id:'aB12345'}};
