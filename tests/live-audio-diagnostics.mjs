@@ -36,6 +36,15 @@ for(const endpoint of [
  'https://api.audius.co/v1/tracks/search?query=electronic&limit=2&app_name=Gnarly',
  'https://discoveryprovider.audius.co/v1/tracks/search?query=electronic&limit=2&app_name=Gnarly'
 ]){
+ const redirectProbe=await fetch(endpoint,{redirect:'manual',signal:AbortSignal.timeout(8500)}).catch(()=>null);
+ if(redirectProbe){
+  const loc=redirectProbe.headers.get('Location');
+  let redirectHost=null;
+  try{if(loc)redirectHost=new URL(loc,endpoint).hostname}catch{}
+  results.push({check:'provider-redirect',host:new URL(endpoint).hostname,
+   status:redirectProbe.status,redirect_host:redirectHost});
+  try{await redirectProbe.body?.cancel?.()}catch{}
+ }
  const direct=await get(endpoint,{timeout:8500});
  results.push({check:'provider-direct',host:new URL(endpoint).hostname,
   status:direct.status,error:direct.error,type:direct.type,
