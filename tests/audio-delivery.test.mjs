@@ -110,17 +110,19 @@ test('backend new retry-after replaces old local cooldown instead of extending i
  assert.equal(limiter.snapshot().retryAfter,40);
 });
 
-test('a known YouTube cooldown cannot launch a fresh origin extraction on Play',async()=>{
+test('stale browser cooldown cannot keep a recovered origin unavailable',async()=>{
  const {readFileSync}=await import('node:fs');
  const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  const play=source.slice(source.indexOf('async function play(){'),source.indexOf('function pause(){'));
- const cooldown=play.indexOf("playbackCooldown.active()&&");
- const prepare=play.indexOf("prepareNativeAudio(track,audioDelivery.attempt)");
- assert.ok(cooldown>=0&&prepare>cooldown,
-  'known cooldown gate must precede native source creation');
- assert.match(play,/let ready=track\.playbackAvailability==='r2'/);
- assert.match(play,/if\(!ready\)ready=await cachedNativeAvailable\(track\)/);
- assert.match(play,/if\(!nativeCacheOnly\)\{[\s\S]*?reportAudioError\(playbackLimitMessage\(playbackCooldown\.snapshot\(\)\)\);[\s\S]*?return;/);
- assert.match(play,/!nativeCacheOnly&&!prepareNativeAudio/);
- assert.match(play,/audio\.src=new URL\(r2URL,location\.href\)\.href/);
+ assert.match(play,/if\(track\.source==='youtube'&&!isOffline\(track\.id\)&&playbackCooldown\.active\(\)\)/);
+ assert.match(play,/void resolvePlaybackCooldown\(playbackCooldown\)/);
+ assert.match(play,/if\(!reuseSource&&!prepareNativeAudio\(track,audioDelivery\.attempt\)\)/);
+ assert.doesNotMatch(play,/nativeCacheOnly|playbackLimitMessage\(playbackCooldown\.snapshot\(\)\)/);
+ assert.ok(play.indexOf('void resolvePlaybackCooldown(playbackCooldown)')<
+  play.indexOf('const start=audio.play()'));
+ const edge=readFileSync(new URL('../functions/fast-audio/[id].js',import.meta.url),'utf8');
+ assert.match(edge,/const cooldown=originProbe\?await originCooldown/);
+ assert.match(edge,/if\(cooldown\)return reply\(429/);
+ assert.match(edge,/if\(env\?\.GNARLY_AUDIO_R2\)/);
+ assert.ok(edge.indexOf('if(env?.GNARLY_AUDIO_R2)')<edge.indexOf('const cooldown=originProbe'));
 });
