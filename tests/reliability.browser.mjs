@@ -45,7 +45,16 @@ try{
   if(/^\/(?:fast-audio|download|stream)(?:\/|$)/.test(url.pathname))mediaRequests.push(url.href);
   if(native||catalog){
    const key=(native?'native:':'catalog:')+term;count.set(key,(count.get(key)||0)+1);
-   const json=(data,status=200)=>route.fulfill({status,contentType:'application/json',headers:{'Access-Control-Allow-Origin':'*'},body:JSON.stringify(data)}).catch(()=>{});
+   // Mock catalogue records must actually match the typed query. The real
+   // official-song filter rejects unrelated records, even when the ID is valid.
+   // Preserve fixture titles for pagination and source-continuity assertions.
+   const json=(data,status=200)=>{
+    const relevant=Array.isArray(data?.results)?{...data,results:data.results.map(item=>
+     native?{...item,artist:term+' · '+(item.artist||'GNARLY Reliability')}:
+     {...item,artistName:term+' · '+(item.artistName||'GNARLY Reliability')})}:data;
+    return route.fulfill({status,contentType:'application/json',
+     headers:{'Access-Control-Allow-Origin':'*'},body:JSON.stringify(relevant)}).catch(()=>{});
+   };
    if(term==='retry failure test'){
     if(!failedRecovered)return json({error:'Temporary provider failure'},503);
     return json({results:native?[track('A','Recovered full song')]:[]});
