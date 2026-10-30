@@ -1,0 +1,27 @@
+name: Live production audio diagnostic
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app.js'
+      - 'lib/independent-recovery.js'
+      - 'lib/audius-catalog.js'
+      - 'functions/audius-audio/**'
+      - 'functions/api/audius-search.js'
+      - 'tests/live-audio-diagnostics.mjs'
+      - '.github/workflows/live-audio-diagnostics.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  streaming-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node tests/live-audio-diagnostics.mjs
+        env:
+          GNARLY_PROBE_URL: https://fix-429-native-play-recovery.gnarly-web-pages.pages.dev

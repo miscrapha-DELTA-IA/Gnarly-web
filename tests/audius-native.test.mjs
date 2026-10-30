@@ -37,7 +37,7 @@ test('catalogue stays independent of the YouTube backend with strictly derived s
   calls++;
   assert.match(url,/^https:\/\/api\.audius\.co\/v1\/tracks\/search\?/);
   assert.equal(new URL(url).searchParams.get('app_name'),'Gnarly');
-  assert.equal(options.redirect,'error');
+  assert.equal(options.redirect,'manual');
   return Response.json({data:[raw(),raw({id:'other123',is_stream_gated:true})]});
  });
  assert.equal(response.status,200);
@@ -56,6 +56,32 @@ test('catalogue stays independent of the YouTube backend with strictly derived s
  assert.deepEqual(rejected,[]);
 });
 
+test('transient first Audius host outage uses the independent official discovery endpoint',async()=>{
+ let called=[];
+ const response=await onRequestGet({
+  request:new Request('https://gnarly.test/api/audius-search?term=outage')
+ },async(url)=>{
+  called.push(new URL(url).hostname);
+  return called.length===1?new Response('unavailable',{status:503}):
+   Response.json({data:[raw()]});
+ });
+ assert.equal(response.status,200);
+ assert.deepEqual(called,['api.audius.co','discoveryprovider.audius.co']);
+ assert.equal((await response.json()).results[0].source,'audius');
+});
+test('official Audius redirects may resolve only within authorized providers',async()=>{
+ let calls=0;
+ const response=await onRequestGet({
+  request:new Request('https://gnarly.test/api/audius-search?term=redirect')
+ },async()=>{
+  calls++;
+  return calls===1?new Response(null,{status:302,headers:{
+   Location:'https://discoveryprovider.audius.co/v1/tracks/search?query=redirect'
+  }}):Response.json({data:[raw()]});
+ });
+ assert.equal(response.status,200);
+ assert.equal(calls,2);
+});
 test('verified Audius metadata survives the Omnibox cache and cannot be mistaken for a YouTube ID',()=>{
  const memory=new Map(),storage={getItem:k=>memory.get(k),setItem:(k,v)=>memory.set(k,v)};
  const a=new OmniboxSession(storage);

@@ -98,11 +98,11 @@ test('edge prewarm preserves confirmed provider 429 but queue full remains non-g
   assert.equal(result.headers.get('X-Download-Error'),status===429?reason:null);
  }
 });
-test('player consults stored global cooldown and requests cache only on first origin attempt',()=>{
+test('player consults origin status after failures but never lets stale browser cooldown force cache-only on a real Play',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(app,/new PlaybackCooldown\(\{storage:localStorage\}\)/);
  assert.match(app,/canPrepare:\(\)=>!playbackCooldown\.active\(\)/);
- assert.match(app,/cacheOnly:attempt===0&&playbackCooldown\.active\(\)/);
+ assert.doesNotMatch(app,/cacheOnly:attempt===0&&playbackCooldown\.active\(\)/);
  assert.match(app,/await resolvePlaybackCooldown\(playbackCooldown\)/);
  assert.match(app,/playbackCooldown\.remember\(rateLimit\)/);
  assert.match(app,/queueAudioWarmup\.cancel\(\)/);
