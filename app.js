@@ -1753,7 +1753,7 @@ async function maybeFillSmartQueue({force=false}={}){
     listeningMemory.refresh();
     const verified=readyQueueCandidates(candidates,{offline:isOffline});
     if(!verified.length)return;
-    const choices=recommendTracks({mode,anchor,candidates:verified,
+    const choices=recommendTracks({mode,anchor,candidates:verified,verifiedSources:true,
      existing:state.queue,recent:playbackBackstack.slice(-8),history:state.history,memory:listeningMemory,max:Math.max(0,7-added.length),revision});
     const newTracks=markAutoTracks(choices,mode),count=state.queue.length;
     state.queue=appendUnique(state.queue,newTracks,anchor.id);
