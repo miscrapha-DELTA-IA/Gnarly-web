@@ -275,7 +275,7 @@ export class KaraokeStage {
     }
    });
    const active=holder.querySelector('.is-live');
-   if(active&&this.follow)this.centerActiveLine(active);
+   if(active&&this.follow)this.centerActiveLine(active,{instant:force||index<2||time<6});
   }
   if(this.remoteHost.connected&&(force||performance.now()-this.lastRemoteSync>350)){
    this.remoteHost.sendPlayback({position:time,playing:!this.audio.paused&&!this.audio.ended,
@@ -289,13 +289,13 @@ export class KaraokeStage {
   * scrollIntoView() also scrolls the page/ancestors on Chromium and Safari,
   * pushing the modal header/play/pause outside the visible viewport.
   */
- centerActiveLine(line){
+ centerActiveLine(line,{instant=false}={}){
   const reader=this.query('karaoke-reader');
   if(!reader||!line)return;
   const bounds=reader.getBoundingClientRect(),target=line.getBoundingClientRect();
   const offset=(target.top-bounds.top)+(target.height-bounds.height)/2;
   if(!Number.isFinite(offset)||Math.abs(offset)<1)return;
-  reader.scrollTo({top:Math.max(0,reader.scrollTop+offset),behavior:this.reducedMotion?'instant':'smooth'});
+  reader.scrollTo({top:Math.max(0,reader.scrollTop+offset),behavior:instant||this.reducedMotion?'instant':'smooth'});
  }
  updateTransport(){
   const button=this.query('karaoke-stage-play'),playing=!this.audio.paused&&!this.audio.ended;
