@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {isVerifiedFullTrack,verifiedFirst,readyQueueCandidates,playbackPriority} from '../lib/verified-playback.js';
+import {recommendTracks} from '../lib/listening-intelligence.js';
 
 const uncached={id:'youtube:AAAAAAAAAAA',videoId:'AAAAAAAAAAA',source:'youtube',title:'Unknown'};
 const cached={id:'youtube:BBBBBBBBBBB',videoId:'BBBBBBBBBBB',source:'youtube',title:'Ready',playbackAvailability:'r2'};
@@ -35,4 +36,18 @@ test('Smart Mix accepts only verified whole tracks, never arbitrary YouTube list
  assert.doesNotMatch(source,/const primary=searchNativeBackend\(query,\{signal:controller\.signal\}\)/);
  assert.match(source,/state\.searchResults=verifiedFirst\(personalizedRank/);
  assert.match(source,/YouTube · áudio não verificado/);
+});
+
+test('artist Smart Mix can enqueue real Audius tracks rather than YouTube-only metadata',()=>{
+ const anchor={id:'audius:AAA111',source:'audius',audiusId:'AAA111',title:'First Song',
+  artist:'Studio Person',duration:181};
+ const next={id:'audius:BBB222',source:'audius',audiusId:'BBB222',title:'Second Song',
+  artist:'Studio Person',duration:190};
+ const unavailable={...uncached,title:'Other Song',artist:'Studio Person'};
+ const results=recommendTracks({mode:'artist',anchor,candidates:[next,unavailable],
+  verifiedSources:true,max:4});
+ assert.deepEqual(results.map(x=>x.id),[next.id]);
+ const unverified=recommendTracks({mode:'artist',anchor,candidates:[next,unavailable],
+  verifiedSources:false,max:4});
+ assert.deepEqual(unverified.map(x=>x.id),[unavailable.id]);
 });
