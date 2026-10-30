@@ -125,7 +125,29 @@ async function edgeAudio(bucket,id,range,headOnly){
  }
  return new Response(headOnly?null:obj.body,{status:200,headers});
 }
-export async function handleFastAudio({request,env,params,waitUntil:contextWaitUntil,originTimeoutMs=40000},fetcher=fetch){
+/** A cheap, read-only circuit check on uncached tracks. Never accesses
+ * YouTube, extracts audio, or blocks R2 hits. Degrades open on network errors.
+ */
+export async function originCooldown(fetcher,signal,{timeoutMs=1500}={}){
+ const ctl=new AbortController(),abort=()=>ctl.abort();
+ signal?.addEventListener('abort',abort,{once:true});
+ const timer=setTimeout(abort,timeoutMs);
+ try{
+  const response=await fetcher(new URL('/playback-status',RENDER).href,{
+   method:'GET',redirect:'manual',signal:ctl.signal,
+   headers:{Accept:'application/json'}
+  });
+  if(response.status!==200||!/application\/json/i.test(response.headers.get('content-type')||'')){
+   discardAudioBody(response);return null;
+  }
+  const data=await response.json();
+  const seconds=Number(data?.retry_after);
+  return data?.status==='upstream_rate_limited'&&Number.isFinite(seconds)&&seconds>0?
+   String(Math.max(1,Math.min(3600,Math.ceil(seconds)))):null;
+ }catch{return null}
+ finally{clearTimeout(timer);signal?.removeEventListener('abort',abort)}
+}
+export async function handleFastAudio({request,env,params,waitUntil:contextWaitUntil,originTimeoutMs=17000},fetcher=fetch){
  const id=params?.id;
  if(!VIDEO_ID.test(id||''))return reply(400,'Invalid track ID');
  if(request.method!=='GET'&&request.method!=='HEAD')
@@ -153,6 +175,12 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
  if(new URL(request.url).searchParams.get('cached-only')==='1')
   return reply(503,'Faixa ainda não armazenada no cache',{
    'Retry-After':'30','X-Gnarly-Playback-Source':'cache-miss-during-cooldown'});
+ // The Render-origin extraction IP is frequently in a provider cooldown.
+ // Fail in milliseconds instead of creating a 13-40 s spinner and repeated
+ // yt-dlp attempts. A cache hit already returned above without this probe.
+ const cooldown=await originCooldown(fetcher,request.signal);
+ if(cooldown)return reply(429,'Audio origin rate limited',{
+  'Retry-After':cooldown,'X-Gnarly-Playback-Source':'origin-rate-limited'});
  const youtube='https://www.youtube.com/watch?v='+id;
  const options={method:'GET',headers:range?{Range:range}:{},redirect:'manual'};
  const candidates=[
@@ -192,7 +220,17 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
    discardAudioBody(upstream);
    return reply(status,'Audio source temporarily unavailable',headers);
   }
-  if(!validAudioResponse(upstream)){discardAudioBody(upstream);continue}
+  if(!validAudioResponse(upstream)){
+   discardAudioBody(upstream);
+   // Progressive lookup can mask a real 429 as 422. Check the circuit
+   // after that failed lookup, before opening a second extraction.
+   if(index===0){
+    const limited=await originCooldown(fetcher,request.signal,{timeoutMs:750});
+    if(limited)return reply(429,'Audio origin rate limited',{
+     'Retry-After':limited,'X-Gnarly-Playback-Source':'origin-rate-limited'});
+   }
+   continue;
+  }
   const headers=audioHeaders(index===0?'progressive-origin':'extraction-origin',
    {'Content-Type':upstream.headers.get('Content-Type'),'Cache-Control':'no-store','Server-Timing':
     'edge;dur='+Math.max(0,Date.now()-started)+', origin;desc="'+(index===0?'progressive':'prepared')+'"'});
