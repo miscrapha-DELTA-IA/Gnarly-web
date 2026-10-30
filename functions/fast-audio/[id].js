@@ -57,7 +57,10 @@ function promoteCompleteStream({upstream,bucket,id,waitUntil}){
    // mislabeled HTML/error body or another codec into the shared M4A key.
    if(bytes[4]!==102||bytes[5]!==116||bytes[6]!==121||bytes[7]!==112)return;
    const key=id+'/audio.m4a';
-   const previous=await bucket.head(key).catch(()=>null);
+   // Head can be unavailable in minimal test bindings or temporarily fail
+   // in R2; the valid complete media can still be promoted.
+   let previous=null;
+   try{previous=await bucket.head?.(key)}catch{}
    const metadata={...(previous?.customMetadata||{})};
    const title=promotionTitle(upstream.headers);
    if(!metadata.title&&title)metadata.title=title;
