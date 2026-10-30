@@ -2442,7 +2442,10 @@ function refreshLiveResults(page,info=''){
  // aggregator. Audius and Jamendo belong only to invisible same-recording
  // recovery after the listener selects a song.
  const result=curateOfficialSearch(page.query,{
-  native:page.native,ready:page.ready,previews:page.previews
+  native:page.native,ready:page.ready,
+  // Never flash Apple preview rows and then replace them seconds later with
+  // YT Music songs. Only show the Apple fallback once native search settles.
+  previews:page.nativeFinished?page.previews:[]
  });
  const available=result.songs;
  state.searchResults=rankRequestedSongFirst(personalizedRank(page.query,[...page.local,...available],searchPreferenceContext()),page.query,{offline:isOffline});
