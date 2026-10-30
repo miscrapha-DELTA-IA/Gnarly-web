@@ -999,6 +999,9 @@ async function recoverNativeAudio(track,initialError=null){
  if(!track||track.source!=='youtube'||state.current!==track||state.userPaused)return false;
  coverCharge.show('recovering');
  if(recoveryOperation)return recoveryOperation;
+ // A 429 followed by a verified-source search needs its own bounded
+ // recovery window; the initial buffering deadline may nearly be exhausted.
+ playbackStallGuard.clear();watchPlayback(track,selection,'startup');
  const operation=(async()=>{
   // HTMLMediaElement hides HTTP status codes. Read-only backend diagnosis
   // avoids repeatedly hammering a provider currently returning HTTP 429.
