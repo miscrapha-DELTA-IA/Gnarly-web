@@ -19,6 +19,21 @@ export function completeAudioLength(response){
  const match=/^bytes 0-(\d+)\/(\d+)$/.exec(response.headers.get('content-range')||'');
  return match&&Number(match[1])+1===size&&Number(match[2])===size?size:0;
 }
+/** Render supplies the original filename on completed /download responses.
+ * Without this, the edge write-through cache used to delete title/cover
+ * metadata that Render had already stored, hiding fresh songs from Search.
+ */
+export function promotionTitle(headers){
+ const header=headers?.get?.('Content-Disposition')||'';
+ let name='';
+ const utf=/filename\*=UTF-8''([^;]+)/i.exec(header);
+ if(utf){try{name=decodeURIComponent(utf[1].trim().replace(/^"|"$/g,''))}catch{}}
+ if(!name){
+  const plain=/filename="([^"]{1,240})"/i.exec(header);
+  if(plain)name=plain[1];
+ }
+ return String(name).replace(/\.m4a$/i,'').replace(/[\\u0000-\\u001f\\u007f]/g,' ').trim().slice(0,180);
+}
 function promoteCompleteStream({upstream,bucket,id,waitUntil}){
  const size=completeAudioLength(upstream);
  if(!size||!/^audio\/(?:mp4|x-m4a)(?:;|$)/i.test(upstream.headers.get('content-type')||'')||
@@ -41,7 +56,14 @@ function promoteCompleteStream({upstream,bucket,id,waitUntil}){
    // A complete ISO-BMFF file begins with an ftyp box. Never promote a
    // mislabeled HTML/error body or another codec into the shared M4A key.
    if(bytes[4]!==102||bytes[5]!==116||bytes[6]!==121||bytes[7]!==112)return;
-   await bucket.put(id+'/audio.m4a',bytes,{httpMetadata:{contentType:'audio/mp4'}});
+   const key=id+'/audio.m4a';
+   const previous=await bucket.head(key).catch(()=>null);
+   const metadata={...(previous?.customMetadata||{})};
+   const title=promotionTitle(upstream.headers);
+   if(!metadata.title&&title)metadata.title=title;
+   if(!metadata.thumbnail)metadata.thumbnail='https://i.ytimg.com/vi/'+id+'/hqdefault.jpg';
+   await bucket.put(key,bytes,{httpMetadata:{contentType:'audio/mp4'},
+    customMetadata:metadata});
   }catch(error){console.debug('GNARLY edge cache promotion skipped',error?.name||'unknown')}
  })();
  try{waitUntil(work)}catch{void work.catch(()=>{})}
