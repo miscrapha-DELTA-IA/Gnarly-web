@@ -169,3 +169,15 @@ test('GNARLY media starts first and independent verification cannot block user p
  assert.match(app,/verifiedAlternative\|\|await sourceRouter\.resolve\(track/);
  assert.match(app,/audio\.addEventListener\('playing',[\s\S]*?sourceRouter\.cancel\(\)/);
 });
+
+test('Worker exposes canonical Jamendo routes without offering unauthorized external audio',async()=>{
+ const worker=(await import('../src/worker.js')).default;
+ const context={waitUntil:()=>{}};
+ const missing=await worker.fetch(new Request('https://gnarly.test/api/jamendo-search?term=Test'),{},context);
+ assert.equal(missing.status,503);
+ assert.equal((await missing.json()).status,'not_configured');
+ const invalid=await worker.fetch(new Request('https://gnarly.test/jamendo-audio/not-a-track'),{},context);
+ assert.equal(invalid.status,400);
+ const disabled=await worker.fetch(new Request('https://gnarly.test/jamendo-audio/123456'),{},context);
+ assert.equal(disabled.status,503);
+});
