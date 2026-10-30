@@ -1032,7 +1032,7 @@ function stopUnresponsivePlayback(track,selection){
  audio.removeAttribute('src');
  audio.load(); // Abort a hung request and settle any pending play().
  state.playing=false;
- reportAudioError(playbackCooldown.active()?playbackLimitMessage(playbackCooldown.snapshot()):
+ reportAudioError(track.source==='youtube'&&playbackCooldown.active()?playbackLimitMessage(playbackCooldown.snapshot()):
   'O servidor não entregou áudio a tempo. Toque Play para tentar novamente ou selecione uma música offline.');
  updatePlayer();
 }
