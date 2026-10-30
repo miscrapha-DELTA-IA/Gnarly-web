@@ -48,8 +48,8 @@ test('pause, track switch and ended event stop obsolete frame work',()=>{
  h.audio.paused=true;h.advance(16);
  assert.equal(h.callbacks.size,0);
  h.audio.paused=false;h.sync.start();
- const old=h.callbacks.values().next().value;
- h.selectNext();old(160);
+ const [handle,old]=h.callbacks.entries().next().value;
+ h.selectNext();h.callbacks.delete(handle);old(160);
  assert.equal(h.callbacks.size,0,'previous track never reschedules frame work');
  h.sync.start();h.audio.ended=true;h.advance(16);
  assert.equal(h.callbacks.size,0);
