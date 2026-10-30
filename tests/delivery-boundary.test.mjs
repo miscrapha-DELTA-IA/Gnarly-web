@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {handleFastAudio,validByteRange} from '../functions/fast-audio/[id].js';
+import {handleFastAudio as rawFastAudio,validByteRange} from '../functions/fast-audio/[id].js';
 import {onRequestPost as prepare} from '../functions/fast-prepare/[id].js';
 import {fetchAudioHeaders,validAudioResponse} from '../functions/_lib/origin-audio.js';
+// These tests isolate legacy media transport; origin health preflight has
+// dedicated integration tests in verified-origin-circuit.test.mjs.
+const handleFastAudio=(ctx,fetcher)=>rawFastAudio({...ctx,originProbe:false},fetcher);
 const id='ABCDEFGHIJK';
 const req=(options={})=>new Request('https://gnarly-web.miscrapha.workers.dev/fast-audio/'+id,options);
 const ctx=(options={})=>({request:req(),params:{id},env:{},...options});
