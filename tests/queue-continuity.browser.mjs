@@ -20,7 +20,7 @@ const tone=(seconds=12)=>{
  return buffer;
 };
 const media=tone();
-const song=(letter,artist='Queue Artist Alpha')=>({id:'youtube:'+letter.repeat(11),videoId:letter.repeat(11),source:'youtube',title:'Original fixture '+letter,artist,album:'Queue originals',duration:12,artwork:'/assets/gnarly-icon.png',metadataConfidence:100});
+const song=(letter,artist='Queue Artist Alpha')=>({id:'youtube:'+letter.repeat(11),videoId:letter.repeat(11),source:'youtube',playbackAvailability:'r2',title:'Original fixture '+letter,artist,album:'Queue originals',duration:12,artwork:'/assets/gnarly-icon.png',metadataConfidence:100});
 const A=song('A'),B=song('B'),C=song('C'),D=song('D'),E=song('E'),F=song('F'),G=song('G');
 const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox','--autoplay-policy=no-user-gesture-required','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 const results=[],files=new Map();
@@ -52,10 +52,15 @@ async function scenario(name,run){
     if(range)headers['Content-Range']=`bytes ${start}-${end}/${media.length}`;
     return await route.fulfill({status:range?206:200,contentType:'audio/wav',body,headers});
    }
-   if(u.pathname==='/api/omnibox'){
+   if(u.pathname==='/api/omnibox'||u.pathname==='/api/r2-available'){
+    // Smart Mix now uses only genuinely cached full audio, not YouTube
+    // search metadata. Fixture canonical audio already resolves through
+    // /fast-audio and models pre-confirmed edge R2 availability.
     const query=u.searchParams.get('term')||'';queries.push(query);
     const value=await search(query,queries.length);
-    return await route.fulfill({contentType:'application/json',body:JSON.stringify({results:value})});
+    const payload=u.pathname==='/api/r2-available'?
+     {status:'ok',results:value}:{results:value};
+    return await route.fulfill({contentType:'application/json',body:JSON.stringify(payload)});
    }
    if(u.origin!==base||u.pathname.startsWith('/api/')||u.pathname.startsWith('/fast-prepare/'))
     return await route.fulfill({contentType:'application/json',body:'{"results":[],"lines":[],"plainLines":[]}'});

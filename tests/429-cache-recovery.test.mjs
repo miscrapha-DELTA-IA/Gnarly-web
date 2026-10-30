@@ -13,6 +13,7 @@ test('confirmed upstream 429 still checks Render existing R2 via cache-first /do
  const result=await handleFastAudio({
   request:request(),params:{id},env:{GNARLY_AUDIO_R2:r2Miss()}
  },async url=>{
+  if(url.endsWith('/playback-status'))return Response.json({status:'ready'});
   urls.push(url);
   if(urls.length===1)return new Response('blocked',{status:429,headers:{
    'Retry-After':'300','X-Download-Error':'upstream_rate_limited'
@@ -34,6 +35,7 @@ test('if Render R2 also misses, original provider 429 is preserved without extra
  const result=await handleFastAudio({
   request:request(),params:{id},env:{GNARLY_AUDIO_R2:r2Miss()}
  },async url=>{
+  if(url.endsWith('/playback-status'))return Response.json({status:'ready'});
   urls.push(url);
   return urls.length===1?
    new Response('upstream blocked',{status:429,headers:{
@@ -52,7 +54,8 @@ test('queue-full or access-limited 429 must not trigger another origin request',
   let calls=0;
   const result=await handleFastAudio({
    request:request(),params:{id},env:{GNARLY_AUDIO_R2:r2Miss()}
-  },async()=>{
+  },async url=>{
+   if(url.endsWith('/playback-status'))return Response.json({status:'ready'});
    calls++;return new Response('blocked',{status:429,headers:{
     'X-Download-Error':reason,'Retry-After':'30'
    }});
@@ -73,6 +76,7 @@ test('fully streamed /download fallback can populate edge R2 without blocking fi
   request:request(),params:{id},env:{GNARLY_AUDIO_R2:bucket},
   waitUntil:promise=>background.push(promise)
  },async url=>{
+  if(url.endsWith('/playback-status'))return Response.json({status:'ready'});
   urls.push(url);
   return urls.length===1?new Response('no progressive audio',{status:415}):
    new Response(bytes,{status:200,headers:{
@@ -90,7 +94,8 @@ test('fully streamed /download fallback can populate edge R2 without blocking fi
 
 test('provider 429 followed by non-audio 200 is still classified as provider-limited',async()=>{
  let calls=0;
- const result=await handleFastAudio({request:request(),params:{id},env:{}},async()=>{
+ const result=await handleFastAudio({request:request(),params:{id},env:{}},async url=>{
+  if(url.endsWith('/playback-status'))return Response.json({status:'ready'});
   calls++;
   return calls===1?new Response('blocked',{status:429,headers:{
    'X-Download-Error':'upstream_rate_limited','Retry-After':'300'

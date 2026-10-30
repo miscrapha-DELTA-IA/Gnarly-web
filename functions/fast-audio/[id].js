@@ -19,6 +19,21 @@ export function completeAudioLength(response){
  const match=/^bytes 0-(\d+)\/(\d+)$/.exec(response.headers.get('content-range')||'');
  return match&&Number(match[1])+1===size&&Number(match[2])===size?size:0;
 }
+/** Render supplies the original filename on completed /download responses.
+ * Without this, the edge write-through cache used to delete title/cover
+ * metadata that Render had already stored, hiding fresh songs from Search.
+ */
+export function promotionTitle(headers){
+ const header=headers?.get?.('Content-Disposition')||'';
+ let name='';
+ const utf=/filename\*=UTF-8''([^;]+)/i.exec(header);
+ if(utf){try{name=decodeURIComponent(utf[1].trim().replace(/^"|"$/g,''))}catch{}}
+ if(!name){
+  const plain=/filename="([^"]{1,240})"/i.exec(header);
+  if(plain)name=plain[1];
+ }
+ return String(name).replace(/\.m4a$/i,'').replace(/[\x00-\x1f\x7f]/g,' ').trim().slice(0,180);
+}
 function promoteCompleteStream({upstream,bucket,id,waitUntil}){
  const size=completeAudioLength(upstream);
  if(!size||!/^audio\/(?:mp4|x-m4a)(?:;|$)/i.test(upstream.headers.get('content-type')||'')||
@@ -41,7 +56,17 @@ function promoteCompleteStream({upstream,bucket,id,waitUntil}){
    // A complete ISO-BMFF file begins with an ftyp box. Never promote a
    // mislabeled HTML/error body or another codec into the shared M4A key.
    if(bytes[4]!==102||bytes[5]!==116||bytes[6]!==121||bytes[7]!==112)return;
-   await bucket.put(id+'/audio.m4a',bytes,{httpMetadata:{contentType:'audio/mp4'}});
+   const key=id+'/audio.m4a';
+   // Head can be unavailable in minimal test bindings or temporarily fail
+   // in R2; the valid complete media can still be promoted.
+   let previous=null;
+   try{previous=await bucket.head?.(key)}catch{}
+   const metadata={...(previous?.customMetadata||{})};
+   const title=promotionTitle(upstream.headers);
+   if(!metadata.title&&title)metadata.title=title;
+   if(!metadata.thumbnail)metadata.thumbnail='https://i.ytimg.com/vi/'+id+'/hqdefault.jpg';
+   await bucket.put(key,bytes,{httpMetadata:{contentType:'audio/mp4'},
+    customMetadata:metadata});
   }catch(error){console.debug('GNARLY edge cache promotion skipped',error?.name||'unknown')}
  })();
  try{waitUntil(work)}catch{void work.catch(()=>{})}
@@ -103,7 +128,29 @@ async function edgeAudio(bucket,id,range,headOnly){
  }
  return new Response(headOnly?null:obj.body,{status:200,headers});
 }
-export async function handleFastAudio({request,env,params,waitUntil:contextWaitUntil,originTimeoutMs=40000},fetcher=fetch){
+/** A cheap, read-only circuit check on uncached tracks. Never accesses
+ * YouTube, extracts audio, or blocks R2 hits. Degrades open on network errors.
+ */
+export async function originCooldown(fetcher,signal,{timeoutMs=1500}={}){
+ const ctl=new AbortController(),abort=()=>ctl.abort();
+ signal?.addEventListener('abort',abort,{once:true});
+ const timer=setTimeout(abort,timeoutMs);
+ try{
+  const response=await fetcher(new URL('/playback-status',RENDER).href,{
+   method:'GET',redirect:'manual',signal:ctl.signal,
+   headers:{Accept:'application/json'}
+  });
+  if(response.status!==200||!/application\/json/i.test(response.headers.get('content-type')||'')){
+   discardAudioBody(response);return null;
+  }
+  const data=await response.json();
+  const seconds=Number(data?.retry_after);
+  return data?.status==='upstream_rate_limited'&&Number.isFinite(seconds)&&seconds>0?
+   String(Math.max(1,Math.min(3600,Math.ceil(seconds)))):null;
+ }catch{return null}
+ finally{clearTimeout(timer);signal?.removeEventListener('abort',abort)}
+}
+export async function handleFastAudio({request,env,params,waitUntil:contextWaitUntil,originTimeoutMs=17000,originProbe=true},fetcher=fetch){
  const id=params?.id;
  if(!VIDEO_ID.test(id||''))return reply(400,'Invalid track ID');
  if(request.method!=='GET'&&request.method!=='HEAD')
@@ -131,6 +178,14 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
  if(new URL(request.url).searchParams.get('cached-only')==='1')
   return reply(503,'Faixa ainda não armazenada no cache',{
    'Retry-After':'30','X-Gnarly-Playback-Source':'cache-miss-during-cooldown'});
+ // The Render-origin extraction IP is frequently in a provider cooldown.
+ // Fail in milliseconds instead of creating a 13-40 s spinner and repeated
+ // yt-dlp attempts. A cache hit already returned above without this probe.
+ if(originTimeoutMs<=0)return reply(504,'Audio origin timed out',{
+  'Retry-After':'8','X-Gnarly-Playback-Source':'origin-timeout'});
+ const cooldown=originProbe?await originCooldown(fetcher,request.signal,{timeoutMs:Math.min(1500,originTimeoutMs)}):null;
+ if(cooldown)return reply(429,'Audio origin rate limited',{
+  'Retry-After':cooldown,'X-Gnarly-Playback-Source':'origin-rate-limited'});
  const youtube='https://www.youtube.com/watch?v='+id;
  const options={method:'GET',headers:range?{Range:range}:{},redirect:'manual'};
  const candidates=[
@@ -170,7 +225,17 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
    discardAudioBody(upstream);
    return reply(status,'Audio source temporarily unavailable',headers);
   }
-  if(!validAudioResponse(upstream)){discardAudioBody(upstream);continue}
+  if(!validAudioResponse(upstream)){
+   discardAudioBody(upstream);
+   // Progressive lookup can mask a real 429 as 422. Check the circuit
+   // after that failed lookup, before opening a second extraction.
+   if(index===0&&originProbe){
+    const limited=await originCooldown(fetcher,request.signal,{timeoutMs:750});
+    if(limited)return reply(429,'Audio origin rate limited',{
+     'Retry-After':limited,'X-Gnarly-Playback-Source':'origin-rate-limited'});
+   }
+   continue;
+  }
   const headers=audioHeaders(index===0?'progressive-origin':'extraction-origin',
    {'Content-Type':upstream.headers.get('Content-Type'),'Cache-Control':'no-store','Server-Timing':
     'edge;dur='+Math.max(0,Date.now()-started)+', origin;desc="'+(index===0?'progressive':'prepared')+'"'});

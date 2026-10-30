@@ -65,7 +65,9 @@ test('live search waits for a meaningful query and discovery limits its backend 
  assert.match(app,/if\(live&&query\.length<3\)\{/);
  assert.match(app,/const delay=live\?420:0/);
  assert.match(app,/memory:listeningMemory\}\)\.slice\(0,1\)/);
- assert.match(app,/if\(added\.length>=3\|\|playbackCooldown\.active\(\)\)return/);
+ assert.match(app,/if\(added\.length>=3\)return/);
+ assert.match(app,/readyQueueCandidates\(candidates/);
+ assert.doesNotMatch(app,/const primary=searchNativeBackend\(query/);
 });
 
 test('official playback retains original YouTube controls and marks sound as separate',()=>{
