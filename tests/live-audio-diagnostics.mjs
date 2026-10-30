@@ -22,7 +22,7 @@ async function get(url,{timeout=12000,range=false}={}){
    try{body=JSON.parse(text)}catch{body=text.slice(0,100)}
   }
   return {status:response.status,type:response.headers.get('content-type'),
-    source:response.headers.get('x-gnarly-playback-source'),body};
+    source:response.headers.get('x-gnarly-playback-source'),reason:response.headers.get('x-gnarly-audius-failure'),body};
  }catch(error){return {error:error?.name||'network',detail:String(error?.message||'').slice(0,110)}}
  finally{clearTimeout(timer);ctl.abort()}
 }
@@ -48,7 +48,7 @@ for(const term of ['electronic','house']){
  const listing=await get(origin+'/api/audius-search?term='+encodeURIComponent(term)+'&limit=15');
  const tracks=Array.isArray(listing.body?.results)?listing.body.results:[];
  results.push({check:'audius-search',term,status:listing.status,
-  error:listing.error,full_tracks:tracks.length});
+  error:listing.error,reason:listing.reason,full_tracks:tracks.length});
  if(!tracks.length)continue;
  for(const candidate of tracks.slice(0,3)){
   if(!/^audius:[A-Za-z0-9]{3,64}$/.test(candidate?.id||''))continue;
