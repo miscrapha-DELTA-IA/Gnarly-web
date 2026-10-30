@@ -1117,33 +1117,15 @@ async function play(){
  const resetMedia=state.audioState==='error'||!!audio.error;
  if(resetMedia)audioDelivery.select(track);
  state.userPaused=false;
- // A provider cooldown is already confirmed from real upstream 429s.
- // Never fire a fresh yt-dlp request for each user Play during that window.
- // First-party R2 HEAD is read-only, does not access the provider, and
- // preserves the selected recording ID. Existing R2 metadata skips HEAD.
- let nativeCacheOnly=false;
- if(track.source==='youtube'&&!isOffline(track.id)&&
-   playbackCooldown.active()&&!(reuseSource&&audio.readyState>=2)){
-  const r2URL=trackAudioURL(track,{cacheOnly:true});
-  if(r2URL&&isGnarlyPagesHost(location.hostname)){
-   let ready=track.playbackAvailability==='r2';
-   if(!ready)ready=await cachedNativeAvailable(track);
-   if(!stillSelected())return;
-   if(ready){
-    track.playbackAvailability='r2';
-    audio.src=new URL(r2URL,location.href).href;
-    nativeCacheOnly=true;
-   }
-  }
-  if(!nativeCacheOnly){
-   state.playing=false;
-   reportAudioError(playbackLimitMessage(playbackCooldown.snapshot()));
-   updatePlayer();
-   return;
-  }
- }
+ // A remembered browser cooldown is only a hint. The Render process may
+ // have recovered since it was stored, and iOS Safari must receive play()
+ // synchronously in the gesture. Refresh status without blocking the gesture.
+ // /fast-audio reads R2 FIRST, then performs a read-only backend cooldown
+ // check; true 429 responses never start new YouTube extraction.
+ if(track.source==='youtube'&&!isOffline(track.id)&&playbackCooldown.active())
+  void resolvePlaybackCooldown(playbackCooldown);
  if(track.source==='youtube'){
-  if(!reuseSource&&!nativeCacheOnly&&!prepareNativeAudio(track,audioDelivery.attempt)){reportAudioError('ID de música inválido. Escolha outro resultado.');return;}
+  if(!reuseSource&&!prepareNativeAudio(track,audioDelivery.attempt)){reportAudioError('ID de música inválido. Escolha outro resultado.');return;}
   if(!reuseSource||audio.readyState<2){
    state.audioState='loading';reportAudioStatus(isOffline(track.id)?'Abrindo música offline…':'Conectando ao GNARLY · preparando áudio…');
   }else reportAudioStatus('');
