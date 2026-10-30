@@ -72,6 +72,23 @@ for(const term of ['electronic','house']){
  }
  if(playable)break;
 }
+// Read ONLY already stored GNARLY R2 objects, never origin extraction.
+const ready=await get(origin+'/api/r2-available?limit=8',{timeout:9000});
+const readyTracks=Array.isArray(ready.body?.results)?ready.body.results:[];
+results.push({check:'r2-catalog',status:ready.status,ready_tracks:readyTracks.length,error:ready.error});
+let r2Working=false;
+for(const track of readyTracks.slice(0,3)){
+ if(!/^youtube:[A-Za-z0-9_-]{11}$/.test(track?.id||'')||
+   track.playbackAvailability!=='r2')continue;
+ const id=track.videoId;
+ const media=await get(origin+'/fast-audio/'+id,{range:true,timeout:9000});
+ const valid=media.status===206&&media.source==='r2-edge'&&
+  /audio\/mp4/i.test(media.type||'')&&media.body>0;
+ results.push({check:'r2-media',id,status:media.status,source:media.source,
+  bytes:media.body,type:media.type,error:media.error,valid});
+ if(valid){r2Working=true;break;}
+}
+if(!r2Working){console.error('FAIL: R2 catalogue had no verified playable cache hit.');process.exitCode=1;}
 for(const r of results)console.log(JSON.stringify(r));
 const report=process.env.GITHUB_STEP_SUMMARY;
 if(report){
