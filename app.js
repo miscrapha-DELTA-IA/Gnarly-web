@@ -5,6 +5,7 @@ import {LyricTransportSync} from './lib/lyric-transport-sync.js';
 import {searchCatalog,searchNativeBackend,resolveTrackMetadata} from './lib/catalog.js';
 import {searchAudius,audiusPlaybackURL} from './lib/audius-catalog.js';
 import {searchReadyAudio} from './lib/r2-ready-catalog.js';
+import {verifiedFirst,readyQueueCandidates} from './lib/verified-playback.js';
 import {findIndependentRecording} from './lib/independent-recovery.js';
 import {applyMetadata,enrichSearchCredits,isGenericArtist,inferredCredit,displayArtist,reconcileCatalogCredits} from './lib/metadata-intelligence.js';
 import {OmniboxSession,classifyIntent,rank,normalKey} from './lib/omnibox.js';
@@ -1570,7 +1571,7 @@ function mediaList(tracks,context,startIndex=0){
  if(!tracks.length)return '<p class="section-note">Nenhuma música por aqui ainda.</p>';
  return '<div class="media-list">'+tracks.map((tr,i)=>{
   const label=safe(tr.title),attrs=' data-context="'+safe(context)+'" data-index="'+(startIndex+i)+'"';
-  const source=isOffline(tr.id)?'✓ Áudio offline':tr.playbackAvailability==='r2'?'✓ Pronta no GNARLY · R2':tr.source==='audius'?'Audius · música completa':tr.source==='preview'?'Prévia · 30 s':tr.source==='youtube'?'GNARLY · origem YouTube':'Arquivo local';
+  const source=isOffline(tr.id)?'✓ Áudio offline':tr.playbackAvailability==='r2'?'✓ Pronta no GNARLY · R2':tr.source==='audius'?'Audius · música completa':tr.source==='preview'?'Prévia · 30 s':tr.source==='youtube'?(playbackCooldown.active()?'YouTube · origem limitada · áudio não verificado':'YouTube · áudio não verificado'):'Arquivo local';
   const play='<button data-action="play"'+attrs+' aria-label="Reproduzir '+label+'">'+svg('play')+'</button>';
   const actions=context==='queue'
    ? '<button data-action="remove"'+attrs+' aria-label="Remover '+label+' da fila">×</button>'
@@ -1744,13 +1745,15 @@ async function maybeFillSmartQueue({force=false}={}){
      'Playlist sem novas faixas; músicas manuais preservadas.';
     updatePlayer();prefetchNextLyrics();return;
    }
-   const cached=[...state.searchResults,...state.history,...state.favorites,...state.queue];
+   const cached=readyQueueCandidates([...state.searchResults,...state.history,...state.favorites,...state.queue,...state.tracks],{offline:isOffline});
    const related=mode==='mix'?listeningMemory.affinityArtists(anchor.artist,1)[0]:null;
    const added=[];
    const publish=candidates=>{
     if(!current())return;
     listeningMemory.refresh();
-    const choices=recommendTracks({mode,anchor,candidates,
+    const verified=readyQueueCandidates(candidates,{offline:isOffline});
+    if(!verified.length)return;
+    const choices=recommendTracks({mode,anchor,candidates:verified,
      existing:state.queue,recent:playbackBackstack.slice(-8),history:state.history,memory:listeningMemory,max:Math.max(0,7-added.length),revision});
     const newTracks=markAutoTracks(choices,mode),count=state.queue.length;
     state.queue=appendUnique(state.queue,newTracks,anchor.id);
@@ -1764,16 +1767,19 @@ async function maybeFillSmartQueue({force=false}={}){
    // Known complete recordings are immediately usable. A slow optional taste
    // lookup cannot hold the current song's successor hostage to its timeout.
    publish(cached);
-   // Do not emit additional speculative search requests while the origin is
-   // rate-limited, or when enough known songs are already in the queue.
-   if(added.length>=3||playbackCooldown.active())return;
-   // Two bounded catalogue requests only when an actual smart Mix needs them.
-   // Preserve the fast affinity response if the primary artist lookup stalls.
-   const primary=searchNativeBackend(query,{signal:controller.signal}).catch(()=>[]);
+   // Auto Mix must NEVER promise an unverified YouTube result as the next
+   // playable song. Provider metadata remains searchable, not queued blindly.
+   if(added.length>=3)return;
+   // Read already-cached M4A and streamable Audius records concurrently.
+   // Neither discovery path extracts YouTube audio or spends the Render quota.
+   const primary=Promise.all([
+    searchReadyAudio(query,{limit:24,signal:controller.signal}).catch(()=>[]),
+    searchAudius(query,{limit:20,signal:controller.signal}).catch(()=>[])
+   ]).then(batches=>publish(batches.flat()));
    const affinity=related&&related!==query
-    ?searchNativeBackend(related,{signal:controller.signal}).catch(()=>[])
-    :Promise.resolve([]);
-   await Promise.all([primary.then(publish),affinity.then(publish)]);
+    ?searchAudius(related,{limit:14,signal:controller.signal}).then(publish).catch(()=>{})
+    :Promise.resolve();
+   await Promise.all([primary,affinity]);
    if(!current())return;
    if(!added.length){
     smartStatus='Sem novas faixas verificadas para '+mode+'. Sua fila foi preservada.';
@@ -2342,11 +2348,11 @@ function searchInstantOptions(query){
 function refreshSearchDiscovery(page,{loading=false,failed=page.failed===true}={}){
  if(searchPaging!==page||page.revision!==searchCounter||state.searchTerm)return;
  const locals=searchInstantOptions('');
- state.searchResults=mixDiscoveryFeed({
+ state.searchResults=verifiedFirst(mixDiscoveryFeed({
   favorites:locals.favorites,history:locals.history,playlists:locals.playlists,
   offline:locals.offline,queue:locals.queue,remote:page.remote,
   previous:page.previous,current:state.current,max:36
- });
+ }),{offline:isOffline});
  const info=loading&&!state.searchResults.length?'Descobrindo músicas…':
   failed?'Catálogo indisponível. Mostrando suas músicas salvas.':'';
  state.searchError=info;
@@ -2413,7 +2419,7 @@ function refreshLiveResults(page,info=''){
  const native=page.native.filter(x=>!page.ready.some(r=>r.id===x.id));
  const available=[...page.ready,...native,...page.audius,...page.previews];
  const ordered=playbackCooldown.active()?[...page.ready,...page.audius,...native,...page.previews]:available;
- state.searchResults=personalizedRank(page.query,[...page.local,...ordered],searchPreferenceContext());
+ state.searchResults=verifiedFirst(personalizedRank(page.query,[...page.local,...ordered],searchPreferenceContext()),{offline:isOffline});
  const waiting=!page.readyFinished||!page.nativeFinished||!page.audiusFinished||!page.previewFinished;
  const status=info||(!state.searchResults.length?(waiting?'Buscando músicas…':
   page.nativeFailed||page.audiusFailed||page.previewFailed?'Não foi possível consultar os catálogos agora. Toque em Buscar para tentar novamente.':
