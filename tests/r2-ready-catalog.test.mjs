@@ -82,7 +82,7 @@ test('mobile startup timeout invokes bounded recovery and protects the audio clo
  assert.match(app,/const youtube=track\.source==='youtube'&&!isOffline\(track\.id\)/);
  assert.match(app,/if\(youtube&&!recoveryOperation\)\{[\s\S]*?void recoverNativeAudio\(track,\{name:'TimeoutError'\}\)/);
  assert.match(app,/if\(recoveryOperation\|\|state\.audioState==='recovering'\)return/);
- assert.match(app,/const fromR2=searchReadyAudio\('',\{limit:24,signal:page\.controller\.signal\}\)/);
+ assert.match(app,/page\.remote=originals/);
  assert.match(app,/const ready=searchReadyAudio\(query,\{limit:24,signal:controller\.signal\}\)/);
  assert.match(app,/playbackAvailability==='r2'\?'✓ Pronta no GNARLY/);
 });
