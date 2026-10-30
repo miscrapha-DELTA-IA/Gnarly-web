@@ -59,7 +59,7 @@ try{
     if(!failedRecovered)return json({error:'Temporary provider failure'},503);
     return json({results:native?[track('A','Recovered full song')]:[]});
    }
-   if(term==='retry empty test')return json({results:native&&emptyRecovered?[track('B','Recovered empty search')]:[]});
+   if(term==='violet blank catalogue')return json({results:native&&emptyRecovered?[track('B','Recovered empty search')]:[]});
    if(term==='old delayed test'&&native){oldStartedResolve();await new Promise(resolve=>releaseOld=resolve);return json({results:[track('C','Obsolete old search')]})}
    if(term==='latest search test')return json({results:native?[track('D','Latest full song')]:[]});
    if(term==='submit once test'){if(native){submitStartedResolve();await new Promise(resolve=>releaseSubmit=resolve)}return json({results:native?[track('E','Single submitted song')]:[]})}
@@ -108,12 +108,12 @@ try{
  assert.ok((await rows().allTextContents()).some(text=>text.includes('Recovered full song')));
  cases.push({name:'same-query retry after provider failure',status:failedStatus,requests:count.get('native:retry failure test')});
  // A legitimately empty catalogue is not a permanent state either.
- await submit('retry empty test');await settled();assert.equal(await rows().count(),0);
- const emptyCount=count.get('native:retry empty test')||0;emptyRecovered=true;
+ await submit('violet blank catalogue');await settled();assert.equal(await rows().count(),0);
+ const emptyCount=count.get('native:violet blank catalogue')||0;emptyRecovered=true;
  await page.locator('#search-form button[type="submit"]').click();
  await page.waitForFunction(()=>__reliabilityQA.state.searchResults.some(t=>t.title==='Recovered empty search'));
- assert.equal((count.get('native:retry empty test')||0)-emptyCount,1);
- cases.push({name:'same-query retry after empty response',requests:count.get('native:retry empty test')});
+ assert.equal((count.get('native:violet blank catalogue')||0)-emptyCount,1);
+ cases.push({name:'same-query retry after empty response',requests:count.get('native:violet blank catalogue')});
  // Canceled old responses cannot overwrite newer visible search results.
  await submit('old delayed test');await oldStarted;
  await submit('latest search test');await page.waitForFunction(()=>__reliabilityQA.state.searchResults.some(t=>t.title==='Latest full song'));
