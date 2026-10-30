@@ -2,9 +2,9 @@
  * Never extracts YouTube audio, logs credentials, saves music or uploads data.
  * Stops Audius after the first media chunk (max a few KB).
  */
-const origin='https://gnarly-web-pages.pages.dev';
+const origin=process.env.GNARLY_PROBE_URL||'https://gnarly-web-pages.pages.dev';
 const backend='https://nightcorelab.onrender.com';
-const results=[];
+const results=[{check:'probe-target',host:new URL(origin).hostname}];
 async function get(url,{timeout=12000,range=false}={}){
  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),timeout);
  try{
