@@ -1076,14 +1076,23 @@ function stopUnresponsivePlayback(track,selection){
  if(state.current!==track||playbackSelection!==selection||state.userPaused)return;
  if(audio.readyState>=3&&!audio.paused){playbackStallGuard.clear();coverCharge.hide();return}
  playbackStallGuard.clear();
+ const youtube=track.source==='youtube'&&!isOffline(track.id);
+ // Stop the hung browser request; unlike pause(), do not mark an involuntary
+ // transport timeout as a user pause. Read the real origin status and try
+ // existing R2 or an exact independent recording without re-extracting.
+ if(youtube&&!recoveryOperation){
+  state.audioState='recovering';
+  audio.pause();audio.removeAttribute('src');audio.load();
+  state.playing=false;updatePlayer();
+  void recoverNativeAudio(track,{name:'TimeoutError'});
+  return;
+ }
  state.userPaused=true;
  audioDelivery.cancel();recoveryOperation=null;
- audio.pause();
- audio.removeAttribute('src');
+ audio.pause();audio.removeAttribute('src');
  audio.load(); // Abort a hung request and settle any pending play().
  state.playing=false;
- reportAudioError(track.source==='youtube'&&playbackCooldown.active()?playbackLimitMessage(playbackCooldown.snapshot()):
-  'O servidor não entregou áudio a tempo. Toque Play para tentar novamente ou selecione uma música offline.');
+ reportAudioError('O servidor não entregou áudio a tempo. Use uma faixa marcada como pronta no R2, Audius ou sua biblioteca offline.');
  updatePlayer();
 }
 function watchPlayback(track,selection,phase='startup'){
@@ -1148,6 +1157,9 @@ async function play(){
   // An old play() promise is routinely rejected when Next swaps the source.
   // A stale or canceled request must never become a visible playback failure.
   if(!stillSelected())return;
+  // Watchdog abort is recovery, not a second instruction to restart the
+  // already-failed origin media element.
+  if(recoveryOperation||state.audioState==='recovering')return;
   if(e?.name==='AbortError'){
    // WebKit may also abort the current track's initial play during its own
    // source selection. Restart the SAME native source once, without retrying
@@ -1558,7 +1570,7 @@ function mediaList(tracks,context,startIndex=0){
  if(!tracks.length)return '<p class="section-note">Nenhuma música por aqui ainda.</p>';
  return '<div class="media-list">'+tracks.map((tr,i)=>{
   const label=safe(tr.title),attrs=' data-context="'+safe(context)+'" data-index="'+(startIndex+i)+'"';
-  const source=isOffline(tr.id)?'✓ Áudio offline':tr.source==='audius'?'Audius · música completa':tr.source==='preview'?'Prévia · 30 s':tr.source==='youtube'?'GNARLY · origem YouTube':'Arquivo local';
+  const source=isOffline(tr.id)?'✓ Áudio offline':tr.playbackAvailability==='r2'?'✓ Pronta no GNARLY · R2':tr.source==='audius'?'Audius · música completa':tr.source==='preview'?'Prévia · 30 s':tr.source==='youtube'?'GNARLY · origem YouTube':'Arquivo local';
   const play='<button data-action="play"'+attrs+' aria-label="Reproduzir '+label+'">'+svg('play')+'</button>';
   const actions=context==='queue'
    ? '<button data-action="remove"'+attrs+' aria-label="Remover '+label+' da fila">×</button>'
