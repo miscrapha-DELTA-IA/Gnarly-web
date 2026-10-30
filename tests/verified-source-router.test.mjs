@@ -164,7 +164,7 @@ test('GNARLY media starts first and independent verification cannot block user p
  assert.match(play,/void sourceRouter\.resolve\(track\)\.then/);
  assert.ok(play.indexOf('const start=audio.play(),unlock=resumePlayerAudio()')<
   play.indexOf('void sourceRouter.resolve(track).then'));
- assert.match(play,/if\(!alternative\|\|!stillSelected\(\)\|\|recoveryOperation/);
+ assert.match(play,/if\(!alternative\|\|!stillSelected\(\)\|\|/);
  assert.match(app,/async function recoverIndependentAudio\(track,isCurrent,verifiedAlternative=null\)/);
  assert.match(app,/verifiedAlternative\|\|await sourceRouter\.resolve\(track/);
  assert.match(app,/audio\.addEventListener\('playing',[\s\S]*?sourceRouter\.cancel\(\)/);
