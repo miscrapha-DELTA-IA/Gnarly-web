@@ -56,6 +56,16 @@ export async function handleAudiusAudio({request,params},fetcher=fetch){
     return fail(response.status===404||response.status===403?404:503,'Audio stream unavailable');
    }
    const type=response.headers.get('Content-Type')||'';
+   // Some Audius nodes return an official JSON stream URL instead of a 302.
+   // Follow it only if the destination remains on our strict provider allowlist.
+   if(/^application\/json(?:;|$)/i.test(type)&&url.startsWith('https://api.audius.co/')){
+    const payload=await response.json().catch(()=>null);
+    const target=typeof payload?.data==='string'?payload.data:
+     typeof payload?.data?.url==='string'?payload.data.url:null;
+    if(!target||!allowedAudiusMediaOrigin(target))return fail(502,'Untrusted Audius stream metadata');
+    url=target;
+    continue;
+   }
    if(!MEDIA.test(type)){
     await response.body?.cancel?.().catch(()=>{});
     return fail(502,'Provider returned non-audio content');
