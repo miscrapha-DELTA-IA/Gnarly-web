@@ -48,7 +48,7 @@ test('HTTP 429 never silently swaps away from GNARLY; official source requires a
  assert.match(recovery,/if\(rateLimit\)\{[\s\S]*?await resumeCachedNative\(track,current\)/);
  assert.doesNotMatch(recovery,/openYouTubePlayer\(track\)/);
  assert.match(recovery,/reportAudioError\(playbackLimitMessage\(rateLimit\)\)/);
- assert.match(app,/cacheOnly:attempt===0&&playbackCooldown\.active\(\)/);
+ assert.doesNotMatch(app,/cacheOnly:attempt===0&&playbackCooldown\.active\(\)/);
  assert.match(app,/async function cachedNativeAvailable\(track\)/);
  assert.match(app,/method:'HEAD',cache:'no-store',credentials:'omit'/);
  assert.match(app,/\$\('#youtube-optin-button'\)\.addEventListener\('click'/);
