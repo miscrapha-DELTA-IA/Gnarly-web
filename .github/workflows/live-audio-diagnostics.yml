@@ -8,6 +8,8 @@ on:
       - 'lib/audius-catalog.js'
       - 'functions/audius-audio/**'
       - 'functions/api/audius-search.js'
+      - 'functions/api/r2-available.js'
+      - 'lib/r2-ready-catalog.js'
       - 'tests/live-audio-diagnostics.mjs'
       - '.github/workflows/live-audio-diagnostics.yml'
   workflow_dispatch:
@@ -24,4 +26,4 @@ jobs:
           node-version: '22'
       - run: node tests/live-audio-diagnostics.mjs
         env:
-          GNARLY_PROBE_URL: https://fix-429-native-play-recovery.gnarly-web-pages.pages.dev
+          GNARLY_PROBE_URL: https://fix-mobile-429-r2-ready-cata.gnarly-web-pages.pages.dev
