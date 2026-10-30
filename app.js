@@ -44,12 +44,14 @@ import {requestVerifiedAlbumArtwork} from './lib/album-artwork-client.js';
 import {createFullscreenController} from './lib/fullscreen-controller.js';
 import {karaokeStageMarkup,KaraokeStage} from './ui/karaoke-stage.js';
 import {createCoverCharge} from './lib/cover-charge.js';
+import {PlaybackStallGuard} from './lib/playback-stall-guard.js';
 
 const $=(selector)=>document.querySelector(selector);
 const app=$('#app-shell'), background=$('#gnarly-background'), audio=$('#player-audio'), visual=new FluidVisual($('#fluid-canvas'));
 const engine=new WebAudioEngine(audio);
 // Purely visual loading cue, deferred so instant cache hits never flash.
 const coverCharge=createCoverCharge({target:$('#player-section')});
+const playbackStallGuard=new PlaybackStallGuard();
 const stems=new StemMixer(engine,audio);
 const pads=new PerformancePads(engine);
 const midiAnalysis={busy:false,status:'MIDI estimado, sem alterar a reprodução.',notes:[],duration:0,harmony:null,abort:null,trackId:null,revision:0};
@@ -432,7 +434,7 @@ function showOptionalOfficialSource(){
 }
 function hideOptionalOfficialSource(){const choice=$('#playback-source-choice');if(choice)choice.hidden=true;}
 function reportAudioError(text){
- coverCharge.hide();
+ coverCharge.hide();playbackStallGuard.clear();
  state.audioState='error';state.playbackError=text;
  const status=$('#player-status');if(status){status.textContent=text;status.hidden=false;}
  const ipodStatus=$('#ipod-audio-status');if(ipodStatus)ipodStatus.textContent=text;
@@ -859,6 +861,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
   if(playbackBackstack.length>30)playbackBackstack.shift();
  }
  playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();
+ playbackStallGuard.clear();
  hideOptionalOfficialSource();
  queueAudioWarmup.reset();closeQuickPlaylist();
  // Commit queue navigation at selection time. The old 'playing' callback
@@ -1006,6 +1009,27 @@ async function recoverNativeAudio(track,initialError=null){
  recoveryOperation=operation;
  try{return await operation}finally{if(recoveryOperation===operation)recoveryOperation=null;}
 }
+/** Prevent an unresolved media play() or recurring waiting events from
+ * leaving a permanent AJUSTANDO SINAL overlay. Keep selection unchanged.
+ */
+function stopUnresponsivePlayback(track,selection){
+ if(state.current!==track||playbackSelection!==selection||state.userPaused)return;
+ if(audio.readyState>=3&&!audio.paused){playbackStallGuard.clear();coverCharge.hide();return}
+ playbackStallGuard.clear();
+ state.userPaused=true;
+ audioDelivery.cancel();recoveryOperation=null;
+ audio.pause();
+ audio.removeAttribute('src');
+ audio.load(); // Abort a hung request and settle any pending play().
+ state.playing=false;
+ reportAudioError(playbackCooldown.active()?playbackLimitMessage(playbackCooldown.snapshot()):
+  'O servidor não entregou áudio a tempo. Toque Play para tentar novamente ou selecione uma música offline.');
+ updatePlayer();
+}
+function watchPlayback(track,selection,phase='startup'){
+ playbackStallGuard.arm({selection,phase,onTimeout:()=>stopUnresponsivePlayback(track,selection)});
+}
+
 async function play(){
  if(!state.current){openSheet('search');toast('Escolha uma música na Busca ou adicione seu áudio pelo botão +.');return;}
  if(state.audioState==='official'&&officialTrackId===state.current.id){
@@ -1032,8 +1056,8 @@ async function play(){
  }
  hideOptionalOfficialSource();
  // Both remote and offline tracks. Only audible readiness stops this cue.
- if(audio.paused||audio.readyState<3)coverCharge.show('loading');
- else coverCharge.hide();
+ if(audio.paused||audio.readyState<3){coverCharge.show('loading');watchPlayback(track,selection);}
+ else{coverCharge.hide();playbackStallGuard.clear();}
  try{
   // Safari/WebKit: request the native playback category *before* building
   // the Web Audio graph. Keep duplex while an explicitly authorized mic runs.
@@ -1076,7 +1100,7 @@ async function play(){
   if(stillSelected()&&state.audioState!=='official')console.warn('GNARLY WEB audio play:',e);
  }
 }
-function pause(){coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
+function pause(){coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();playbackStallGuard.clear();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
 let nextDiscovery=null;
 function clearNextDiscoveryStatus(){if(nextDiscovery)reportAudioStatus('')}
 async function next(){
@@ -2492,7 +2516,7 @@ async function runSearch(raw,{live=false}={}){
  if(delay)searchDebounce=setTimeout(()=>{searchDebounce=null;void fetchLiveSearch(page)},delay);
  else void fetchLiveSearch(page);
 }
-audio.addEventListener('play',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;if(stems.ready)void stems.play();state.playing=true;updatePlayer()});audio.addEventListener('pause',()=>{stems.pause();state.playing=false;if(state.userPaused||!['loading','recovering'].includes(state.audioState))coverCharge.hide();updatePlayer()});audio.addEventListener('timeupdate',()=>{
+audio.addEventListener('play',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;updatePlayer()});audio.addEventListener('pause',()=>{stems.pause();state.playing=false;if(state.userPaused||!['loading','recovering'].includes(state.audioState))coverCharge.hide();updatePlayer()});audio.addEventListener('timeupdate',()=>{
  if(stems.ready)stems.sync();updateProgress();syncLyrics();
  // Warm one upcoming recording in the last 75 seconds, never full playlists.
  const nextTrack=state.queue[0];
@@ -2517,13 +2541,14 @@ function updateBufferingCue(){
  if(state.audioState==='loading')coverCharge.show('loading');
  else if(state.audioState==='recovering')coverCharge.show('recovering');
  else coverCharge.show('buffering');
+ watchPlayback(state.current,playbackSelection,state.audioState==='playing'?'rebuffer':'startup');
 }
 audio.addEventListener('waiting',()=>{
  updateBufferingCue();
  if(state.current&&!state.userPaused&&!audio.paused&&!audio.ended)
   reportAudioStatus(state.audioState==='loading'?'Preparando áudio…':'Estabilizando sinal de áudio…');
 });
-audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;hideOptionalOfficialSource();coverCharge.hide();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
+audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;hideOptionalOfficialSource();coverCharge.hide();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
   const ms=Math.round(performance.now()-playbackStartedAt);
   const origin=audio.currentSrc.startsWith('blob:')?'offline':audio.currentSrc.includes('/fast-audio/')?'fast-edge':'render';
   console.debug('GNARLY startup ms',ms,'origin',origin);
@@ -2584,7 +2609,7 @@ window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select
 window.addEventListener('dragover',e=>{if(e.dataTransfer?.types.includes('Files')){e.preventDefault();app.classList.add('dragover')}});window.addEventListener('dragleave',e=>{if(!e.relatedTarget)app.classList.remove('dragover')});window.addEventListener('drop',e=>{e.preventDefault();app.classList.remove('dragover');importAudio(e.dataTransfer?.files||[])});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){karaokeStage.mic.stop();karaokeStage.scorer.stop();karaokeStage.updateScore();if(pads.running)pads.stopLoop();}syncSystemPlayback(true);});
 window.addEventListener('storage',event=>{if(event.key===MEMORY_KEY){listeningMemory.refresh();if(state.sheet==='search'||state.sheet==='queue')renderSheet();}});
-window.addEventListener('beforeunload',()=>{coverCharge.destroy();karaokeStage.destroy();fontPreviewObserver?.disconnect();midiAnalysis.abort?.abort();lyricsAIController?.abort();metadataAbort?.abort();pads.destroy();state.micRecorder?.state==='recording'&&state.micRecorder.stop();state.micStream?.getTracks()?.forEach(x=>x.stop());state.demucsAbort?.abort();stems.clear();for(const url of offlineURLs.values())URL.revokeObjectURL(url);if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL);if(ipodSkinURL)URL.revokeObjectURL(ipodSkinURL)});
+window.addEventListener('beforeunload',()=>{coverCharge.destroy();playbackStallGuard.clear();karaokeStage.destroy();fontPreviewObserver?.disconnect();midiAnalysis.abort?.abort();lyricsAIController?.abort();metadataAbort?.abort();pads.destroy();state.micRecorder?.state==='recording'&&state.micRecorder.stop();state.micStream?.getTracks()?.forEach(x=>x.stop());state.demucsAbort?.abort();stems.clear();for(const url of offlineURLs.values())URL.revokeObjectURL(url);if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL);if(ipodSkinURL)URL.revokeObjectURL(ipodSkinURL)});
 applyPlayerSurfaceMode(state.playerSurfaceMode,{persist:false});updatePlayer();applyPanelVisibility();
 void hydrateIPodSkin();
 void restoreOfflineLibrary();

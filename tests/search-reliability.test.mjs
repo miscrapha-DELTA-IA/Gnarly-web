@@ -120,6 +120,28 @@ test('429 from search proxy is passed through without being cached as success',a
   assert.equal(calls,1);
  });
 });
+test('verified complete-track metadata remains useful on a short catalogue outage',async()=>{
+ const key='gnarly-stale-search-'+Date.now();
+ let now=Date.now(),calls=0;
+ const fixture={id:'youtube:ABCDEFGHIJK',videoId:'ABCDEFGHIJK',source:'youtube',title:'Still available metadata'};
+ await withFetch(async()=>{
+  calls++;
+  return Response.json({results:[fixture],status:'ok'});
+ },async()=>{
+  const first=await searchNativeBackend(key,{limit:5,now:()=>now});
+  assert.deepEqual(first,[fixture]);
+  now+=4*60*1000;
+  assert.deepEqual(await searchNativeBackend(key,{limit:5,now:()=>now}),[fixture]);
+  assert.equal(calls,1,'a recent positive result avoids provider requests');
+ });
+ now+=16*60*1000;
+ await withFetch(async()=>{calls++;return Response.json({error:'backend unavailable'},{status:503})},async()=>{
+  assert.deepEqual(await searchNativeBackend(key,{limit:5,now:()=>now}),[fixture]);
+  assert.equal(calls,2,'short outage returns real previously verified metadata');
+  now+=3*60*60*1000;
+  await assert.rejects(searchNativeBackend(key,{limit:5,now:()=>now}));
+ });
+});
 test('browser backs off after explicit search 429 while retaining prior successful metadata',async()=>{
  let calls=0;
  const live='gnarly-fixture-'+Date.now();
