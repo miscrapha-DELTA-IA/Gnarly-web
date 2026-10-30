@@ -33,17 +33,43 @@ export async function onRequestGet({request,context,waitUntil},fetcher=fetch){
    hit.headers.set('X-Gnarly-Search-Cache','HIT');return hit}
  }catch{}
  try{
-  const api=new URL('https://api.audius.co/v1/tracks/search');
-  api.searchParams.set('query',query);api.searchParams.set('limit',String(size));
-  api.searchParams.set('app_name','Gnarly');
-  const signal=AbortSignal.any([request.signal,AbortSignal.timeout(6100)]);
-  const resp=await fetcher(api.href,{method:'GET',signal,headers:{Accept:'application/json'},redirect:'error'});
-  if(resp.status===429)return Response.json({results:[],status:'upstream_rate_limited'},
-   {status:429,headers:{'cache-control':'no-store','Retry-After':resp.headers.get('retry-after')||'30'}});
-  if(!resp.ok)return Response.json({results:[],status:'audius_unavailable'},
-   {status:503,headers:{'cache-control':'no-store'}});
-  const body=await resp.json();
-  if(!Array.isArray(body?.data))throw Error('Invalid provider payload');
+  // Audius' public API and its official discovery endpoint may differ in
+  // routing availability. A redirect:'error' converted even legitimate 30x
+  // replies into a generic GNARLY 503. Follow only Audius-controlled hosts.
+  const signal=AbortSignal.any([request.signal,AbortSignal.timeout(8000)]);
+  let body=null,limited=null,reason='provider_unavailable';
+  for(const host of ['api.audius.co','discoveryprovider.audius.co']){
+   const api=new URL('https://'+host+'/v1/tracks/search');
+   api.searchParams.set('query',query);api.searchParams.set('limit',String(size));
+   api.searchParams.set('app_name','Gnarly');
+   let url=api.href;
+   try{
+    for(let hop=0;hop<3;hop++){
+     const current=new URL(url);
+     if(current.protocol!=='https:'||current.username||current.password||
+      !/^(?:[a-z0-9-]+\\.)*audius\\.(?:co|org)$/i.test(current.hostname))throw Error('untrusted_redirect');
+     const resp=await fetcher(url,{method:'GET',signal,
+      headers:{Accept:'application/json'},redirect:'manual',credentials:'omit'});
+     if([301,302,303,307,308].includes(resp.status)){
+      const location=resp.headers.get('Location');
+      try{await resp.body?.cancel?.()}catch{}
+      if(!location)throw Error('missing_redirect');
+      url=new URL(location,url).href;
+      continue;
+     }
+     if(resp.status===429){limited=resp.headers.get('Retry-After')||'30';break;}
+     if(!resp.ok){reason='http_'+resp.status;break;}
+     const data=await resp.json();
+     if(!Array.isArray(data?.data)){reason='invalid_payload';break;}
+     body=data;break;
+    }
+   }catch(error){reason=error?.name==='TimeoutError'?'timeout':error?.message==='untrusted_redirect'?'redirect':'provider_fetch';}
+   if(body||limited||signal.aborted)break;
+  }
+  if(limited)return Response.json({results:[],status:'upstream_rate_limited'},
+   {status:429,headers:{'cache-control':'no-store','Retry-After':limited}});
+  if(!body)return Response.json({results:[],status:'audius_unavailable'},
+   {status:503,headers:{'cache-control':'no-store','X-Gnarly-Audius-Failure':reason}});
   const results=body.data.map(normalizeAudiusTrack).filter(Boolean);
   const result=Response.json({results,status:'ok'},{
    headers:{'cache-control':'public,max-age=180','x-content-type-options':'nosniff',
