@@ -2350,29 +2350,31 @@ async function fetchSearchDiscovery(page){
  }
  const queries=discoveryQueries({favorites:state.favorites,history:state.history,
   memory:listeningMemory}).slice(0,1); // One discovery query, not a burst on every empty search.
- const batches=queries.map(()=>[]);
+ const batches=queries.map(()=>[]),independent=[];
  const merge=()=>{
   const out=[];
   for(let i=0;i<16;i++)for(const batch of batches)if(batch[i])out.push(batch[i]);
   return out;
  };
- await Promise.allSettled(queries.map((query,i)=>searchNativeBackend(query,{
-  limit:14,signal:page.controller.signal
- }).then(songs=>{
+ const refresh=()=>{
   if(!valid())return;
-  batches[i]=songs;
-  page.remote=merge();
+  const originals=merge();
+  page.remote=playbackCooldown.active()?[...independent,...originals]:
+   [...originals,...independent];
   refreshSearchDiscovery(page);
- })));
+ };
+ // Discovery must not wait for a YouTube *metadata* failure before showing
+ // independent full songs: metadata can succeed while every audio URL is 429.
+ const mainQuery=queries[0]||'music';
+ const native=Promise.allSettled(queries.map((query,i)=>searchNativeBackend(query,{
+  limit:14,signal:page.controller.signal
+ }).then(songs=>{if(valid()){batches[i]=songs;refresh();}})));
+ const alternate=searchAudius(mainQuery,{limit:14,signal:page.controller.signal})
+  .then(songs=>{if(valid()){independent.push(...songs);refresh();}})
+  .catch(()=>{});
+ await Promise.allSettled([native,alternate]);
  if(!valid())return;
- // Previews are explicitly marked by the catalogue; never label them as
- // complete native recordings. Use them only when the full catalog is down.
- if(!page.remote.length){
-  try{
-   const independent=await searchAudius(queries[0]||'music',{limit:14,signal:page.controller.signal});
-   if(valid())page.remote=independent;
-  }catch{}
- }
+ // Previews are explicitly marked; they do not replace full tracks.
  if(!page.remote.length){
   try{
    const previews=await searchCatalog(queries[0]||'music',{limit:12,
