@@ -70,7 +70,7 @@ test('local files, private URLs, and unsafe metadata are never stored as catalog
 });
 test('search results are merged across providers with incremental DOM retention',()=>{
  const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
- assert.match(source,/const available=\[\.\.\.page\.native,\.\.\.page\.previews\]/);
+ assert.match(source,/const available=\[\.\.\.page\.native,\.\.\.page\.audius,\.\.\.page\.previews\]/);
  assert.match(source,/omnibox\.cachedMatches\(query\)/);
  assert.match(source,/list\.dataset\.searchRows=JSON\.stringify\(rendered\)/);
  assert.match(source,/const appended=existing&&previous\.length/);
