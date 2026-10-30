@@ -23,3 +23,5 @@ jobs:
         with:
           node-version: '22'
       - run: node tests/live-audio-diagnostics.mjs
+        env:
+          GNARLY_PROBE_URL: https://fix-429-native-play-recovery.gnarly-web-pages.pages.dev
