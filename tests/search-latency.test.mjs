@@ -76,7 +76,7 @@ test('search results are merged across providers with incremental DOM retention'
  assert.match(source,/omnibox\.cachedMatches\(query\)/);
  assert.match(source,/list\.dataset\.searchRows=JSON\.stringify\(rendered\)/);
  assert.match(source,/const appended=existing&&previous\.length/);
- assert.match(source,/Buscando músicas…/);
+ assert.match(source,/Buscando músicas oficiais…/);
  assert.match(source,/searchPaging\?\.controller\?\.abort\(\)/);
 });
 test('edge functions expose bounded fetch deadlines and cache public metadata only',()=>{
