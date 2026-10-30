@@ -2335,7 +2335,7 @@ function refreshLiveResults(page,info=''){
  state.searchResults=personalizedRank(page.query,[...page.local,...ordered],searchPreferenceContext());
  const waiting=!page.nativeFinished||!page.audiusFinished||!page.previewFinished;
  const status=info||(!state.searchResults.length?(waiting?'Buscando músicas…':
-  page.nativeFailed||page.audiusFailed||page.previewFailed?'Catálogos temporariamente indisponíveis. Toque em Buscar para tentar novamente.':
+  page.nativeFailed||page.audiusFailed||page.previewFailed?'Não foi possível consultar os catálogos agora. Toque em Buscar para tentar novamente.':
   'Nenhuma música encontrada. Tente outro termo.'):
   page.nativeFailed?'Origem YouTube temporariamente indisponível. Músicas Audius e prévias continuam abaixo.':'');
  state.searchError=status;
