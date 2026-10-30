@@ -25,11 +25,16 @@ export async function onRequestGet({request,env,context,waitUntil}){const q=new 
  try{
   const response=await fetch(api,{headers:{accept:'application/x-ndjson'},
    signal:AbortSignal.any([request.signal,AbortSignal.timeout(7300)]),cf:{cacheEverything:true,cacheTtlByStatus:{'200-299':900,'400-599':-1}}});
-  if(response.status===429){
+  if(response.status===429||(
+    response.status===503&&response.headers.get('X-Search-Error')==='search_busy')){
+   // Old backend used 429 for its LOCAL single search slot. Do not turn
+   // that into a provider-wide 30-second YouTube outage.
+   const providerLimit=response.headers.get('X-Search-Error')==='upstream_rate_limited';
    const header=Number(response.headers.get('Retry-After'));
-   const seconds=Number.isFinite(header)&&header>0?Math.min(120,header):30;
-   return Response.json({results:[],status:'upstream_rate_limited'},{
-    status:429,headers:{'Retry-After':String(seconds),'Cache-Control':'no-store'}
+   const seconds=providerLimit&&Number.isFinite(header)&&header>0?Math.min(120,header):1;
+   return Response.json({results:[],status:providerLimit?'upstream_rate_limited':'backend_busy'},{
+    status:providerLimit?429:503,headers:{'Retry-After':String(seconds),'Cache-Control':'no-store',
+     'X-Search-Error':providerLimit?'upstream_rate_limited':'search_busy'}
    });
   }
   if(!response.ok)throw Error('native search unavailable');

@@ -145,14 +145,19 @@ try{
  cases.push({name:'native paginated rows survive delayed Apple initial response',rows:23});
  await submit('vsprunique782');
  await page.waitForFunction(()=>{const p=__reliabilityQA.search;return p?.query==='vsprunique782'&&p.previewOffset===22&&!p.nativeFinished});
+ // While native YT Music is pending, never briefly populate the primary
+ // search list with Apple's short previews. Only expose these after the
+ // native catalogue settles without full songs.
+ assert.equal(await rows().count(),0,'official preview fallback must not flash before YT Music finishes');
+ releasePagingNative();await settled();
+ await page.waitForFunction(()=>__reliabilityQA.state.searchResults.some(t=>t.title==='Preview paging first 0'));
+ assert.equal(await rows().count(),22);
  await page.locator('#search-more').evaluate(button=>button.click());
  await page.waitForFunction(()=>__reliabilityQA.state.searchResults.some(t=>t.title==='Retained preview page two 24'));
  assert.equal(await rows().count(),25);
- releasePagingNative();await settled();
- assert.equal(await rows().count(),25,'late native initial response retains preview page two');
  assert.ok((await rows().allTextContents()).some(text=>text.includes('Retained preview page two 24')));
  assert.equal(await page.evaluate(()=>__reliabilityQA.state.searchResults.filter(t=>t.title.startsWith('Retained preview page two')).every(t=>t.source==='preview')),true);
- cases.push({name:'preview paginated rows survive delayed native initial response',rows:25});
+ cases.push({name:'preview pagination begins only after native provider settles',rows:25});
  // Empty MIME files are valid when their extension identifies supported audio.
  // Verify durable storage and a fresh app load, then select the restored song
  // through the real library while the browser reports no network connection.
