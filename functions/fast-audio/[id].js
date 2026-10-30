@@ -150,7 +150,7 @@ export async function originCooldown(fetcher,signal,{timeoutMs=1500}={}){
  }catch{return null}
  finally{clearTimeout(timer);signal?.removeEventListener('abort',abort)}
 }
-export async function handleFastAudio({request,env,params,waitUntil:contextWaitUntil,originTimeoutMs=17000},fetcher=fetch){
+export async function handleFastAudio({request,env,params,waitUntil:contextWaitUntil,originTimeoutMs=17000,originProbe=true},fetcher=fetch){
  const id=params?.id;
  if(!VIDEO_ID.test(id||''))return reply(400,'Invalid track ID');
  if(request.method!=='GET'&&request.method!=='HEAD')
@@ -181,7 +181,9 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
  // The Render-origin extraction IP is frequently in a provider cooldown.
  // Fail in milliseconds instead of creating a 13-40 s spinner and repeated
  // yt-dlp attempts. A cache hit already returned above without this probe.
- const cooldown=await originCooldown(fetcher,request.signal);
+ if(originTimeoutMs<=0)return reply(504,'Audio origin timed out',{
+  'Retry-After':'8','X-Gnarly-Playback-Source':'origin-timeout'});
+ const cooldown=originProbe?await originCooldown(fetcher,request.signal,{timeoutMs:Math.min(1500,originTimeoutMs)}):null;
  if(cooldown)return reply(429,'Audio origin rate limited',{
   'Retry-After':cooldown,'X-Gnarly-Playback-Source':'origin-rate-limited'});
  const youtube='https://www.youtube.com/watch?v='+id;
@@ -227,7 +229,7 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
    discardAudioBody(upstream);
    // Progressive lookup can mask a real 429 as 422. Check the circuit
    // after that failed lookup, before opening a second extraction.
-   if(index===0){
+   if(index===0&&originProbe){
     const limited=await originCooldown(fetcher,request.signal,{timeoutMs:750});
     if(limited)return reply(429,'Audio origin rate limited',{
      'Retry-After':limited,'X-Gnarly-Playback-Source':'origin-rate-limited'});
