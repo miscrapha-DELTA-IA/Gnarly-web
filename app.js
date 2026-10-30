@@ -3,6 +3,7 @@ import {WebAudioEngine,isIOSWebKitAudioDevice} from './lib/audio-engine.js';
 import {parseLRC,lyricIndex} from './lib/lrc.js';
 import {LyricTransportSync} from './lib/lyric-transport-sync.js';
 import {searchCatalog,searchNativeBackend,resolveTrackMetadata} from './lib/catalog.js';
+import {searchAudius,audiusPlaybackURL} from './lib/audius-catalog.js';
 import {applyMetadata,enrichSearchCredits,isGenericArtist,inferredCredit,displayArtist,reconcileCatalogCredits} from './lib/metadata-intelligence.js';
 import {OmniboxSession,classifyIntent,rank,normalKey} from './lib/omnibox.js';
 import {instantSearch,personalizedRank} from './lib/live-search.js';
@@ -81,7 +82,7 @@ function bufferedAudioAhead(element){
 }
 function prepareUpcomingAudio(){
  const next=state.queue[0];
- if(!next||isOffline(next.id)||audio.paused||state.userPaused||playbackCooldown.active()||bufferedAudioAhead(audio)<8)return;
+ if(!next||next.source!=='youtube'||isOffline(next.id)||audio.paused||state.userPaused||playbackCooldown.active()||bufferedAudioAhead(audio)<8)return;
  if(canWarmImmediately({current:state.current,next,online:navigator.onLine,
   saveData:navigator.connection?.saveData,effectiveType:navigator.connection?.effectiveType
  }))void queueAudioWarmup.start(next);
@@ -900,7 +901,8 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
    }
  }else{
   audio.preload='auto';
-  audio.src=offlineAudio(track.id)||track.url;
+  const source=offlineAudio(track.id)||(track.source==='audius'?audiusPlaybackURL(track):track.url);
+  if(source)audio.src=source;else audio.removeAttribute('src');
   engine.restoreSpeed();
  }
  // The single audio element starts on the user's action before costly
@@ -1030,7 +1032,7 @@ function stopUnresponsivePlayback(track,selection){
  audio.removeAttribute('src');
  audio.load(); // Abort a hung request and settle any pending play().
  state.playing=false;
- reportAudioError(playbackCooldown.active()?playbackLimitMessage(playbackCooldown.snapshot()):
+ reportAudioError(track.source==='youtube'&&playbackCooldown.active()?playbackLimitMessage(playbackCooldown.snapshot()):
   'O servidor não entregou áudio a tempo. Toque Play para tentar novamente ou selecione uma música offline.');
  updatePlayer();
 }
@@ -1059,6 +1061,7 @@ async function play(){
    state.audioState='loading';reportAudioStatus(isOffline(track.id)?'Abrindo música offline…':'Conectando ao GNARLY · preparando áudio…');
   }else reportAudioStatus('');
  }else if(audio.readyState<3){
+  if(!audio.hasAttribute('src')){reportAudioError('Esta faixa não possui uma origem de áudio válida.');return;}
   state.audioState='loading';
   reportAudioStatus(isOffline(track.id)?'Abrindo música offline…':'Preparando áudio…');
  }
@@ -1104,7 +1107,8 @@ async function play(){
   }
   if(!stillSelected())return;
   if(track.source==='youtube'&&!isOffline(track.id)){await recoverNativeAudio(track,e);}
-  else{state.playing=false;updatePlayer();reportAudioError('Falha ao reproduzir a cópia local. Remova-a e baixe novamente.');}
+  else{state.playing=false;updatePlayer();reportAudioError(track.source==='audius'?'O Audius não conseguiu transmitir esta faixa. Escolha outra música.':
+  track.source==='preview'?'Não foi possível reproduzir a prévia oficial.':'Falha ao reproduzir a cópia local. Remova-a e baixe novamente.');}
   if(stillSelected()&&state.audioState!=='official')console.warn('GNARLY WEB audio play:',e);
  }
 }
@@ -1490,7 +1494,7 @@ function mediaList(tracks,context,startIndex=0){
  if(!tracks.length)return '<p class="section-note">Nenhuma música por aqui ainda.</p>';
  return '<div class="media-list">'+tracks.map((tr,i)=>{
   const label=safe(tr.title),attrs=' data-context="'+safe(context)+'" data-index="'+(startIndex+i)+'"';
-  const source=isOffline(tr.id)?'✓ Áudio offline':tr.source==='preview'?'Prévia · 30 s':tr.source==='youtube'?'GNARLY · streaming':'Arquivo local';
+  const source=isOffline(tr.id)?'✓ Áudio offline':tr.source==='audius'?'Audius · música completa':tr.source==='preview'?'Prévia · 30 s':tr.source==='youtube'?'GNARLY · origem YouTube':'Arquivo local';
   const play='<button data-action="play"'+attrs+' aria-label="Reproduzir '+label+'">'+svg('play')+'</button>';
   const actions=context==='queue'
    ? '<button data-action="remove"'+attrs+' aria-label="Remover '+label+' da fila">×</button>'
@@ -2245,7 +2249,7 @@ const SEARCH_PAGE_SIZE=20,PREVIEW_PAGE_SIZE=22;
 let searchCounter=0,searchPaging=null,searchMoreObserver=null,searchDebounce=null;
 let discoveryRemoteCache={items:[],savedAt:0};
 function searchPreferenceContext(){
- return {favorites:state.favorites,history:state.history,queue:state.queue,memory:listeningMemory};
+ return {favorites:state.favorites,history:state.history,queue:state.queue,memory:listeningMemory,originLimited:playbackCooldown.active()};
 }
 function searchInstantOptions(query){
  const saved=playlistStore.names().flatMap(name=>playlistStore.tracks(name)).slice(0,160);
@@ -2305,6 +2309,12 @@ async function fetchSearchDiscovery(page){
  // complete native recordings. Use them only when the full catalog is down.
  if(!page.remote.length){
   try{
+   const independent=await searchAudius(queries[0]||'music',{limit:14,signal:page.controller.signal});
+   if(valid())page.remote=independent;
+  }catch{}
+ }
+ if(!page.remote.length){
+  try{
    const previews=await searchCatalog(queries[0]||'music',{limit:12,
     signal:page.controller.signal});
    if(valid())page.remote=previews;
@@ -2320,13 +2330,14 @@ function refreshLiveResults(page,info=''){
  // Keep independent Apple preview results visible when YouTube responds.
  // Never reclassify previews as full songs: rank only deduplicates identical
  // recordings, prioritizing the real native entry when both exist.
- const available=[...page.native,...page.previews];
- state.searchResults=personalizedRank(page.query,[...page.local,...available],searchPreferenceContext());
- const waiting=!page.nativeFinished||!page.previewFinished;
+ const available=[...page.native,...page.audius,...page.previews];
+ const ordered=playbackCooldown.active()?[...page.audius,...page.native,...page.previews]:available;
+ state.searchResults=personalizedRank(page.query,[...page.local,...ordered],searchPreferenceContext());
+ const waiting=!page.nativeFinished||!page.audiusFinished||!page.previewFinished;
  const status=info||(!state.searchResults.length?(waiting?'Buscando músicas…':
-  page.nativeFailed||page.previewFailed?'Catálogo temporariamente indisponível. Toque em Buscar para tentar novamente.':
+  page.nativeFailed||page.audiusFailed||page.previewFailed?'Não foi possível consultar os catálogos agora. Toque em Buscar para tentar novamente.':
   'Nenhuma música encontrada. Tente outro termo.'):
-  page.nativeFailed?'Catálogo completo temporariamente indisponível. Os resultados disponíveis continuam abaixo.':'');
+  page.nativeFailed?'Origem YouTube temporariamente indisponível. Músicas Audius e prévias continuam abaixo.':'');
  state.searchError=status;
  displaySearch(state.searchResults,status);
  if(available.length)omnibox.cacheResults(page.query,available);
@@ -2356,6 +2367,15 @@ async function fetchLiveSearch(page){
  }).catch(error=>{if(valid())page.nativeFailed=true;return []}).finally(()=>{
   if(valid()){page.nativeFinished=true;refreshLiveResults(page)}
  });
+ const audius=searchAudius(query,{limit:query.length===1?10:14,
+  signal:controller.signal}).then(items=>{
+  if(!valid())return [];
+  page.audius=items;
+  refreshLiveResults(page);
+  return items;
+ }).catch(error=>{if(valid())page.audiusFailed=true;return []}).finally(()=>{
+  if(valid()){page.audiusFinished=true;refreshLiveResults(page)}
+ });
  const preview=searchCatalog(query,{limit:query.length===1?12:PREVIEW_PAGE_SIZE,
   signal:controller.signal}).then(items=>{
   if(!valid())return [];
@@ -2367,7 +2387,7 @@ async function fetchLiveSearch(page){
  }).catch(error=>{if(valid())page.previewFailed=true;return []}).finally(()=>{
   if(valid()){page.previewFinished=true;refreshLiveResults(page)}
  });
- const [songs,previews]=await Promise.all([native,preview]);
+ const [songs,previews]=await Promise.all([native,preview,audius]);
  if(!valid())return;
  enrichSearchCredits(songs,previews);
  page.previewBuffer=songs.length?personalizedRank(query,previews,searchPreferenceContext()):[];
@@ -2473,8 +2493,8 @@ async function runSearch(raw,{live=false}={}){
  const existing=searchPaging;
  if(existing?.query===query&&existing.started&&state.sheet==='search'){
   const pending=existing.kind==='discovery'?!existing.finished:
-   !existing.nativeFinished||!existing.previewFinished;
-  const retryable=existing.failed||existing.nativeFailed||existing.previewFailed||!state.searchResults.length;
+   !existing.nativeFinished||!existing.audiusFinished||!existing.previewFinished;
+  const retryable=existing.failed||existing.nativeFailed||existing.audiusFailed||existing.previewFailed||!state.searchResults.length;
   if(pending||!retryable){
    if(!query&&existing.kind==='discovery')refreshSearchDiscovery(existing);
    return;
@@ -2506,17 +2526,17 @@ async function runSearch(raw,{live=false}={}){
   state.searchResults=[];displaySearch([]);return;
  }
  const options=searchInstantOptions(query);
- const page={query,revision,local:instantSearch(query,options),native:[],previews:[],
+ const page={query,revision,local:instantSearch(query,options),native:[],audius:[],previews:[],
   nativeOffset:0,nativeMore:false,previewOffset:0,previewMore:false,previewBuffer:[],
-  loading:false,stalled:false,started:false,nativeFinished:false,previewFinished:false,
-  nativeFailed:false,previewFailed:false,controller:new AbortController()};
+  loading:false,stalled:false,started:false,nativeFinished:false,audiusFinished:false,previewFinished:false,
+  nativeFailed:false,audiusFailed:false,previewFailed:false,controller:new AbortController()};
  searchPaging=page;
  refreshLiveResults(page);
  // Keystrokes must NOT generate remote searches for every one/two-letter
  // prefix. Local favorites, history, offline and cached results remain instant.
  // Enter explicitly searches even short terms.
  if(live&&query.length<3){
-  page.nativeFinished=true;page.previewFinished=true;
+  page.nativeFinished=true;page.audiusFinished=true;page.previewFinished=true;
   refreshLiveResults(page,state.searchResults.length?'':'Continue digitando ou pressione Enter para buscar.');
   return;
  }
@@ -2573,7 +2593,7 @@ audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('pla
    void recoverNativeAudio(state.current);
  }
   else if(isOffline(state.current.id))reportAudioError('Áudio offline indisponível. Remova e baixe novamente.');
- }else reportAudioError('Não foi possível carregar o áudio.');});
+ }else reportAudioError(state.current.source==='audius'?'Audius não conseguiu transmitir esta faixa. Tente outra música.':'Não foi possível carregar o áudio.');});
 // Source swaps can trigger an asynchronous browser reset to 1x. Repair only
 // unexpected rate changes: a user preset/slider has already changed engine.speed.
 audio.addEventListener('ratechange',()=>{

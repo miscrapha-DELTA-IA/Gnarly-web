@@ -6,6 +6,8 @@ import {ROOM_PATTERN} from '../lib/karaoke-relay-protocol.js';
 export {KaraokeRoom} from './karaoke-relay.js';
 import {onRequestGet as catalog} from '../functions/api/catalog.js';
 import {onRequestGet as omnibox} from '../functions/api/omnibox.js';
+import {onRequestGet as audiusSearch} from '../functions/api/audius-search.js';
+import {handleAudiusAudio} from '../functions/audius-audio/[id].js';
 import {onRequestPost as stemsTicket} from '../functions/api/stems-ticket.js';
 import {onRequestGet as metadata} from '../functions/api/metadata.js';
 import {onRequestGet as artwork} from '../functions/api/artwork.js';
@@ -14,6 +16,7 @@ import {onRequestPost as fastPrepare} from '../functions/fast-prepare/[id].js';
 
 const ALLOW=Object.freeze({
   '/api/catalog': {method:'GET', handler:catalog},
+  '/api/audius-search': {method:'GET', handler:audiusSearch},
   '/api/omnibox': {method:'GET', handler:omnibox},
   '/api/metadata': {method:'GET', handler:metadata},
   '/api/artwork': {method:'GET', handler:artwork},
@@ -52,6 +55,10 @@ export default {
     // the browser silently takes the slower direct Render download route.
     const audioId=/^\/fast-audio\/([A-Za-z0-9_-]{11})$/.exec(url.pathname);
     if(audioId)return handleFastAudio({request,env,params:{id:audioId[1]},waitUntil:job=>ctx.waitUntil(job)});
+    const audiusId=/^\/audius-audio\/([A-Za-z0-9]{3,64})$/.exec(url.pathname);
+    if(audiusId)return handleAudiusAudio({request,params:{id:audiusId[1]}});
+    if(url.pathname.startsWith('/audius-audio/'))
+      return new Response('Invalid Audius ID',{status:400,headers:{'cache-control':'no-store'}});
     const prepareId=/^\/fast-prepare\/([A-Za-z0-9_-]{11})$/.exec(url.pathname);
     if(prepareId){
       if(request.method!=='POST')return methodNotAllowed('POST');
