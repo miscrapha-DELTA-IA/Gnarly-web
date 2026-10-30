@@ -32,7 +32,7 @@ export function promotionTitle(headers){
   const plain=/filename="([^"]{1,240})"/i.exec(header);
   if(plain)name=plain[1];
  }
- return String(name).replace(/\.m4a$/i,'').replace(/[\\u0000-\\u001f\\u007f]/g,' ').trim().slice(0,180);
+ return String(name).replace(/\.m4a$/i,'').replace(/[\x00-\x1f\x7f]/g,' ').trim().slice(0,180);
 }
 function promoteCompleteStream({upstream,bucket,id,waitUntil}){
  const size=completeAudioLength(upstream);
