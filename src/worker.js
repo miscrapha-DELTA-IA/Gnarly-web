@@ -7,6 +7,7 @@ export {KaraokeRoom} from './karaoke-relay.js';
 import {onRequestGet as catalog} from '../functions/api/catalog.js';
 import {onRequestGet as omnibox} from '../functions/api/omnibox.js';
 import {onRequestGet as audiusSearch} from '../functions/api/audius-search.js';
+import {onRequestGet as r2Available} from '../functions/api/r2-available.js';
 import {handleAudiusAudio} from '../functions/audius-audio/[id].js';
 import {onRequestPost as stemsTicket} from '../functions/api/stems-ticket.js';
 import {onRequestGet as metadata} from '../functions/api/metadata.js';
@@ -17,6 +18,7 @@ import {onRequestPost as fastPrepare} from '../functions/fast-prepare/[id].js';
 const ALLOW=Object.freeze({
   '/api/catalog': {method:'GET', handler:catalog},
   '/api/audius-search': {method:'GET', handler:audiusSearch},
+  '/api/r2-available': {method:'GET', handler:r2Available},
   '/api/omnibox': {method:'GET', handler:omnibox},
   '/api/metadata': {method:'GET', handler:metadata},
   '/api/artwork': {method:'GET', handler:artwork},
