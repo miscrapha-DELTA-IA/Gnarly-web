@@ -79,6 +79,7 @@ test('change of song cancels an in-flight provider without retrying the blocked 
  const old=r.resolve(selected);
  r.cancel();assert.equal(signal.aborted,true);
  release();assert.equal(await old,null);
+ assert.equal(r.snapshot().slow,undefined,'canceled work never counts as a provider outage');
 });
 
 test('providers trip isolated circuits only after repeated stream failures',async()=>{
