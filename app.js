@@ -348,6 +348,11 @@ function syncModuleState(){
   const open=visible&&expandedModules[name];root.classList.toggle('is-open',open);body.hidden=!open;
   const shortcut=name==='controls'?'#music-toggle-button':name==='export'?'#share-button':'#performance-button';
   for(const button of document.querySelectorAll('[data-module-toggle="'+name+'"],'+shortcut))button.setAttribute('aria-expanded',String(open));
+  if(name==='controls'){
+   const shortcutButton=$('#music-toggle-button');
+   shortcutButton?.setAttribute('aria-pressed',String(open));
+   shortcutButton?.setAttribute('aria-label',open?'Ocultar Música, presets e controles':'Mostrar Música, presets e controles');
+  }
   if(open&&!body.hasChildNodes())renderModule(name);
   if(!open&&body.hasChildNodes())body.replaceChildren();
  }
@@ -365,6 +370,30 @@ function toggleModule(name,force){
   $('#module-'+name)?.scrollIntoView?.({block:'nearest',behavior:window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches?'instant':'smooth'});
   if(name==='controls'&&state.musicTab==='stems')void refreshCloudStemAvailability();
  }
+}
+// Unlike a module-handle click (which only folds the body), the header
+// shortcut is a true show/hide control for the entire Music drawer.
+let shortcutMusicPreviousVisibility=null;
+function toggleMusicShortcut(){
+ if(state.sheet)closeSheet();
+ if(isModuleOpen('controls')){
+  const {presets,controls}=displayStore.visible;
+  shortcutMusicPreviousVisibility={presets,controls};
+  expandedModules.controls=false;
+  setSetting('module.controls','closed');
+  displayStore.setGroup(['presets','controls'],false);
+  applyPanelVisibility();
+  return;
+ }
+ if(!isModuleVisible('controls')){
+  const previous=shortcutMusicPreviousVisibility;
+  if(previous&&(previous.presets||previous.controls)){
+   displayStore.set('presets',previous.presets);
+   displayStore.set('controls',previous.controls);
+  }else displayStore.setGroup(['presets','controls'],true);
+  applyPanelVisibility();
+ }
+ toggleModule('controls',true);
 }
 function renderActiveSurfaces(){if(state.sheet)renderSheet();for(const name of MODULE_NAMES)if(isModuleOpen(name))renderModule(name)}
 if(!PALETTES[state.theme])state.theme='ACID';
@@ -1704,6 +1733,8 @@ function applyPanelVisibility(){
  // karaoke capture, LRC loading or the expanded singing stage.
  const lyricsVisible=visible('lyrics'),previousLyrics=app.dataset.lyricsVisible;
  app.dataset.lyricsVisible=String(lyricsVisible);
+ const lyricsShortcut=$('#lyric-style-button');
+ lyricsShortcut?.setAttribute('aria-pressed',String(lyricsVisible));
  $('#compact-karaoke-slot').hidden=displayStore.zen;
  if(lyricsVisible&&previousLyrics==='false')fitCompactLyric();
  $('#brand-line').hidden=!visible('header');
@@ -2369,8 +2400,25 @@ bindQuickCreative($('#experience-button'),{
 });
 bindQuickCreative($('#lyric-style-button'),{
  cycle:()=>{
+  // Recover the compact lyrics with one tap after a downward swipe.
+  if(!displayStore.isVisible('lyrics')){
+   displayStore.set('lyrics',true);applyPanelVisibility();
+   return;
+  }
   const next=cycleValue(QUICK_LYRIC_STYLES,state.lyricStyle);
   applyChosenLyricFont(next);
+ },
+ // ↓ hides lyrics without stopping karaoke capture or losing LRC state.
+ swipeDown:()=>{
+  if(displayStore.isVisible('lyrics')){
+   displayStore.set('lyrics',false);applyPanelVisibility();
+  }
+ },
+ // ↑ restores hidden lyrics, otherwise opens the existing font catalog.
+ swipeUp:()=>{
+  if(!displayStore.isVisible('lyrics')){
+   displayStore.set('lyrics',true);applyPanelVisibility();
+  }else openSheet('lyric-style');
  },
  expand:()=>openSheet('lyric-style')
 });
@@ -2405,7 +2453,7 @@ window.addEventListener('resize',()=>{
  artworkViewportTimer=setTimeout(()=>{applyResponsiveLayout();fitCompactLyric();lastCoverArt='';lastSurfaceArt='';lastBackgroundArt='';updatePlayer();},350);
 });
 $('#performance-button').addEventListener('click',()=>{if(state.sheet)closeSheet();toggleModule('performance')});
-$('#music-toggle-button').addEventListener('click',()=>{if(state.sheet)closeSheet();toggleModule('controls')});
+$('#music-toggle-button').addEventListener('click',toggleMusicShortcut);
 $('#share-button').addEventListener('click',()=>{if(state.sheet)closeSheet();toggleModule('export')});
 $('#module-dock').addEventListener('click',e=>{const handle=e.target.closest('[data-module-toggle]');if(handle){if(state.sheet)closeSheet();toggleModule(handle.dataset.moduleToggle)}});
 async function toggleMicRecording(){

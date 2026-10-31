@@ -98,3 +98,32 @@ test('quick theme, experience and Aa changes are silent without silencing import
  assert.match(app,/function reportAudioError\(text\)[\s\S]*?toast\(text\)/);
  assert.match(app,/toast\('Não foi possível aplicar baixo\/reverb:/);
 });
+
+
+test('Aa may hide lyrics with a downward swipe and recover them with an upward swipe',()=>{
+ const el=button();
+ let cycles=0,opens=0,hidden=0,restored=0;
+ bindQuickCreative(el,{
+  cycle:()=>cycles++,expand:()=>opens++,
+  swipeDown:()=>hidden++,swipeUp:()=>restored++
+ });
+ el.fire('pointerdown');
+ el.fire('pointerup',{clientY:60});
+ el.fire('click');
+ assert.equal(hidden,1);
+ assert.equal(cycles,0,'swiping never cycles the font');
+ assert.equal(opens,0,'downward Aa does not open the catalog');
+ el.fire('pointerdown');
+ el.fire('pointerup',{clientY:-35});
+ el.fire('click');
+ assert.equal(restored,1);
+ assert.equal(cycles,0,'upward gesture does not cycle the font');
+ el.fire('pointerdown',{pointerType:'mouse'});
+ el.fire('pointerup',{pointerType:'mouse'});
+ el.fire('contextmenu',{button:2,pointerType:'mouse'});
+ assert.equal(opens,1,'font catalog remains accessible on desktop');
+ el.fire('pointerdown');
+ el.fire('pointerup');
+ el.fire('click');
+ assert.equal(cycles,1,'normal tap is preserved');
+});
