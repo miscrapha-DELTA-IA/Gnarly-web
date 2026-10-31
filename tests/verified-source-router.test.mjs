@@ -158,16 +158,14 @@ test('Jamendo transport follows only trusted storage host and passes native audi
  assert.equal(attacker.status,502);
 });
 
-test('GNARLY media starts first and independent verification cannot block user play()',()=>{
+test('GNARLY starts native playback immediately and never preempts active PC preparation',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  const play=app.slice(app.indexOf('async function play(){'),app.indexOf('function pause(){'));
  assert.match(play,/const start=audio\.play\(\),unlock=resumePlayerAudio\(\)/);
- assert.match(play,/void sourceRouter\.resolve\(track,\{known:state\.searchResults\}\)\.then/);
- assert.ok(play.indexOf('const start=audio.play(),unlock=resumePlayerAudio()')<
-  play.indexOf('void sourceRouter.resolve(track,{known:state.searchResults}).then'));
- assert.match(play,/if\(!alternative\|\|!stillSelected\(\)\|\|/);
+ assert.doesNotMatch(play,/void sourceRouter\.resolve\(track,\{known:state\.searchResults\}\)\.then/);
  assert.match(app,/async function recoverIndependentAudio\(track,isCurrent,verifiedAlternative=null\)/);
  assert.match(app,/verifiedAlternative\|\|await sourceRouter\.resolve\(track/);
+ assert.match(app,/async function recoverNativeAudio[\s\S]*?waitForPCNodeReady\(track\.videoId/);
  assert.match(app,/audio\.addEventListener\('playing',[\s\S]*?sourceRouter\.cancel\(\)/);
 });
 

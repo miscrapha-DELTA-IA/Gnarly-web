@@ -20,6 +20,7 @@ import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
 import {trackAudioURL,isGnarlyPagesHost,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
 import {officialEmbedURL,officialWatchURL,canUseOfficial,shouldUseOfficialAfterNativeFailure} from './lib/official-playback.js';
 import {AudioDeliveryRecovery,PlaybackCooldown,resolvePlaybackCooldown,playbackLimitMessage} from './lib/audio-delivery.js';
+import {waitForPCNodeReady} from './lib/pc-node-recovery.js';
 import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-library.js';
 import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from './lib/queue-audio-warmup.js';
 import {quickPlaylistMarkup} from './ui/quick-playlist.js';
@@ -966,6 +967,36 @@ async function resumeCachedNative(track,isCurrent){
   return false;
  }
 }
+/** A completed PC request exists in Render's local cache before R2 upload ends.
+ * Deliver it through the existing native audio element, without another
+ * extraction or a user Play click. A genuine browser gesture restriction is
+ * reported as ready rather than a misleading MediaError 4.
+ */
+async function resumeCompletedPCNode(track,isCurrent){
+ if(!isCurrent())return false;
+ audio.pause();
+ if(!prepareNativeAudio(track,1))return false;
+ audioDelivery.attempt=Math.max(1,audioDelivery.attempt);
+ state.audioState='recovering';reportAudioStatus('Áudio preparado no PC · iniciando reprodução…');
+ engine.restoreSpeed();
+ try{
+  const started=audio.play(),unlocked=resumePlayerAudio();
+  await settleAudioStart(started,unlocked,{timeoutMs:7500});
+  if(!isCurrent())return false;
+  playbackStallGuard.clear();coverCharge.hide();state.playing=true;
+  state.audioState='playing';state.playbackError='';
+  reportAudioStatus('');updatePlayer();return true;
+ }catch(error){
+  if(!isCurrent())return false;
+  if(error?.name==='NotAllowedError'){
+   playbackStallGuard.clear();coverCharge.hide();state.audioState='idle';
+   state.playing=false;state.playbackError='';
+   reportAudioStatus('Gravação pronta. Toque Play para autorizar o áudio no navegador.');
+   updatePlayer();return true;
+  }
+  return false;
+ }
+}
 /** One verified same-recording alternative, still inside GNARLY's <audio>.
  * Never silently substitute a remix or merely related title.
  */
@@ -1015,6 +1046,24 @@ async function recoverNativeAudio(track,initialError=null){
   // HTMLMediaElement hides HTTP status codes. Read-only backend diagnosis
   // avoids repeatedly hammering a provider currently returning HTTP 429.
   const current=()=>state.current===track&&playbackSelection===selection&&audioDelivery.generation===generation&&!state.userPaused;
+  // The first edge request has already queued the exact recording on the
+  // owner's Windows worker. Do not retry the failed 503 HTMLMediaElement,
+  // switch to an unrelated origin, or call Play again while it is preparing.
+  // Wait only for a real, existing job; never poll indefinitely.
+  if(!isOffline(track.id)){
+   const pcResult=await waitForPCNodeReady(track.videoId,{
+    current,
+    onProgress:()=>{state.audioState='recovering';
+     reportAudioStatus('Preparando esta gravação no GNARLY PC Node…');}
+   });
+   if(!current())return false;
+   if(pcResult==='ready'&&await resumeCompletedPCNode(track,current))return true;
+   if(pcResult==='failed'){
+    reportAudioStatus('O nó não conseguiu preparar esta gravação. Verificando alternativas…');
+   }else if(pcResult==='timeout'){
+    reportAudioStatus('Preparação do áudio excedeu o prazo. Verificando cache…');
+   }
+  }
   let rateLimit=await resolvePlaybackCooldown(playbackCooldown);
   if(rateLimit){playbackCooldown.remember(rateLimit);queueAudioWarmup.cancel();}
   if(!current())return false;
@@ -1179,17 +1228,8 @@ async function play(){
   // Both calls start synchronously within the user's click gesture (Safari).
   engine.restoreSpeed();
   const start=audio.play(),unlock=resumePlayerAudio();
-  // Resolve independent candidates concurrently instead of waiting for a
-  // YouTube 403/429 or the 20-second startup watchdog. No extra Render request:
-  // only each provider's own metadata and first verified audio bytes are read.
-  // A cache/local track always wins; do not interrupt audible native playback.
-  if(track.source==='youtube'&&!isOffline(track.id)){
-   void sourceRouter.resolve(track,{known:state.searchResults}).then(alternative=>{
-    if(!alternative||!stillSelected()||
-       state.audioState==='playing'||audio.readyState>=3)return;
-    void recoverIndependentAudio(track,stillSelected,alternative);
-   });
-  }
+  // Do not preempt an in-progress PC node job with a speculative alternative.
+  // Independent-source recovery still runs if the selected recording fails.
   await Promise.all([unlock,start]);
   if(!stillSelected())return;
   coverCharge.hide();state.playing=true;state.audioState='playing';state.playbackError='';reportAudioStatus('');updatePlayer();
