@@ -205,6 +205,7 @@ const recommendationsByMode=new Map();
 const audioWarmup=new AudioConnectionWarmup((url,options)=>fetch(url,options));
 let playbackStartedAt=0,bufferingBeganAt=0,audiblePlaybackVersion=0;
 let playbackMetricErrorSelection=-1,playbackMetricFinalSelection=-1,playbackMetricBufferSelection=-1;
+let reportedLongSelection=-1,confirmedOverrunSelection=-1;
 let playbackPollMs=2300;
 async function refreshPlaybackHints(){
  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),1800);
@@ -2872,8 +2873,28 @@ async function runSearch(raw,{live=false}={}){
  if(delay)searchDebounce=setTimeout(()=>{searchDebounce=null;void fetchLiveSearch(page)},delay);
  else void fetchLiveSearch(page);
 }
+function checkDurationAnomaly({confirmPlayback=false}={}){
+ const track=state.current,expected=Number(track?.duration),reported=Number(audio.duration);
+ if(track?.source!=='youtube'||!Number.isFinite(expected)||expected<30||
+    expected>=600||!Number.isFinite(reported)||reported<=0||!audio.hasAttribute('src'))return;
+ const difference=reported-expected;
+ // A small AAC padding difference isn't a mismatch; some official releases
+ // legitimately vary a few seconds. No track, URL or browser ID is transmitted.
+ if(difference<=Math.max(25,expected*.2))return;
+ if(confirmPlayback){
+  // A real elapsed clock beyond the listed song is distinct from a bogus
+  // duration header. Do not stop, truncate, seek or replace any audio.
+  if(audio.paused||audio.ended||Number(audio.currentTime)<=expected+3||
+     confirmedOverrunSelection===playbackSelection)return;
+  confirmedOverrunSelection=playbackSelection;
+  signalPlaybackMetric('duration_overrun',0,Math.min(240000,difference*1000));
+ }else if(reportedLongSelection!==playbackSelection){
+  reportedLongSelection=playbackSelection;
+  signalPlaybackMetric('duration_reported_long',0,Math.min(240000,difference*1000));
+ }
+}
 audio.addEventListener('play',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;updatePlayer()});audio.addEventListener('pause',()=>{lyricTransportSync.stop();stems.pause();state.playing=false;if(state.userPaused||!['loading','recovering'].includes(state.audioState))coverCharge.hide();updatePlayer()});audio.addEventListener('timeupdate',()=>{
- if(stems.ready)stems.sync();updateProgress();syncLyrics();
+ if(stems.ready)stems.sync();updateProgress();syncLyrics();checkDurationAnomaly({confirmPlayback:true});
  // Warm one upcoming recording in the last 75 seconds, never full playlists.
  const nextTrack=state.queue[0];
  if(state.playing&&!audio.paused&&nextTrack?.source==='youtube'&&!isOffline(nextTrack?.id)&&canWarmNext({
@@ -2885,7 +2906,7 @@ audio.addEventListener('play',()=>{if(!state.current||state.userPaused||audio.pa
 });audio.addEventListener('progress',prepareUpcomingAudio);
 audio.addEventListener('loadedmetadata',()=>{
  engine.restoreSpeed(); // WebKit can reset the media rate during load.
- updateProgress();const track=state.current;
+ updateProgress();checkDurationAnomaly();const track=state.current;
  if(!track||!['youtube','local'].includes(track.source)||!Number.isFinite(audio.duration)||audio.duration<=0)return;
  if(!(Number(track.duration)>0)&&audio.duration<1200)track.duration=audio.duration;
  void enrichSelectedTrack(track,audio.duration);
