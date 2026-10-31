@@ -203,11 +203,25 @@ let playbackSelection=0,lastRecordedSelection=-1,navigationRevision=0;
 const playbackBackstack=[]; // Session-only previous track, like iOS queue navigation.
 const recommendationsByMode=new Map();
 const audioWarmup=new AudioConnectionWarmup((url,options)=>fetch(url,options));
-let playbackStartedAt=0;
-let playbackMetricErrorSelection=-1,playbackMetricFinalSelection=-1;
-function signalPlaybackMetric(event,code=0){
- if(!state.current||!playbackStartedAt||state.userPaused)return;
- const ms=Math.max(0,Math.min(240000,performance.now()-playbackStartedAt));
+let playbackStartedAt=0,bufferingBeganAt=0,audiblePlaybackVersion=0;
+let playbackMetricErrorSelection=-1,playbackMetricFinalSelection=-1,playbackMetricBufferSelection=-1;
+let playbackPollMs=2300;
+async function refreshPlaybackHints(){
+ const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),1800);
+ try{
+  const response=await fetch(new URL('/v1/playback-hints',NATIVE_BACKEND),{
+   method:'GET',credentials:'omit',cache:'no-store',signal:ctl.signal});
+  if(!response.ok)return;
+  const hint=await response.json();
+  // Changes only read-only PC readiness polling; never extraction or routing.
+  if(hint?.pc_poll_ms===1600||hint?.pc_poll_ms===2300)playbackPollMs=hint.pc_poll_ms;
+ }catch{/* Older backend still uses the tested baseline. */}
+ finally{clearTimeout(timer)}
+}
+function signalPlaybackMetric(event,code=0,elapsedMs=null){
+ if(!state.current||state.userPaused||(!playbackStartedAt&&!Number.isFinite(elapsedMs)))return;
+ const ms=Math.max(0,Math.min(240000,
+  Number.isFinite(elapsedMs)?elapsedMs:performance.now()-playbackStartedAt));
  recordStreamingMetric({
   event,source:audioSourceCategory(audio.currentSrc||audio.src),ms,
   code:[0,2,3,4].includes(code)?code:0
@@ -980,7 +994,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
   if(playbackBackstack.length>30)playbackBackstack.shift();
  }
  playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();
- playbackStartedAt=0;
+ playbackStartedAt=0;bufferingBeganAt=0;
  playbackStallGuard.clear();lyricTransportSync.stop();
  independentRecoveryController?.abort();independentRecoveryController=null;
  sourceRouter.cancel();
@@ -1390,7 +1404,7 @@ async function play(){
   if(stillSelected()&&state.audioState!=='official')console.warn('GNARLY WEB audio play:',e);
  }
 }
-function pause(){coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
+function pause(){bufferingBeganAt=0;coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
 let nextDiscovery=null;
 function clearNextDiscoveryStatus(){if(nextDiscovery)reportAudioStatus('')}
 async function next(){
@@ -2876,7 +2890,14 @@ audio.addEventListener('loadedmetadata',()=>{
  if(!(Number(track.duration)>0)&&audio.duration<1200)track.duration=audio.duration;
  void enrichSelectedTrack(track,audio.duration);
  void enrichOfficialAlbumArt(track);
-});audio.addEventListener('seeked',()=>{stems.seek();syncLyrics();karaokeStage.tick(true);if(!audio.paused&&!audio.ended)lyricTransportSync.start()});audio.addEventListener('ended',()=>{lyricTransportSync.stop();if(!audio.ended||state.userPaused)return;coverCharge.hide();if(state.current&&lastRecordedSelection===playbackSelection)listeningMemory.record('finish',state.current);karaokeStage.scorer.finish();karaokeStage.updateScore();(state.queue.length||smartMode!=='off')?void next():pause()});// Real browser events distinguish first-buffer extraction from a later
+});audio.addEventListener('canplay',()=>{
+ if(playbackStartedAt&&state.current&&!state.userPaused&&
+    playbackMetricBufferSelection!==playbackSelection){
+  playbackMetricBufferSelection=playbackSelection;
+  signalPlaybackMetric('first_buffer');
+ }
+});
+audio.addEventListener('seeked',()=>{stems.seek();syncLyrics();karaokeStage.tick(true);if(!audio.paused&&!audio.ended)lyricTransportSync.start()});audio.addEventListener('ended',()=>{lyricTransportSync.stop();if(!audio.ended||state.userPaused)return;coverCharge.hide();if(state.current&&lastRecordedSelection===playbackSelection)listeningMemory.record('finish',state.current);karaokeStage.scorer.finish();karaokeStage.updateScore();(state.queue.length||smartMode!=='off')?void next():pause()});// Real browser events distinguish first-buffer extraction from a later
 // interruption. A delayed event from a previous track never grants progress.
 function updateBufferingCue(){
  if(!state.current||state.userPaused||audio.paused||audio.ended)return;
@@ -2886,11 +2907,15 @@ function updateBufferingCue(){
  watchPlayback(state.current,playbackSelection,state.audioState==='playing'?'rebuffer':'startup');
 }
 audio.addEventListener('waiting',()=>{
+ if(state.audioState==='playing'&&!bufferingBeganAt)bufferingBeganAt=performance.now();
  updateBufferingCue();
  if(state.current&&!state.userPaused&&!audio.paused&&!audio.ended)
   reportAudioStatus(state.audioState==='loading'?'Preparando áudio…':'Estabilizando sinal de áudio…');
 });
-audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;hideOptionalOfficialSource();coverCharge.hide();sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
+audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;
+ ++audiblePlaybackVersion;
+ if(bufferingBeganAt){signalPlaybackMetric('rebuffer',0,performance.now()-bufferingBeganAt);bufferingBeganAt=0;}
+ hideOptionalOfficialSource();coverCharge.hide();sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
   const ms=Math.round(performance.now()-playbackStartedAt);
   const origin=audio.currentSrc.startsWith('blob:')?'offline':audio.currentSrc.includes('/fast-audio/')?'fast-edge':audio.currentSrc.includes('/audius-audio/')?'audius':audio.currentSrc.includes('/jamendo-audio/')?'jamendo':'render';
   console.debug('GNARLY startup ms',ms,'origin',origin);
@@ -2991,6 +3016,7 @@ if('serviceWorker' in navigator){
    .catch(error=>console.debug('GNARLY offline shell unavailable:',error?.message));
  },{once:true});
 }
+window.addEventListener('load',()=>{void refreshPlaybackHints()},{once:true});
 window.addEventListener('online',()=>{if(state.sheet==='library')renderSheet()});
 window.addEventListener('offline',()=>{if(state.sheet==='library')renderSheet()});
 
