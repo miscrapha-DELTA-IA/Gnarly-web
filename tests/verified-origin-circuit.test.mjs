@@ -14,7 +14,11 @@ test('edge reads actual upstream cooldown without extracting new audio',async()=
  assert.equal(r.status,429);
  assert.equal(r.headers.get('Retry-After'),'148');
  assert.equal(r.headers.get('X-Gnarly-Playback-Source'),'origin-rate-limited');
- assert.deepEqual(calls,['https://nightcorelab.onrender.com/playback-status']);
+ assert.equal(calls[0],'https://nightcorelab.onrender.com/playback-status');
+ assert.equal(calls.length,2,'exactly one additional cache-only request');
+ assert.ok(calls[1].includes('/download?'));
+ assert.match(calls[1],/cache_only=1/);
+ assert.equal(calls.some(u=>u.includes('/stream?')),false);
 });
 test('R2 HIT is delivered before any origin health checks or provider requests',async()=>{
  let calls=0;

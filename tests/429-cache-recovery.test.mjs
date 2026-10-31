@@ -23,11 +23,12 @@ test('confirmed upstream 429 still checks Render existing R2 via cache-first /do
   }});
  });
  assert.equal(result.status,200);
- assert.equal(result.headers.get('X-Gnarly-Playback-Source'),'extraction-origin');
+ assert.equal(result.headers.get('X-Gnarly-Playback-Source'),'cached-render-origin');
  assert.equal((await result.arrayBuffer()).byteLength,bytes.length);
  assert.equal(urls.length,2);
  assert.match(urls[0],/\/stream\?/);
  assert.match(urls[1],/\/download\?/);
+ assert.match(urls[1],/cache_only=1/);
 });
 
 test('if Render R2 also misses, original provider 429 is preserved without extra retries',async()=>{

@@ -184,11 +184,14 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
  if(originTimeoutMs<=0)return reply(504,'Audio origin timed out',{
   'Retry-After':'8','X-Gnarly-Playback-Source':'origin-timeout'});
  const cooldown=originProbe?await originCooldown(fetcher,request.signal,{timeoutMs:Math.min(1500,originTimeoutMs)}):null;
- if(cooldown)return reply(429,'Audio origin rate limited',{
-  'Retry-After':cooldown,'X-Gnarly-Playback-Source':'origin-rate-limited'});
+ // During an upstream cooldown, a different cache layer (Render R2 or its
+ // local LRU) may already contain this exact recording. Probe it using the
+ // backend's explicit cache_only=1 path, which never extracts new media.
+ // This is a single bounded lookup; no IP rotation, retry burst, or bypass.
  const youtube='https://www.youtube.com/watch?v='+id;
  const options={method:'GET',headers:range?{Range:range}:{},redirect:'manual'};
- const candidates=[
+ const cachedOrigin=new URL('/download?delivery=browser&cache_only=1&url='+encodeURIComponent(youtube),RENDER);
+ const candidates=cooldown?[cachedOrigin]:[
   new URL('/stream?url='+encodeURIComponent(youtube),RENDER),
   new URL('/download?delivery=browser&url='+encodeURIComponent(youtube),RENDER)
  ];
@@ -196,10 +199,11 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
  // before enforcing its provider cooldown. A *confirmed* upstream 429 from
  // /stream must still allow this one cache-first /download lookup.
  // It cannot issue a new extraction while the backend's global cooldown runs.
- let confirmedProviderLimit=null;
+ let confirmedProviderLimit=cooldown;
  for(let index=0;index<candidates.length;index++){
   let upstream;
-  try{upstream=await fetchAudioHeaders(fetcher,candidates[index].href,options,{
+  try{upstream=await fetchAudioHeaders(fetcher,
+   confirmedProviderLimit&&index>0?cachedOrigin.href:candidates[index].href,options,{
    signal:request.signal,timeoutMs:originTimeoutMs-(Date.now()-started)
   })}catch(error){
    if(request.signal?.aborted||error?.name==='AbortError')return reply(499);
@@ -229,16 +233,18 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
    discardAudioBody(upstream);
    // Progressive lookup can mask a real 429 as 422. Check the circuit
    // after that failed lookup, before opening a second extraction.
-   if(index===0&&originProbe){
+   if(index===0&&originProbe&&!confirmedProviderLimit){
     const limited=await originCooldown(fetcher,request.signal,{timeoutMs:750});
     if(limited)return reply(429,'Audio origin rate limited',{
      'Retry-After':limited,'X-Gnarly-Playback-Source':'origin-rate-limited'});
    }
    continue;
   }
-  const headers=audioHeaders(index===0?'progressive-origin':'extraction-origin',
+  const headers=audioHeaders(confirmedProviderLimit?'cached-render-origin':
+   index===0?'progressive-origin':'extraction-origin',
    {'Content-Type':upstream.headers.get('Content-Type'),'Cache-Control':'no-store','Server-Timing':
-    'edge;dur='+Math.max(0,Date.now()-started)+', origin;desc="'+(index===0?'progressive':'prepared')+'"'});
+    'edge;dur='+Math.max(0,Date.now()-started)+', origin;desc="'+
+    (confirmedProviderLimit?'cached':index===0?'progressive':'prepared')+'"'});
   for(const key of PASSTHROUGH){
    if(upstream.headers.has(key))headers.set(key,upstream.headers.get(key));
   }
