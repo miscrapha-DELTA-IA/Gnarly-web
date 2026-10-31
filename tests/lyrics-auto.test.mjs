@@ -15,3 +15,49 @@ test('a failed synchronization lookup keeps known plain lyrics without inventing
  globalThis.fetch=async url=>{if(String(url).includes('/search'))throw Error('unavailable');return Response.json({trackName:track.title,artistName:track.artist,duration:120,plainLyrics:'Plain one\nPlain two'})};
  try{const result=await autoLyrics(track);assert.equal(result.synced,false);assert.deepEqual(result.plainLines,['Plain one','Plain two']);assert.deepEqual(result.lines,[])}finally{globalThis.fetch=before}
 });
+
+test('plain cache does not block a later synchronized LRCLIB upgrade',async()=>{
+ const previous=globalThis.fetch,track={title:'Upgrade Horizon 2026',artist:'Upgrade Quartet',duration:193};
+ let phase='plain',calls=0;
+ globalThis.fetch=async(url)=>{
+  calls++;
+  if(String(url).includes('/api/get'))return Response.json({
+    trackName:track.title,artistName:track.artist,duration:193,plainLyrics:'Verse A\\nVerse B'});
+  if(String(url).includes('q=')){
+   return Response.json([{
+    trackName:track.title,artistName:track.artist,duration:193,
+    syncedLyrics:phase==='synced'?'[00:01.00]Verse A\\n[00:03.00]Verse B':null,
+    plainLyrics:'Verse A\\nVerse B'
+   }]);
+  }
+  return Response.json([]);
+ };
+ try{
+  const plain=await autoLyrics(track);
+  assert.equal(plain.synced,false);
+  phase='synced';
+  const upgraded=await autoLyrics(track,{preferSynced:true});
+  assert.equal(upgraded.synced,true);
+  assert.equal(upgraded.lines[1].time,3);
+  assert.ok(calls>=4);
+ }finally{globalThis.fetch=previous}
+});
+test('one failing lyrics API response does not discard synchronized results from later search',async()=>{
+ const previous=globalThis.fetch,track={title:'Cold Start Ballad 2026',artist:'Sync Persona',duration:241};
+ let calls=0;
+ globalThis.fetch=async(url)=>{
+  calls++;
+  if(String(url).includes('/api/get'))throw Error('browser API timeout');
+  if(String(url).includes('/api/search'))return Response.json([{
+   trackName:track.title,artistName:track.artist,duration:241,
+   syncedLyrics:'[00:02.00]Test first line\\n[00:04.00]Test next line'
+  }]);
+  throw Error('unavailable');
+ };
+ try{
+  const result=await autoLyrics(track);
+  assert.equal(result.synced,true);
+  assert.equal(result.lines.length,2);
+  assert.ok(calls>=2);
+ }finally{globalThis.fetch=previous}
+});
