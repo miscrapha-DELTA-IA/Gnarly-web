@@ -150,6 +150,9 @@ let offlineLoaded=false,offlineStatus='Preparando biblioteca offline…';
 const isOffline=id=>offlineURLs.has(id);
 const offlineAudio=id=>offlineURLs.get(id)||null;
 let recoveryOperation=null,independentRecoveryController=null;
+// The first requested Play owns the source until audio starts or the attempt ends.
+// Subsequent clicks while loading join it rather than creating competing play().
+let playStartOperation=null,playbackIntentEpoch=0;
 const icon='/assets/gnarly-icon.png';
 const artEnvironment=()=>({
  viewportWidth:window.innerWidth,viewportHeight:window.innerHeight,
@@ -531,8 +534,20 @@ function showOptionalOfficialSource(){
  if(choice)choice.hidden=!(state.current&&canUseOfficial(state.current,{offline:!!offlineAudio(state.current.id)}));
 }
 function hideOptionalOfficialSource(){const choice=$('#playback-source-choice');if(choice)choice.hidden=true;}
+function isAudioAlreadyPlaying(){
+ return state.audioState==='playing'&&!state.userPaused&&!audio.paused&&
+  !audio.ended&&audio.readyState>=3;
+}
 function reportAudioError(text){
- coverCharge.hide();playbackStallGuard.clear();lyricTransportSync.stop();
+ coverCharge.hide();
+ // A late /fast-audio failure or an exhausted retry can arrive after the
+ // same HTMLAudioElement has already begun audible playback. Do not flash
+ // MediaError 4 or turn a working Play button into a broken retry loop.
+ if(isAudioAlreadyPlaying()){
+  coverCharge.hide();playbackStallGuard.clear();state.playbackError='';
+  reportAudioStatus('');return;
+ }
+ playbackStallGuard.clear();lyricTransportSync.stop();
  if(playbackMetricFinalSelection!==playbackSelection){
   playbackMetricFinalSelection=playbackSelection;
   signalPlaybackMetric('final_error',audio.error?.code||0);
@@ -985,7 +1000,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
   playbackBackstack.push(state.current);
   if(playbackBackstack.length>30)playbackBackstack.shift();
  }
- playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();
+ playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();playbackIntentEpoch++;playStartOperation=null;
  playbackStartedAt=0;
  playbackStallGuard.clear();lyricTransportSync.stop();
  independentRecoveryController?.abort();independentRecoveryController=null;
@@ -1069,6 +1084,28 @@ async function resumeCachedNative(track,isCurrent){
   return false;
  }
 }
+/** The first tap may have already scheduled a legitimate R2 preparation
+ * job while an origin request returns temporary MediaError 4. Before a final
+ * error, wait only for THIS accepted job (never ask for another extraction).
+ * The total elapsed time stays bounded, and the listener can cancel anytime.
+ */
+async function awaitAlreadyPreparingCache(track,isCurrent){
+ const id=youtubeID(track);
+ if(!id||!isGnarlyPagesHost(location.hostname)||
+    selectedAudioWarmup.last!==id||!playbackStartedAt)return false;
+ const deadline=playbackStartedAt+46000;
+ if(performance.now()>=deadline)return false;
+ state.audioState='recovering';
+ reportAudioStatus('O áudio está sendo preparado · iniciando assim que estiver pronto…');
+ while(isCurrent()&&performance.now()<deadline){
+  if(await resumeCachedNative(track,isCurrent))return true;
+  if(isAudioAlreadyPlaying())return true;
+  if(!isCurrent())return false;
+  await new Promise(resolve=>setTimeout(resolve,
+   Math.max(100,Math.min(2100,deadline-performance.now()))));
+ }
+ return false;
+}
 /** A completed PC request exists in Render's local cache before R2 upload ends.
  * Deliver it through the existing native audio element, without another
  * extraction or a user Play click. A genuine browser gesture restriction is
@@ -1138,7 +1175,7 @@ async function recoverIndependentAudio(track,isCurrent,verifiedAlternative=null)
 }
 async function recoverNativeAudio(track,initialError=null){
  const selection=playbackSelection,generation=audioDelivery.generation;
- if(!track||track.source!=='youtube'||state.current!==track||state.userPaused)return false;
+ if(!track||track.source!=='youtube'||state.current!==track||state.userPaused||isAudioAlreadyPlaying())return false;
  coverCharge.show('recovering');
  if(recoveryOperation)return recoveryOperation;
  // A 429 followed by a verified-source search needs its own bounded
@@ -1150,7 +1187,7 @@ async function recoverNativeAudio(track,initialError=null){
  const operation=(async()=>{
   // HTMLMediaElement hides HTTP status codes. Read-only backend diagnosis
   // avoids repeatedly hammering a provider currently returning HTTP 429.
-  const current=()=>state.current===track&&playbackSelection===selection&&audioDelivery.generation===generation&&!state.userPaused;
+  const current=()=>state.current===track&&playbackSelection===selection&&audioDelivery.generation===generation&&!state.userPaused&&!isAudioAlreadyPlaying();
   // The first edge request has already queued the exact recording on the
   // owner's Windows worker. Do not retry the failed 503 HTMLMediaElement,
   // switch to an unrelated origin, or call Play again while it is preparing.
@@ -1182,6 +1219,7 @@ async function recoverNativeAudio(track,initialError=null){
   if(!current())return false;
   if(rateLimit){
    if(await resumeCachedNative(track,current))return true;
+   if(await awaitAlreadyPreparingCache(track,current))return true;
    if(await recoverIndependentAudio(track,current))return true;
    if(!current())return false;
    state.playing=false;updatePlayer();
@@ -1225,7 +1263,9 @@ async function recoverNativeAudio(track,initialError=null){
    }
   });
   if(!current())return false;
-  if(recovered){coverCharge.hide();state.audioState='playing';state.playbackError='';reportAudioStatus('');return true;}
+  if(recovered||isAudioAlreadyPlaying()){
+  coverCharge.hide();state.audioState='playing';state.playbackError='';reportAudioStatus('');return true;
+ }
   // A cooldown can begin while the bounded retry attempt is in progress.
   if(!rateLimit)rateLimit=await resolvePlaybackCooldown(playbackCooldown);
   if(rateLimit){playbackCooldown.remember(rateLimit);queueAudioWarmup.cancel();}
@@ -1234,6 +1274,7 @@ async function recoverNativeAudio(track,initialError=null){
   // The YouTube video is deliberately opt-in; never swap the entire GNARLY
   // player and disable its visual/audio features without the listener asking.
   if(await resumeCachedNative(track,current))return true;
+  if(await awaitAlreadyPreparingCache(track,current))return true;
   if(await recoverIndependentAudio(track,current))return true;
   if(!current())return false;
   state.playing=false;updatePlayer();
@@ -1291,8 +1332,17 @@ async function play(){
   return;
  }
  if(recoveryOperation)return recoveryOperation;
- const track=state.current,selection=playbackSelection;
- const stillSelected=()=>state.current===track&&playbackSelection===selection&&!state.userPaused;
+ const track=state.current,selection=playbackSelection,epoch=playbackIntentEpoch;
+ if(playStartOperation?.selection===selection&&playStartOperation.epoch===epoch)
+  return playStartOperation.promise;
+ // Install the in-flight token synchronously before touching the media element;
+ // audio.play() itself remains within the original Safari user gesture.
+ let resolvePending;
+ const shared=new Promise(resolve=>{resolvePending=resolve});
+ const flight={selection,epoch,promise:shared};playStartOperation=flight;
+ const stillSelected=()=>state.current===track&&playbackSelection===selection&&!state.userPaused&&
+  playbackIntentEpoch===epoch;
+ try{
  // Time from the FIRST user Play, not the latest repeated click while the
  // same recording is still being prepared.
  if(!playbackStartedAt)playbackStartedAt=performance.now();
@@ -1387,8 +1437,12 @@ async function play(){
   track.source==='preview'?'Não foi possível reproduzir a prévia oficial.':'Falha ao reproduzir a cópia local. Remova-a e baixe novamente.');}
   if(stillSelected()&&state.audioState!=='official')console.warn('GNARLY WEB audio play:',e);
  }
+ }finally{
+  if(playStartOperation===flight)playStartOperation=null;
+  resolvePending();
+ }
 }
-function pause(){coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
+function pause(){coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;playbackIntentEpoch++;playStartOperation=null;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
 let nextDiscovery=null;
 function clearNextDiscoveryStatus(){if(nextDiscovery)reportAudioStatus('')}
 async function next(){
@@ -2895,7 +2949,7 @@ audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('pla
   signalPlaybackMetric(playbackMetricErrorSelection===playbackSelection||
     audioDelivery.attempt>0?'recovered_audio':'first_audio');
   playbackStartedAt=0;
- }prepareUpcomingAudio();void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!audio.error||!state.current||state.userPaused||state.audioState==='official')return;
+ }prepareUpcomingAudio();void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!audio.error||!state.current||state.userPaused||state.audioState==='official'||isAudioAlreadyPlaying())return;
  // Browser MediaError 4 often means the first /fast-audio request got a
  // temporary 503 while the Windows node is still extracting. Record the
  // incident, but DO NOT show a final error or restart a working recovery.
