@@ -25,7 +25,10 @@ test('first tap health gate is read-only and skips prewarming when PC is offline
  assert.match(gate,/method:'GET'/);
  assert.match(gate,/!status\?\.node_online/);
  assert.match(gate,/audio\.readyState>=3/);
- assert.match(gate,/selectedAudioWarmup\.start\(track\)/);
+ assert.match(gate,/cachedNativeAvailable\(track\)/);
+ assert.match(gate,/\/pc-node\/prepare\//);
+ assert.match(gate,/method:'POST'/);
+ assert.match(gate,/selectedWarmupId===id/);
  assert.doesNotMatch(gate,/audio\.src\s*=|audio\.play\(|audio\.load\(/);
 });
 test('speculative first Play only requests exact song via existing R2-first preparation route',async()=>{
