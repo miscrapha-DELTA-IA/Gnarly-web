@@ -21,6 +21,7 @@ import {trackAudioURL,isGnarlyPagesHost,youtubeID,NATIVE_BACKEND,selectMusicResu
 import {officialEmbedURL,officialWatchURL,canUseOfficial,shouldUseOfficialAfterNativeFailure} from './lib/official-playback.js';
 import {AudioDeliveryRecovery,PlaybackCooldown,resolvePlaybackCooldown,playbackLimitMessage} from './lib/audio-delivery.js';
 import {waitForPCNodeReady} from './lib/pc-node-recovery.js';
+import {audioSourceCategory,recordStreamingMetric} from './lib/streaming-metrics.js';
 import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-library.js';
 import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from './lib/queue-audio-warmup.js';
 import {quickPlaylistMarkup} from './ui/quick-playlist.js';
@@ -211,6 +212,15 @@ const playbackBackstack=[]; // Session-only previous track, like iOS queue navig
 const recommendationsByMode=new Map();
 const audioWarmup=new AudioConnectionWarmup((url,options)=>fetch(url,options));
 let playbackStartedAt=0;
+let playbackMetricErrorSelection=-1,playbackMetricFinalSelection=-1;
+function signalPlaybackMetric(event,code=0){
+ if(!state.current||!playbackStartedAt||state.userPaused)return;
+ const ms=Math.max(0,Math.min(240000,performance.now()-playbackStartedAt));
+ recordStreamingMetric({
+  event,source:audioSourceCategory(audio.currentSrc||audio.src),ms,
+  code:[0,2,3,4].includes(code)?code:0
+ });
+}
 const state={
   tracks:[],queue:[],current:null,playing:false,searchResults:[],searchTerm:'',
   playerSurfaceMode:normalizePlayerSurfaceMode(getSetting('playerSurfaceMode','turbulent')),
@@ -523,12 +533,17 @@ function showOptionalOfficialSource(){
 function hideOptionalOfficialSource(){const choice=$('#playback-source-choice');if(choice)choice.hidden=true;}
 function reportAudioError(text){
  coverCharge.hide();playbackStallGuard.clear();lyricTransportSync.stop();
+ if(playbackMetricFinalSelection!==playbackSelection){
+  playbackMetricFinalSelection=playbackSelection;
+  signalPlaybackMetric('final_error',audio.error?.code||0);
+ }
  state.audioState='error';state.playbackError=text;
  const status=$('#player-status');if(status){status.textContent=text;status.hidden=false;}
  const ipodStatus=$('#ipod-audio-status');if(ipodStatus)ipodStatus.textContent=text;
  showOptionalOfficialSource();
  // Keep a persistent, compact source choice instead of repeating an intrusive 429 toast.
  if(!/HTTP 429|limitou novas músicas/i.test(text))toast(text);
+ playbackStartedAt=0;
 }
 function reportAudioStatus(text){
  const status=$('#player-status');if(status){status.textContent=text;status.hidden=!text;}
@@ -971,6 +986,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
   if(playbackBackstack.length>30)playbackBackstack.shift();
  }
  playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();
+ playbackStartedAt=0;
  playbackStallGuard.clear();lyricTransportSync.stop();
  independentRecoveryController?.abort();independentRecoveryController=null;
  sourceRouter.cancel();
@@ -1127,7 +1143,10 @@ async function recoverNativeAudio(track,initialError=null){
  if(recoveryOperation)return recoveryOperation;
  // A 429 followed by a verified-source search needs its own bounded
  // recovery window; the initial buffering deadline may nearly be exhausted.
- playbackStallGuard.clear();watchPlayback(track,selection,'startup');
+ // This recovery is already bounded by PC job polling (205s) and retry
+ // deadlines. A second 20s startup watchdog must NOT fire mid-recovery
+ // or describe a successfully preparing song as terminal MediaError 4.
+ playbackStallGuard.clear();
  const operation=(async()=>{
   // HTMLMediaElement hides HTTP status codes. Read-only backend diagnosis
   // avoids repeatedly hammering a provider currently returning HTTP 429.
@@ -1229,6 +1248,7 @@ async function recoverNativeAudio(track,initialError=null){
  */
 function stopUnresponsivePlayback(track,selection){
  if(state.current!==track||playbackSelection!==selection||state.userPaused)return;
+ if(!recoveryOperation)signalPlaybackMetric('watchdog');
  if(audio.readyState>=3&&!audio.paused){playbackStallGuard.clear();coverCharge.hide();return}
  playbackStallGuard.clear();
  const youtube=track.source==='youtube'&&!isOffline(track.id);
@@ -1273,7 +1293,9 @@ async function play(){
  if(recoveryOperation)return recoveryOperation;
  const track=state.current,selection=playbackSelection;
  const stillSelected=()=>state.current===track&&playbackSelection===selection&&!state.userPaused;
- playbackStartedAt=performance.now();
+ // Time from the FIRST user Play, not the latest repeated click while the
+ // same recording is still being prepared.
+ if(!playbackStartedAt)playbackStartedAt=performance.now();
  const reuseSource=audio.hasAttribute('src')&&!audio.error&&state.audioState!=='error';
  // Pause cancels pending recovery, but preserves its successful source/attempt.
  // Only an actual failure starts a fresh bounded retry session.
@@ -1366,7 +1388,7 @@ async function play(){
   if(stillSelected()&&state.audioState!=='official')console.warn('GNARLY WEB audio play:',e);
  }
 }
-function pause(){coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
+function pause(){coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
 let nextDiscovery=null;
 function clearNextDiscoveryStatus(){if(nextDiscovery)reportAudioStatus('')}
 async function next(){
@@ -2870,20 +2892,36 @@ audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('pla
   const ms=Math.round(performance.now()-playbackStartedAt);
   const origin=audio.currentSrc.startsWith('blob:')?'offline':audio.currentSrc.includes('/fast-audio/')?'fast-edge':audio.currentSrc.includes('/audius-audio/')?'audius':audio.currentSrc.includes('/jamendo-audio/')?'jamendo':'render';
   console.debug('GNARLY startup ms',ms,'origin',origin);
+  signalPlaybackMetric(playbackMetricErrorSelection===playbackSelection||
+    audioDelivery.attempt>0?'recovered_audio':'first_audio');
   playbackStartedAt=0;
- }prepareUpcomingAudio();void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!audio.error||!state.current||state.userPaused||state.audioState==='official')return;state.playing=false;updatePlayer();if(state.current.source==='youtube'){
- // Ignore a late error from the previous source after another Omnibox selection.
- if(!isOffline(state.current.id)&&audio.hasAttribute('src')){
-  // A prewarm 429 may arrive *after* this audio source was attached.
-  // Match both normal and R2-only URLs without missing the media error.
+ }prepareUpcomingAudio();void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!audio.error||!state.current||state.userPaused||state.audioState==='official')return;
+ // Browser MediaError 4 often means the first /fast-audio request got a
+ // temporary 503 while the Windows node is still extracting. Record the
+ // incident, but DO NOT show a final error or restart a working recovery.
+ if(playbackMetricErrorSelection!==playbackSelection){
+  playbackMetricErrorSelection=playbackSelection;
+  signalPlaybackMetric('initial_media_error',audio.error.code||0);
+ }
+ if(state.current.source==='youtube'&&!isOffline(state.current.id)){
   const attempt=audioDelivery.attempt;
   const normal=trackAudioURL(state.current,{attempt});
   const cacheOnly=trackAudioURL(state.current,{attempt,cacheOnly:true});
-  if([normal,cacheOnly].some(url=>url&&audio.src===new URL(url,location.href).href))
-   void recoverNativeAudio(state.current);
+  if(audio.hasAttribute('src')&&[normal,cacheOnly].some(url=>url&&audio.src===new URL(url,location.href).href)){
+   if(!recoveryOperation&&state.audioState!=='recovering'){
+    state.audioState='recovering';
+    reportAudioStatus('O PC está preparando o áudio; aguardando a mesma gravação…');
+    void recoverNativeAudio(state.current);
+   }
+   return;
+  }
  }
-  else if(isOffline(state.current.id))reportAudioError('Áudio offline indisponível. Remova e baixe novamente.');
- }else reportAudioError((state.current.source==='audius'||state.current.source==='jamendo')?'A fonte independente não conseguiu transmitir esta faixa. Tente outra música.':'Não foi possível carregar o áudio.');});
+ state.playing=false;updatePlayer();
+ if(state.current.source==='youtube'&&isOffline(state.current.id))
+  reportAudioError('Áudio offline indisponível. Remova e baixe novamente.');
+ else if(state.current.source!=='youtube')
+  reportAudioError((state.current.source==='audius'||state.current.source==='jamendo')?'A fonte independente não conseguiu transmitir esta faixa. Tente outra música.':'Não foi possível carregar o áudio.');
+});
 // Source swaps can trigger an asynchronous browser reset to 1x. Repair only
 // unexpected rate changes: a user preset/slider has already changed engine.speed.
 audio.addEventListener('ratechange',()=>{
