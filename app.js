@@ -17,7 +17,7 @@ import {MUSIC_PRESETS,musicalPreset} from './lib/music-presets.js';
 import {autoLyrics,cachedAutoLyrics,prefetchAutoLyrics,lyricsIdentity} from './lib/lyrics-auto.js';
 import {LyricSyncWorkshop,serializeManualLRC} from './lib/lyric-sync-workshop.js';
 import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
-import {trackAudioURL,isGnarlyPagesHost,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
+import {trackAudioURL,isGnarlyPagesHost,youtubeID,NATIVE_BACKEND,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
 import {officialEmbedURL,officialWatchURL,canUseOfficial,shouldUseOfficialAfterNativeFailure} from './lib/official-playback.js';
 import {AudioDeliveryRecovery,PlaybackCooldown,resolvePlaybackCooldown,playbackLimitMessage} from './lib/audio-delivery.js';
 import {waitForPCNodeReady} from './lib/pc-node-recovery.js';
@@ -70,6 +70,48 @@ const audioDelivery=new AudioDeliveryRecovery();
 // A provider becomes eligible only after exact metadata and real audio bytes pass verification.
 const sourceRouter=new VerifiedSourceRouter();
 const playbackCooldown=new PlaybackCooldown({storage:localStorage});
+// Only speculative; this never changes the selected audio URL or blocks
+// audio.play(). It uses the same R2-first /fast-prepare route and existing
+// Windows job deduplication, never an alternative audio player.
+const selectedAudioWarmup=new QueueAudioWarmup({
+ timeout:6500,minIntervalMs:0,canPrepare:()=>true
+});
+let selectedWarmupProbe=null,selectedWarmupId='';
+function cancelSelectedWarmup(){
+ selectedWarmupProbe?.abort();selectedWarmupProbe=null;
+ selectedAudioWarmup.cancel();
+}
+function primeSelectedRecording(track,selection){
+ const id=youtubeID(track);
+ if(!id||!isGnarlyPagesHost(location.hostname)||isOffline(track.id)||
+    !navigator.onLine||navigator.connection?.saveData||
+    selectedWarmupId===id)return;
+ selectedWarmupId=id;
+ const controller=new AbortController();
+ selectedWarmupProbe?.abort();selectedWarmupProbe=controller;
+ const timer=setTimeout(()=>controller.abort(),2800);
+ void (async()=>{
+  try{
+   // Probe only first-party, read-only job health. No expensive extraction
+   // or second media-element play while the current audio is initializing.
+   const response=await fetch(new URL('/pc-node/status/'+id,NATIVE_BACKEND),{
+    method:'GET',cache:'no-store',credentials:'omit',signal:controller.signal
+   });
+   if(!response.ok)return;
+   const status=await response.json();
+   if(!status?.node_online||controller.signal.aborted||state.current!==track||
+       playbackSelection!==selection||state.userPaused||audio.readyState>=3)return;
+   // Pages checks R2 BEFORE calling Render /prepare. If already cached,
+   // this exits at the edge. Otherwise Render uses the existing Windows
+   // queue (and preserves its old extractor only when PC is offline).
+   await selectedAudioWarmup.start(track);
+  }catch{/* Never interfere with existing player or recovery. */}
+  finally{
+   clearTimeout(timer);
+   if(selectedWarmupProbe===controller)selectedWarmupProbe=null;
+  }
+ })();
+}
 const queueAudioWarmup=new QueueAudioWarmup({
  // Optional prewarm should never create a burst when listeners skip quickly.
  minIntervalMs:20000,
@@ -904,7 +946,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
  independentRecoveryController?.abort();independentRecoveryController=null;
  sourceRouter.cancel();
  hideOptionalOfficialSource();
- queueAudioWarmup.reset();closeQuickPlaylist();
+ queueAudioWarmup.reset();cancelSelectedWarmup();selectedWarmupId='';closeQuickPlaylist();
  // Commit queue navigation at selection time. The old 'playing' callback
  // left the next item at queue[0] while buffering, so rapid Next taps
  // selected the same object and aborted its first play() promise.
@@ -1251,6 +1293,10 @@ async function play(){
   // Both calls start synchronously within the user's click gesture (Safari).
   engine.restoreSpeed();
   const start=audio.play(),unlock=resumePlayerAudio();
+  // Non-blocking first-tap prewarm. A fast R2 hit still starts immediately;
+  // the PC node can start a cache miss before the first 503 reaches HTMLMedia.
+  if(track.source==='youtube'&&!isOffline(track.id))
+   primeSelectedRecording(track,selection);
   // Do not preempt an in-progress PC node job with a speculative alternative.
   // Independent-source recovery still runs if the selected recording fails.
   await Promise.all([unlock,start]);
@@ -1291,7 +1337,7 @@ async function play(){
   if(stillSelected()&&state.audioState!=='official')console.warn('GNARLY WEB audio play:',e);
  }
 }
-function pause(){coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
+function pause(){coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
 let nextDiscovery=null;
 function clearNextDiscoveryStatus(){if(nextDiscovery)reportAudioStatus('')}
 async function next(){
