@@ -71,46 +71,38 @@ const audioDelivery=new AudioDeliveryRecovery();
 // A provider becomes eligible only after exact metadata and real audio bytes pass verification.
 const sourceRouter=new VerifiedSourceRouter();
 const playbackCooldown=new PlaybackCooldown({storage:localStorage});
-// Only speculative; this never changes the selected audio URL or blocks
-// audio.play(). It uses the same R2-first /fast-prepare route and existing
-// Windows job deduplication, never an alternative audio player.
-const selectedAudioWarmup=new QueueAudioWarmup({
- timeout:6500,minIntervalMs:0,canPrepare:()=>true
-});
+// PC-only speculative preparation, concurrently with native audio.play().
+// R2 cache hits stay untouched and no new Render extraction is started.
 let selectedWarmupProbe=null,selectedWarmupId='';
 function cancelSelectedWarmup(){
  selectedWarmupProbe?.abort();selectedWarmupProbe=null;
- selectedAudioWarmup.cancel();
 }
 function primeSelectedRecording(track,selection){
  const id=youtubeID(track);
  if(!id||!isGnarlyPagesHost(location.hostname)||isOffline(track.id)||
-    !navigator.onLine||navigator.connection?.saveData||
-    selectedWarmupId===id)return;
+    !navigator.onLine||navigator.connection?.saveData||selectedWarmupId===id)return;
  selectedWarmupId=id;
  const controller=new AbortController();
  selectedWarmupProbe?.abort();selectedWarmupProbe=controller;
- const timer=setTimeout(()=>controller.abort(),2800);
+ const timer=setTimeout(()=>controller.abort(),5500);
  void (async()=>{
   try{
-   // Probe only first-party, read-only job health. No expensive extraction
-   // or second media-element play while the current audio is initializing.
-   const response=await fetch(new URL('/pc-node/status/'+id,NATIVE_BACKEND),{
-    method:'GET',cache:'no-store',credentials:'omit',signal:controller.signal
-   });
-   if(!response.ok)return;
+   const [cached,response]=await Promise.all([
+    cachedNativeAvailable(track),
+    fetch(new URL('/pc-node/status/'+id,NATIVE_BACKEND),{
+     method:'GET',cache:'no-store',credentials:'omit',signal:controller.signal})
+   ]);
+   if(cached||!response.ok||controller.signal.aborted)return;
    const status=await response.json();
-   if(!status?.node_online||controller.signal.aborted||state.current!==track||
-       playbackSelection!==selection||state.userPaused||audio.readyState>=3)return;
-   // Pages checks R2 BEFORE calling Render /prepare. If already cached,
-   // this exits at the edge. Otherwise Render uses the existing Windows
-   // queue (and preserves its old extractor only when PC is offline).
-   await selectedAudioWarmup.start(track);
-  }catch{/* Never interfere with existing player or recovery. */}
-  finally{
-   clearTimeout(timer);
-   if(selectedWarmupProbe===controller)selectedWarmupProbe=null;
-  }
+   if(!status?.node_online||status.state==='ready'||state.current!==track||
+      playbackSelection!==selection||state.userPaused||audio.readyState>=3)return;
+   // Only idempotently queue the exact selected recording on an online PC.
+   const queued=await fetch(new URL('/pc-node/prepare/'+id,NATIVE_BACKEND),{
+    method:'POST',cache:'no-store',credentials:'omit',signal:controller.signal});
+   if(queued.ok&&state.current===track&&playbackSelection===selection)
+    signalPlaybackMetric('pc_queued');
+  }catch{/* A speculative hint cannot interfere with playback. */}
+  finally{clearTimeout(timer);if(selectedWarmupProbe===controller)selectedWarmupProbe=null;}
  })();
 }
 const queueAudioWarmup=new QueueAudioWarmup({
@@ -211,13 +203,28 @@ let playbackSelection=0,lastRecordedSelection=-1,navigationRevision=0;
 const playbackBackstack=[]; // Session-only previous track, like iOS queue navigation.
 const recommendationsByMode=new Map();
 const audioWarmup=new AudioConnectionWarmup((url,options)=>fetch(url,options));
-let playbackStartedAt=0;
-let playbackMetricErrorSelection=-1,playbackMetricFinalSelection=-1;
-function signalPlaybackMetric(event,code=0){
- if(!state.current||!playbackStartedAt||state.userPaused)return;
- const ms=Math.max(0,Math.min(240000,performance.now()-playbackStartedAt));
+let playbackStartedAt=0,bufferingBeganAt=0,audiblePlaybackVersion=0;
+let playbackMetricErrorSelection=-1,playbackMetricFinalSelection=-1,playbackMetricBufferSelection=-1;
+let reportedLongSelection=-1,confirmedOverrunSelection=-1;
+let playbackPollMs=2300;
+async function refreshPlaybackHints(){
+ const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),1800);
+ try{
+  const response=await fetch(new URL('/v1/playback-hints',NATIVE_BACKEND),{
+   method:'GET',credentials:'omit',cache:'no-store',signal:ctl.signal});
+  if(!response.ok)return;
+  const hint=await response.json();
+  // Changes only read-only PC readiness polling; never extraction or routing.
+  if(hint?.pc_poll_ms===1600||hint?.pc_poll_ms===2300)playbackPollMs=hint.pc_poll_ms;
+ }catch{/* Older backend still uses the tested baseline. */}
+ finally{clearTimeout(timer)}
+}
+function signalPlaybackMetric(event,code=0,elapsedMs=null){
+ if(!state.current||state.userPaused||(!playbackStartedAt&&!Number.isFinite(elapsedMs)))return;
+ const ms=Math.max(0,Math.min(240000,
+  Number.isFinite(elapsedMs)?elapsedMs:performance.now()-playbackStartedAt));
  recordStreamingMetric({
-  event,source:audioSourceCategory(audio.currentSrc||audio.src),ms,
+  event,source:audioSourceCategory(audio.currentSrc||audio.src||trackAudioURL(state.current)),ms,
   code:[0,2,3,4].includes(code)?code:0
  });
 }
@@ -532,6 +539,8 @@ function showOptionalOfficialSource(){
 }
 function hideOptionalOfficialSource(){const choice=$('#playback-source-choice');if(choice)choice.hidden=true;}
 function reportAudioError(text){
+ // A late asynchronous failure must not obscure media already playing.
+ if(state.audioState==='playing'&&!state.userPaused&&!audio.paused&&audio.readyState>=3)return;
  coverCharge.hide();playbackStallGuard.clear();lyricTransportSync.stop();
  if(playbackMetricFinalSelection!==playbackSelection){
   playbackMetricFinalSelection=playbackSelection;
@@ -986,7 +995,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
   if(playbackBackstack.length>30)playbackBackstack.shift();
  }
  playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();
- playbackStartedAt=0;
+ playbackStartedAt=0;bufferingBeganAt=0;
  playbackStallGuard.clear();lyricTransportSync.stop();
  independentRecoveryController?.abort();independentRecoveryController=null;
  sourceRouter.cancel();
@@ -1139,8 +1148,11 @@ async function recoverIndependentAudio(track,isCurrent,verifiedAlternative=null)
 async function recoverNativeAudio(track,initialError=null){
  const selection=playbackSelection,generation=audioDelivery.generation;
  if(!track||track.source!=='youtube'||state.current!==track||state.userPaused)return false;
+  if(state.audioState==='playing'&&!audio.paused&&audio.readyState>=3)return true;
  coverCharge.show('recovering');
  if(recoveryOperation)return recoveryOperation;
+  signalPlaybackMetric('recovery_started');
+  const audibleVersionAtRecovery=audiblePlaybackVersion;
  // A 429 followed by a verified-source search needs its own bounded
  // recovery window; the initial buffering deadline may nearly be exhausted.
  // This recovery is already bounded by PC job polling (205s) and retry
@@ -1150,19 +1162,24 @@ async function recoverNativeAudio(track,initialError=null){
  const operation=(async()=>{
   // HTMLMediaElement hides HTTP status codes. Read-only backend diagnosis
   // avoids repeatedly hammering a provider currently returning HTTP 429.
-  const current=()=>state.current===track&&playbackSelection===selection&&audioDelivery.generation===generation&&!state.userPaused;
+  const current=()=>state.current===track&&playbackSelection===selection&&
+    audioDelivery.generation===generation&&!state.userPaused&&
+    audiblePlaybackVersion===audibleVersionAtRecovery;
   // The first edge request has already queued the exact recording on the
   // owner's Windows worker. Do not retry the failed 503 HTMLMediaElement,
   // switch to an unrelated origin, or call Play again while it is preparing.
   // Wait only for a real, existing job; never poll indefinitely.
   if(!isOffline(track.id)){
    const pcResult=await waitForPCNodeReady(track.videoId,{
-    current,prepare:true,
+    current,prepare:true,pollMs:playbackPollMs,
     onProgress:()=>{state.audioState='recovering';
      reportAudioStatus('Preparando esta gravação no GNARLY PC Node…');}
    });
    if(!current())return false;
-   if(pcResult==='ready'&&await resumeCompletedPCNode(track,current))return true;
+   if(pcResult==='ready'){
+     signalPlaybackMetric('pc_ready');
+     if(await resumeCompletedPCNode(track,current))return true;
+    }
    if(pcResult==='failed'||pcResult==='timeout'){
     // Real PC failure is not a codec problem. Avoid retrying the same
     // unprepared media URL twice (both returns are HTTP 503), which was
@@ -1388,7 +1405,7 @@ async function play(){
   if(stillSelected()&&state.audioState!=='official')console.warn('GNARLY WEB audio play:',e);
  }
 }
-function pause(){coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
+function pause(){coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;bufferingBeganAt=0;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
 let nextDiscovery=null;
 function clearNextDiscoveryStatus(){if(nextDiscovery)reportAudioStatus('')}
 async function next(){
@@ -2856,8 +2873,28 @@ async function runSearch(raw,{live=false}={}){
  if(delay)searchDebounce=setTimeout(()=>{searchDebounce=null;void fetchLiveSearch(page)},delay);
  else void fetchLiveSearch(page);
 }
+function checkDurationAnomaly({confirmPlayback=false}={}){
+ const track=state.current,expected=Number(track?.duration),reported=Number(audio.duration);
+ if(track?.source!=='youtube'||!Number.isFinite(expected)||expected<30||
+    expected>=600||!Number.isFinite(reported)||reported<=0||!audio.hasAttribute('src'))return;
+ const difference=reported-expected;
+ // A small AAC padding difference isn't a mismatch; some official releases
+ // legitimately vary a few seconds. No track, URL or browser ID is transmitted.
+ if(difference<=Math.max(25,expected*.2))return;
+ if(confirmPlayback){
+  // A real elapsed clock beyond the listed song is distinct from a bogus
+  // duration header. Do not stop, truncate, seek or replace any audio.
+  if(audio.paused||audio.ended||Number(audio.currentTime)<=expected+3||
+     confirmedOverrunSelection===playbackSelection)return;
+  confirmedOverrunSelection=playbackSelection;
+  signalPlaybackMetric('duration_overrun',0,Math.min(240000,difference*1000));
+ }else if(reportedLongSelection!==playbackSelection){
+  reportedLongSelection=playbackSelection;
+  signalPlaybackMetric('duration_reported_long',0,Math.min(240000,difference*1000));
+ }
+}
 audio.addEventListener('play',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;updatePlayer()});audio.addEventListener('pause',()=>{lyricTransportSync.stop();stems.pause();state.playing=false;if(state.userPaused||!['loading','recovering'].includes(state.audioState))coverCharge.hide();updatePlayer()});audio.addEventListener('timeupdate',()=>{
- if(stems.ready)stems.sync();updateProgress();syncLyrics();
+ if(stems.ready)stems.sync();updateProgress();syncLyrics();checkDurationAnomaly({confirmPlayback:true});
  // Warm one upcoming recording in the last 75 seconds, never full playlists.
  const nextTrack=state.queue[0];
  if(state.playing&&!audio.paused&&nextTrack?.source==='youtube'&&!isOffline(nextTrack?.id)&&canWarmNext({
@@ -2869,12 +2906,19 @@ audio.addEventListener('play',()=>{if(!state.current||state.userPaused||audio.pa
 });audio.addEventListener('progress',prepareUpcomingAudio);
 audio.addEventListener('loadedmetadata',()=>{
  engine.restoreSpeed(); // WebKit can reset the media rate during load.
- updateProgress();const track=state.current;
+ updateProgress();checkDurationAnomaly();const track=state.current;
  if(!track||!['youtube','local'].includes(track.source)||!Number.isFinite(audio.duration)||audio.duration<=0)return;
  if(!(Number(track.duration)>0)&&audio.duration<1200)track.duration=audio.duration;
  void enrichSelectedTrack(track,audio.duration);
  void enrichOfficialAlbumArt(track);
-});audio.addEventListener('seeked',()=>{stems.seek();syncLyrics();karaokeStage.tick(true);if(!audio.paused&&!audio.ended)lyricTransportSync.start()});audio.addEventListener('ended',()=>{lyricTransportSync.stop();if(!audio.ended||state.userPaused)return;coverCharge.hide();if(state.current&&lastRecordedSelection===playbackSelection)listeningMemory.record('finish',state.current);karaokeStage.scorer.finish();karaokeStage.updateScore();(state.queue.length||smartMode!=='off')?void next():pause()});// Real browser events distinguish first-buffer extraction from a later
+});audio.addEventListener('canplay',()=>{
+ if(playbackStartedAt&&state.current&&!state.userPaused&&
+    playbackMetricBufferSelection!==playbackSelection){
+  playbackMetricBufferSelection=playbackSelection;
+  signalPlaybackMetric('first_buffer');
+ }
+});
+audio.addEventListener('seeked',()=>{stems.seek();syncLyrics();karaokeStage.tick(true);if(!audio.paused&&!audio.ended)lyricTransportSync.start()});audio.addEventListener('ended',()=>{lyricTransportSync.stop();if(!audio.ended||state.userPaused)return;coverCharge.hide();if(state.current&&lastRecordedSelection===playbackSelection)listeningMemory.record('finish',state.current);karaokeStage.scorer.finish();karaokeStage.updateScore();(state.queue.length||smartMode!=='off')?void next():pause()});// Real browser events distinguish first-buffer extraction from a later
 // interruption. A delayed event from a previous track never grants progress.
 function updateBufferingCue(){
  if(!state.current||state.userPaused||audio.paused||audio.ended)return;
@@ -2884,11 +2928,14 @@ function updateBufferingCue(){
  watchPlayback(state.current,playbackSelection,state.audioState==='playing'?'rebuffer':'startup');
 }
 audio.addEventListener('waiting',()=>{
+ if(state.audioState==='playing'&&!bufferingBeganAt)bufferingBeganAt=performance.now();
  updateBufferingCue();
  if(state.current&&!state.userPaused&&!audio.paused&&!audio.ended)
   reportAudioStatus(state.audioState==='loading'?'Preparando áudio…':'Estabilizando sinal de áudio…');
 });
-audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;hideOptionalOfficialSource();coverCharge.hide();sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
+audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;hideOptionalOfficialSource();coverCharge.hide();sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;
+ ++audiblePlaybackVersion;
+ if(bufferingBeganAt){signalPlaybackMetric('rebuffer',0,performance.now()-bufferingBeganAt);bufferingBeganAt=0;}updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
   const ms=Math.round(performance.now()-playbackStartedAt);
   const origin=audio.currentSrc.startsWith('blob:')?'offline':audio.currentSrc.includes('/fast-audio/')?'fast-edge':audio.currentSrc.includes('/audius-audio/')?'audius':audio.currentSrc.includes('/jamendo-audio/')?'jamendo':'render';
   console.debug('GNARLY startup ms',ms,'origin',origin);
@@ -2989,6 +3036,7 @@ if('serviceWorker' in navigator){
    .catch(error=>console.debug('GNARLY offline shell unavailable:',error?.message));
  },{once:true});
 }
+window.addEventListener('load',()=>{void refreshPlaybackHints()},{once:true});
 window.addEventListener('online',()=>{if(state.sheet==='library')renderSheet()});
 window.addEventListener('offline',()=>{if(state.sheet==='library')renderSheet()});
 
