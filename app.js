@@ -543,6 +543,7 @@ function reportAudioError(text){
  showOptionalOfficialSource();
  // Keep a persistent, compact source choice instead of repeating an intrusive 429 toast.
  if(!/HTTP 429|limitou novas músicas/i.test(text))toast(text);
+ playbackStartedAt=0;
 }
 function reportAudioStatus(text){
  const status=$('#player-status');if(status){status.textContent=text;status.hidden=!text;}
@@ -985,6 +986,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
   if(playbackBackstack.length>30)playbackBackstack.shift();
  }
  playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();
+ playbackStartedAt=0;
  playbackStallGuard.clear();lyricTransportSync.stop();
  independentRecoveryController?.abort();independentRecoveryController=null;
  sourceRouter.cancel();
@@ -1291,7 +1293,9 @@ async function play(){
  if(recoveryOperation)return recoveryOperation;
  const track=state.current,selection=playbackSelection;
  const stillSelected=()=>state.current===track&&playbackSelection===selection&&!state.userPaused;
- playbackStartedAt=performance.now();
+ // Time from the FIRST user Play, not the latest repeated click while the
+ // same recording is still being prepared.
+ if(!playbackStartedAt)playbackStartedAt=performance.now();
  const reuseSource=audio.hasAttribute('src')&&!audio.error&&state.audioState!=='error';
  // Pause cancels pending recovery, but preserves its successful source/attempt.
  // Only an actual failure starts a fresh bounded retry session.
@@ -1384,7 +1388,7 @@ async function play(){
   if(stillSelected()&&state.audioState!=='official')console.warn('GNARLY WEB audio play:',e);
  }
 }
-function pause(){coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
+function pause(){playbackStartedAt=0;coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
 let nextDiscovery=null;
 function clearNextDiscoveryStatus(){if(nextDiscovery)reportAudioStatus('')}
 async function next(){
