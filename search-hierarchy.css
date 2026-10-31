@@ -45,8 +45,14 @@
  position:fixed;z-index:19;
  max-height:calc(100dvh - env(safe-area-inset-top,0px) - 8px);
 }
-body.gnarly-sheet-open{overflow:hidden!important;overscroll-behavior:none}
+html.gnarly-sheet-open,body.gnarly-sheet-open{overflow:hidden!important;overscroll-behavior:none}
 .app-shell #bottom-sheet .sheet-content{min-height:0;overscroll-behavior:contain}
+/* Expanding Music no longer grows a multi-screen document and displaces the
+ * search access. Only the drawer's own controls scroll when necessary. */
+.app-shell .module-drawer.is-open .module-body{
+ max-height:min(62dvh,650px);overflow-y:auto;overscroll-behavior:contain;
+ scrollbar-color:color-mix(in srgb,var(--acid) 35%,transparent) transparent;
+}
 @media(max-width:650px){
  .app-shell .quick-actions #omnibox-shell{
   flex-basis:clamp(37px,10vw,42px);
