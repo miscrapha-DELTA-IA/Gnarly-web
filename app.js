@@ -1083,6 +1083,28 @@ async function resumeCachedNative(track,isCurrent){
   return false;
  }
 }
+/** The first tap may have already scheduled a legitimate R2 preparation
+ * job while an origin request returns temporary MediaError 4. Before a final
+ * error, wait only for THIS accepted job (never ask for another extraction).
+ * The total elapsed time stays bounded, and the listener can cancel anytime.
+ */
+async function awaitAlreadyPreparingCache(track,isCurrent){
+ const id=youtubeID(track);
+ if(!id||!isGnarlyPagesHost(location.hostname)||
+    selectedAudioWarmup.last!==id||!playbackStartedAt)return false;
+ const deadline=playbackStartedAt+46000;
+ if(performance.now()>=deadline)return false;
+ state.audioState='recovering';
+ reportAudioStatus('O áudio está sendo preparado · iniciando assim que estiver pronto…');
+ while(isCurrent()&&performance.now()<deadline){
+  if(await resumeCachedNative(track,isCurrent))return true;
+  if(isAudioAlreadyPlaying())return true;
+  if(!isCurrent())return false;
+  await new Promise(resolve=>setTimeout(resolve,
+   Math.max(100,Math.min(2100,deadline-performance.now()))));
+ }
+ return false;
+}
 /** A completed PC request exists in Render's local cache before R2 upload ends.
  * Deliver it through the existing native audio element, without another
  * extraction or a user Play click. A genuine browser gesture restriction is
@@ -1196,6 +1218,7 @@ async function recoverNativeAudio(track,initialError=null){
   if(!current())return false;
   if(rateLimit){
    if(await resumeCachedNative(track,current))return true;
+   if(await awaitAlreadyPreparingCache(track,current))return true;
    if(await recoverIndependentAudio(track,current))return true;
    if(!current())return false;
    state.playing=false;updatePlayer();
@@ -1250,6 +1273,7 @@ async function recoverNativeAudio(track,initialError=null){
   // The YouTube video is deliberately opt-in; never swap the entire GNARLY
   // player and disable its visual/audio features without the listener asking.
   if(await resumeCachedNative(track,current))return true;
+  if(await awaitAlreadyPreparingCache(track,current))return true;
   if(await recoverIndependentAudio(track,current))return true;
   if(!current())return false;
   state.playing=false;updatePlayer();
