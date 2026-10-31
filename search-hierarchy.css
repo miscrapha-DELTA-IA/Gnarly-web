@@ -125,3 +125,56 @@ html.gnarly-fullscreen .app-shell .quick-actions #omnibox-shell{
   overflow-wrap:anywhere;
  }
 }
+
+/* Viewport-safe action rows: the previous patch only tested the support link
+ * against the brand-row box. Eight topbar circles and their halos need their
+ * own safe insets; flex-basis accumulated and pushed the last button past the
+ * mobile viewport. Grid gives every icon a definite, shrinkable cell. */
+@media(max-width:650px){
+ .app-shell .topbar{
+  display:grid;
+  grid-template-columns:repeat(8,minmax(0,1fr));
+  column-gap:clamp(1px,.55vw,4px);
+  justify-content:normal;
+  align-items:center;
+  width:100%;
+  min-width:0;
+  padding-inline:max(15px,env(safe-area-inset-left,0px))
+                 max(15px,env(safe-area-inset-right,0px));
+ }
+ .app-shell .topbar > .icon-button{
+  box-sizing:border-box;
+  display:grid;
+  justify-self:center;
+  place-self:center;
+  flex:none;
+  width:min(100%,42px);
+  min-width:0;
+  max-width:100%;
+  height:clamp(36px,10.2vw,44px);
+ }
+ /* Performance and fullscreen stay available through More on compact
+  * screens, including a resized desktop browser with a fine pointer. */
+ .app-shell #performance-button,
+ .app-shell #fullscreen-button{display:none!important}
+ .app-shell .brand-line:not(.search-only){
+  box-sizing:border-box;
+  grid-template-columns:minmax(0,1fr) max-content;
+  min-width:0;
+  max-width:100%;
+  padding-inline-end:max(22px,env(safe-area-inset-right,0px));
+ }
+ .app-shell .brand-line:not(.search-only) .quick-actions{
+  flex-wrap:nowrap;gap:3px;justify-content:flex-end;
+  max-width:100%;
+ }
+}
+@media(min-width:651px){
+ /* The last header button needs space for its border and shadow even
+  * when the brand row itself correctly fits the viewport. */
+ .app-shell .brand-line:not(.search-only){
+  box-sizing:border-box;
+  min-width:0;max-width:100%;
+  padding-inline-end:max(20px,env(safe-area-inset-right,0px));
+ }
+}
