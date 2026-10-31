@@ -70,3 +70,38 @@ test('Short read-only backend outages do not kill an ongoing preparation',async(
  assert.equal(result,'ready');
  assert.equal(attempts,2);
 });
+
+test('One Play queues exact recording idempotently before polling status',async()=>{
+ const calls=[],clock={value:0};
+ const responses={
+  prepare:{ok:true,status:200,json:async()=>({state:'pending'})},
+  status:[{ok:true,status:200,json:async()=>({state:'leased',node_online:true})},
+          {ok:true,status:200,json:async()=>({state:'ready',node_online:true})}]
+ };
+ const result=await waitForPCNodeReady(ID,{
+  prepare:true,now:()=>clock.value,
+  wait:async ms=>{clock.value+=ms;},
+  fetcher:async(url,options)=>{
+   calls.push({url,method:options.method});
+   if(options.method==='POST')return responses.prepare;
+   return responses.status.shift();
+  }
+ });
+ assert.equal(result,'ready');
+ assert.deepEqual(calls.map(x=>x.method),['POST','GET','GET']);
+ assert.equal(calls[0].url,'https://nightcorelab.onrender.com/pc-node/prepare/'+ID);
+});
+
+test('PC node job that appears shortly after original media error is not lost',async()=>{
+ let clock=0,calls=0;
+ const result=await waitForPCNodeReady(ID,{
+  now:()=>clock,wait:async ms=>{clock+=ms;},
+  fetcher:async()=>{
+   calls++;
+   return {ok:true,status:200,json:async()=>calls<=2?
+    {state:'absent',node_online:true}:{state:'ready',node_online:true}};
+  }
+ });
+ assert.equal(result,'ready');
+ assert.equal(calls,3);
+});
