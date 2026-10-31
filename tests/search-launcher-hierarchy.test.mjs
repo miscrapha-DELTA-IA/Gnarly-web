@@ -16,7 +16,7 @@ test('one search button sits immediately before support heart on GNARLY brand ac
 });
 
 test('loupe opens actual Search tab and never restores last queue/library tab',()=>{
- assert.match(app,/#\('omnibox-toggle'\)\.addEventListener\('click',\(\)=>state\.sheet==='search'\?closeSheet\(\):openSheet\('search'\)\)/);
+ assert.match(app,/\$\('#omnibox-toggle'\)\.addEventListener\('click',\(\)=>state\.sheet==='search'\?closeSheet\(\):openSheet\('search'\)\)/);
  assert.match(app,/const OMNIBOX_TABS=\['search','library','queue','karaoke'\]/);
  assert.match(app,/\$\('#brand-line'\)\.hidden=!visible\('header'\)&&!visible\('search'\)/);
 });
