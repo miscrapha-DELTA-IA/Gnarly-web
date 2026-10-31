@@ -150,6 +150,9 @@ let offlineLoaded=false,offlineStatus='Preparando biblioteca offline…';
 const isOffline=id=>offlineURLs.has(id);
 const offlineAudio=id=>offlineURLs.get(id)||null;
 let recoveryOperation=null,independentRecoveryController=null;
+// The first requested Play owns the source until audio starts or the attempt ends.
+// Subsequent clicks while loading join it rather than creating competing play().
+let playStartOperation=null,playbackIntentEpoch=0;
 const icon='/assets/gnarly-icon.png';
 const artEnvironment=()=>({
  viewportWidth:window.innerWidth,viewportHeight:window.innerHeight,
@@ -531,7 +534,18 @@ function showOptionalOfficialSource(){
  if(choice)choice.hidden=!(state.current&&canUseOfficial(state.current,{offline:!!offlineAudio(state.current.id)}));
 }
 function hideOptionalOfficialSource(){const choice=$('#playback-source-choice');if(choice)choice.hidden=true;}
+function isAudioAlreadyPlaying(){
+ return state.audioState==='playing'&&!state.userPaused&&!audio.paused&&
+  !audio.ended&&audio.readyState>=3;
+}
 function reportAudioError(text){
+ // A late /fast-audio failure or an exhausted retry can arrive after the
+ // same HTMLAudioElement has already begun audible playback. Do not flash
+ // MediaError 4 or turn a working Play button into a broken retry loop.
+ if(isAudioAlreadyPlaying()){
+  coverCharge.hide();playbackStallGuard.clear();state.playbackError='';
+  reportAudioStatus('');return;
+ }
  coverCharge.hide();playbackStallGuard.clear();lyricTransportSync.stop();
  if(playbackMetricFinalSelection!==playbackSelection){
   playbackMetricFinalSelection=playbackSelection;
@@ -985,7 +999,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
   playbackBackstack.push(state.current);
   if(playbackBackstack.length>30)playbackBackstack.shift();
  }
- playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();
+ playbackSelection++;playbackIntentEpoch++;playStartOperation=null;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();
  playbackStartedAt=0;
  playbackStallGuard.clear();lyricTransportSync.stop();
  independentRecoveryController?.abort();independentRecoveryController=null;
@@ -1150,7 +1164,7 @@ async function recoverNativeAudio(track,initialError=null){
  const operation=(async()=>{
   // HTMLMediaElement hides HTTP status codes. Read-only backend diagnosis
   // avoids repeatedly hammering a provider currently returning HTTP 429.
-  const current=()=>state.current===track&&playbackSelection===selection&&audioDelivery.generation===generation&&!state.userPaused;
+  const current=()=>state.current===track&&playbackSelection===selection&&audioDelivery.generation===generation&&!state.userPaused&&!isAudioAlreadyPlaying();
   // The first edge request has already queued the exact recording on the
   // owner's Windows worker. Do not retry the failed 503 HTMLMediaElement,
   // switch to an unrelated origin, or call Play again while it is preparing.
@@ -1225,7 +1239,9 @@ async function recoverNativeAudio(track,initialError=null){
    }
   });
   if(!current())return false;
-  if(recovered){coverCharge.hide();state.audioState='playing';state.playbackError='';reportAudioStatus('');return true;}
+  if(recovered||isAudioAlreadyPlaying()){
+  coverCharge.hide();state.audioState='playing';state.playbackError='';reportAudioStatus('');return true;
+ }
   // A cooldown can begin while the bounded retry attempt is in progress.
   if(!rateLimit)rateLimit=await resolvePlaybackCooldown(playbackCooldown);
   if(rateLimit){playbackCooldown.remember(rateLimit);queueAudioWarmup.cancel();}
@@ -1291,8 +1307,17 @@ async function play(){
   return;
  }
  if(recoveryOperation)return recoveryOperation;
- const track=state.current,selection=playbackSelection;
- const stillSelected=()=>state.current===track&&playbackSelection===selection&&!state.userPaused;
+ const track=state.current,selection=playbackSelection,epoch=playbackIntentEpoch;
+ if(playStartOperation?.selection===selection&&playStartOperation.epoch===epoch)
+  return playStartOperation.promise;
+ // Install the in-flight token synchronously before touching the media element;
+ // audio.play() itself remains within the original Safari user gesture.
+ let resolvePending;
+ const shared=new Promise(resolve=>{resolvePending=resolve});
+ const flight={selection,epoch,promise:shared};playStartOperation=flight;
+ const stillSelected=()=>state.current===track&&playbackSelection===selection&&
+  playbackIntentEpoch===epoch&&!state.userPaused;
+ try{
  // Time from the FIRST user Play, not the latest repeated click while the
  // same recording is still being prepared.
  if(!playbackStartedAt)playbackStartedAt=performance.now();
@@ -1382,13 +1407,22 @@ async function play(){
    }
   }
   if(!stillSelected())return;
-  if(track.source==='youtube'&&!isOffline(track.id)){await recoverNativeAudio(track,e);}
+  if(track.source==='youtube'&&!isOffline(track.id)){
+   // A rejected Play promise can be stale even when the current selection
+   // remains the same. Browser 'playing' is stronger than the promise error.
+   if(isAudioAlreadyPlaying())return;
+   await recoverNativeAudio(track,e);
+  }
   else{state.playing=false;updatePlayer();reportAudioError(track.source==='audius'?'O Audius não conseguiu transmitir esta faixa. Escolha outra música.':track.source==='jamendo'?'O Jamendo não conseguiu transmitir esta faixa. Escolha outra música.':
   track.source==='preview'?'Não foi possível reproduzir a prévia oficial.':'Falha ao reproduzir a cópia local. Remova-a e baixe novamente.');}
   if(stillSelected()&&state.audioState!=='official')console.warn('GNARLY WEB audio play:',e);
  }
+ }finally{
+  if(playStartOperation===flight)playStartOperation=null;
+  resolvePending();
+ }
 }
-function pause(){coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
+function pause(){playbackIntentEpoch++;playStartOperation=null;coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
 let nextDiscovery=null;
 function clearNextDiscoveryStatus(){if(nextDiscovery)reportAudioStatus('')}
 async function next(){
