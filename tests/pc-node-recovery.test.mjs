@@ -44,7 +44,7 @@ test('A new selection cancels exact recording waiter',async()=>{
 
 test('Unknown job and invalid ID never trigger further requests',async()=>{
  let calls=0;
- const fetcher=async()=>{calls++;return response('absent');};
+ const fetcher=async()=>{calls++;return {ok:true,status:200,json:async()=>({state:'absent',node_online:false})};};
  assert.equal(await waitForPCNodeReady('../unsafe',{fetcher}),'unavailable');
  assert.equal(await waitForPCNodeReady(ID,{fetcher}),'unavailable');
  assert.equal(calls,1);
