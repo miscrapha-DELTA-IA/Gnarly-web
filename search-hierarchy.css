@@ -1,0 +1,104 @@
+/* GNARLY search hierarchy — a small search control, full-power sheet.
+ * Loaded after legacy pill and desktop rules; no shader/audio changes.
+ */
+/* Preserve native hidden semantics: the old desktop .omnibox-shell rules
+ * used display and could otherwise make a hidden magnifier reappear. */
+.app-shell .quick-actions #omnibox-shell[hidden],
+.app-shell #brand-line[hidden]{display:none!important}
+.app-shell .quick-actions #omnibox-shell{
+ position:relative;display:block;flex:0 0 42px;
+ width:42px!important;max-width:42px!important;height:42px;
+ margin:0!important;padding:0;border:0;border-radius:50%;
+ background:transparent;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;
+}
+.app-shell .quick-actions #omnibox-toggle{
+ display:grid;place-items:center;min-width:42px;width:42px;height:42px;
+ min-height:42px;margin:0;padding:0;border-radius:50%;
+ color:#f6fff7;border:1px solid rgba(255,255,255,.21);
+ background:rgba(27,29,28,.48);
+ -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
+ box-shadow:0 0 18px color-mix(in srgb,var(--acid) 7%,transparent);
+ transition:color .18s,border-color .18s,background .18s;
+}
+.app-shell .quick-actions #omnibox-toggle .icon{width:22px;height:22px}
+.app-shell .quick-actions #omnibox-toggle:hover,
+.app-shell .quick-actions #omnibox-toggle[aria-expanded="true"]{
+ color:var(--acid);border-color:color-mix(in srgb,var(--acid) 65%,rgba(255,255,255,.14));
+ background:color-mix(in srgb,var(--acid) 12%,rgba(27,29,28,.65));
+}
+.app-shell .quick-actions #omnibox-toggle:focus-visible{outline:2px solid var(--acid);outline-offset:3px}
+.app-shell .brand-line.search-only{display:flex;justify-content:center}
+.app-shell .brand-line.search-only .brand-identity,
+.app-shell .brand-line.search-only .quick-actions>*:not(#omnibox-shell){display:none!important}
+/* The search launcher stays reachable when the user scrolls through an open
+ * Music/Export/DJ module. It doesn't move the player or GPU canvas.
+ */
+.app-shell:has(.module-drawer.is-open) .brand-line:not([hidden]){
+ position:sticky;top:calc(3px + env(safe-area-inset-top,0px));z-index:7;
+}
+.app-shell:has(.module-drawer.is-open) .brand-line:not([hidden])::before{
+ content:'';position:absolute;inset:-5px -8px;z-index:-1;pointer-events:none;
+ border-radius:16px;background:rgba(9,16,16,.55);
+ -webkit-backdrop-filter:blur(13px);backdrop-filter:blur(13px);
+}
+/* Search and other sheets are VIEWPORT modals, not absolutely placed at the
+ * beginning of the growing page. The Music drawer must never push them away.
+ */
+.app-shell #panel-backdrop{
+ position:fixed;inset:0;z-index:40;
+ /* Full-viewport hit target, never positioned after the Music drawer. */
+}
+.app-shell #bottom-sheet{
+ position:fixed;z-index:41;
+ /* Legacy @keyframes rise translated the open modal 24px BELOW the viewport
+  * for the first frame. Keep it anchored from the very first paint. */
+ animation:none;
+ max-height:calc(100dvh - env(safe-area-inset-top,0px) - 8px);
+}
+html.gnarly-sheet-open,body.gnarly-sheet-open{
+ overflow:hidden!important;overscroll-behavior:none;
+}
+.app-shell #toast:not([hidden]){z-index:42;position:fixed}
+.app-shell #bottom-sheet[hidden],.app-shell #panel-backdrop[hidden]{display:none!important}
+.app-shell #bottom-sheet .sheet-content{min-height:0;overscroll-behavior:contain}
+/* Expanding Music no longer grows a multi-screen document and displaces the
+ * search access. Only the drawer's own controls scroll when necessary. */
+.app-shell .module-drawer.is-open .module-body{
+ max-height:min(62dvh,650px);overflow-y:auto;overscroll-behavior:contain;
+ scrollbar-color:color-mix(in srgb,var(--acid) 35%,transparent) transparent;
+}
+@media(max-width:650px){
+ .app-shell .quick-actions #omnibox-shell{
+  flex-basis:clamp(37px,10vw,42px);
+  width:clamp(37px,10vw,42px)!important;
+  max-width:clamp(37px,10vw,42px)!important;
+  height:clamp(37px,10vw,42px);
+ }
+ .app-shell .quick-actions #omnibox-toggle{
+  min-width:37px;width:100%;height:100%;min-height:37px;
+ }
+ .app-shell .quick-actions #omnibox-toggle .icon{width:20px;height:20px}
+ .app-shell #bottom-sheet{width:100%;left:0;right:0;bottom:0}
+}
+@media(min-width:900px) and (pointer:fine){
+ .app-shell #bottom-sheet:not(.display-sheet),
+ .app-shell #bottom-sheet.display-sheet{
+  top:clamp(90px,11vh,125px);bottom:auto;
+  height:min(77dvh,850px);
+  max-height:calc(100dvh - 100px);
+ }
+}
+@media(prefers-reduced-motion:reduce){
+ .app-shell .quick-actions #omnibox-toggle{transition:none}
+}
+
+/* The quick-action row takes precedence over the old fullscreen/desktop
+ * .app-shell .omnibox-shell pill dimensions. No duplicate search launcher.
+ */
+html.gnarly-fullscreen .app-shell .quick-actions #omnibox-shell{
+ margin:0!important;max-width:42px!important;
+}
+@media(max-width:420px){
+ .app-shell .brand-line:has(#omnibox-shell:not([hidden])) .quick-actions{gap:3px}
+ .app-shell .brand-line:has(#omnibox-shell:not([hidden])) .brand-identity h1{font-size:clamp(25px,7vw,34px)}
+}

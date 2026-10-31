@@ -88,6 +88,13 @@ async function assertAppearanceControlFits(label){
 await assertAppearanceControlFits('compact 390px');
 assert.equal(await page.locator('.player .preset-chip').count(),0);
 assert.equal(await page.locator('.omnibox-shell').count(),1);
+assert.equal(await page.locator('.omnibox-caption').count(),0,'Old wide Omnibox is gone');
+const loupe=await page.locator('#omnibox-toggle').boundingBox();
+const supportHeart=await page.locator('#support-button').boundingBox();
+assert.ok(loupe&&supportHeart&&loupe.width<=43&&
+ loupe.x+loupe.width<=supportHeart.x+2&&
+ Math.abs(loupe.y+loupe.height/2-supportHeart.y-supportHeart.height/2)<4,
+ 'Search must be a small icon immediately to the left of the support heart');
 assert.equal(await page.locator('#player-section').count(),1);
 await page.waitForTimeout(900);
 const nativeGPU=await page.evaluate(()=>{
@@ -252,11 +259,36 @@ assert.equal(await page.locator('#create-button, #edit-button').count(),0);
 assert.equal(await page.locator('.module-drawer').count(),3);
 const omniboxBottom=await page.locator('#omnibox-shell').evaluate(el=>el.getBoundingClientRect().bottom);
 const musicTop=await page.locator('#module-controls').evaluate(el=>el.getBoundingClientRect().top);
-assert.ok(musicTop>omniboxBottom,'Inline music window stays below the Omnibox');
+assert.ok(musicTop>omniboxBottom,'Music drawer follows the brand row and player, with the search magnifier above');
 await page.locator('#more-button').click();
 await page.locator('[data-command="go-controls"]').click();
 assert.equal(await page.locator('#bottom-sheet').isVisible(),false);
 assert.equal(await page.locator('#module-controls-body').isVisible(),true);
+// Reproduces the actual bug: expanded Music then search must appear above the
+// entire drawer, without scrolling the page to hunt for Omnibox.
+await page.locator('#omnibox-toggle').click();
+assert.equal(await page.locator('#bottom-sheet').isVisible(),true);
+assert.equal(await page.locator('#sheet-title').innerText(),'Busca');
+assert.equal(await page.locator('#module-dock').evaluate(el=>el.inert),true);
+const searchHierarchy=await page.evaluate(()=>{
+ const sheet=document.querySelector('#bottom-sheet');
+ const input=document.querySelector('#search-term');
+ const box=sheet.getBoundingClientRect();
+ const rect=input.getBoundingClientRect();
+ const hit=document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2);
+ return {position:getComputedStyle(sheet).position,top:box.top,bottom:box.bottom,
+  height:innerHeight,hit:hit===input||input.contains(hit),
+  bodyOverflow:getComputedStyle(document.body).overflowY};
+});
+assert.equal(searchHierarchy.position,'fixed');
+assert.equal(searchHierarchy.bodyOverflow,'hidden');
+assert.ok(searchHierarchy.top>=-2&&searchHierarchy.bottom<=searchHierarchy.height+2,
+ 'Search panel must fit in the viewport over Music: '+JSON.stringify(searchHierarchy));
+assert.equal(searchHierarchy.hit,true,'Expanded Music cannot intercept the search field');
+await page.locator('#close-sheet').click();
+assert.equal(await page.locator('#module-dock').evaluate(el=>el.inert),false);
+assert.equal(await page.locator('#module-controls-body').isVisible(),true,
+ 'Closing Search should preserve the Music module, no re-render or lost controls');
 assert.ok(await page.locator('#module-controls-body [data-preset="NIGHTCORE"]').count()>0);
 await page.locator('#module-controls-body [data-preset="NIGHTCORE"]').click();
 await page.locator('#module-controls-body [data-command="go-stems"]').click();

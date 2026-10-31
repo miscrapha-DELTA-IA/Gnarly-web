@@ -380,7 +380,6 @@ function toggleModule(name,force){
  if(isModuleOpen(name)){
   renderModule(name);
   if(name==='performance')void pads.prepareSong(state.current);
-  $('#module-'+name)?.scrollIntoView?.({block:'nearest',behavior:window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches?'instant':'smooth'});
   if(name==='controls'&&state.musicTab==='stems')void refreshCloudStemAvailability();
  }
 }
@@ -1753,6 +1752,11 @@ function openSheet(which){
  state.sheet=which;
  if(which==='queue'&&state.current&&state.queue.length<2)void maybeFillSmartQueue();
  $('#bottom-sheet').hidden=false;$('#panel-backdrop').hidden=false;
+ // The modal owns focus and stacking. An expanded Music/DJ drawer remains
+ // open underneath, but cannot intercept the search input or mouse/touch.
+ document.documentElement.classList.add('gnarly-sheet-open');
+ document.body.classList.add('gnarly-sheet-open');
+ $('#module-dock').inert=true;
  $('#bottom-sheet').classList.toggle('display-sheet',which==='display');
   $('#bottom-sheet').classList.toggle('music-sheet',which==='controls');
  $('#bottom-sheet').classList.toggle('performance-sheet',which==='performance');
@@ -1769,6 +1773,9 @@ function closeSheet(){
  if(state.sheet==='karaoke'&&!karaokeStage.opened){karaokeStage.mic.stop();karaokeStage.scorer.stop()}
  searchMoreObserver?.disconnect();
  state.sheet=null;$('#bottom-sheet').hidden=true;$('#panel-backdrop').hidden=true;
+ document.documentElement.classList.remove('gnarly-sheet-open');
+ document.body.classList.remove('gnarly-sheet-open');
+ $('#module-dock').inert=false;
  $('#bottom-sheet').classList.remove('display-sheet','music-sheet','performance-sheet');
  
  $('#omnibox-toggle').setAttribute('aria-expanded','false');
@@ -1813,7 +1820,10 @@ function applyPanelVisibility(){
  lyricsShortcut?.setAttribute('aria-pressed',String(lyricsVisible));
  $('#compact-karaoke-slot').hidden=displayStore.zen;
  if(lyricsVisible&&previousLyrics==='false')fitCompactLyric();
- $('#brand-line').hidden=!visible('header');
+ // Search remains accessible even when the rest of the header was hidden
+ // with the eye/display controls. The only visible action is then the loupe.
+ $('#brand-line').hidden=!visible('header')&&!visible('search');
+ $('#brand-line').classList.toggle('search-only',!visible('header')&&visible('search'));
  applyResponsiveLayout();syncEyeBar();
  $('#player-section').hidden=!visible('player');
  $('#omnibox-shell').hidden=!visible('search');
@@ -2513,7 +2523,7 @@ attachEyeGestures($('#search-toggle'),{
 });
 syncEyeBar();
 applyResponsiveLayout();
-$('#omnibox-toggle').addEventListener('click',()=>OMNIBOX_TABS.includes(state.sheet)?closeSheet():openSheet(OMNIBOX_TABS.includes(state.omniboxTab)?state.omniboxTab:'search'));
+$('#omnibox-toggle').addEventListener('click',()=>state.sheet==='search'?closeSheet():openSheet('search'));
 $('#more-button').addEventListener('click',()=>openSheet('more'));
 $('#fullscreen-button').addEventListener('click',()=>{void fullscreen.toggle()});
 // Fullscreen within karaoke is handled by KaraokeStage.click, alongside pause/mic/Aa.
