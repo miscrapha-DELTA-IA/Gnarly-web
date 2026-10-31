@@ -580,16 +580,39 @@ await quick.waitForTimeout(540);
 assert.equal(await quick.locator('#bottom-sheet').isVisible(),false,'Holding Aa must not open text-selection/callout');
 assert.equal(await quick.locator('#lyric-style-button').evaluate(el=>el.dispatchEvent(new Event('selectstart',{bubbles:true,cancelable:true}))),false,'Safari selection must be prevented');
 await quick.locator('#lyric-style-button').dispatchEvent('pointerup',{button:0,pointerType:'touch',pointerId:16,clientX:25,clientY:17});
-// Swiping down must open curated Aa, palette, and lightning selectors.
+// Aa swipe-down now hides the compact lyrics (without deleting LRC or
+// disabling karaoke). Swiping up restores them; another upward swipe opens
+// the curated font catalog. The theme/experience down gestures are unchanged.
 const swipeDown=async selector=>quick.locator(selector).evaluate(el=>{
  const init={bubbles:true,cancelable:true,pointerType:'touch',pointerId:20,button:0,clientX:23};
  el.dispatchEvent(new PointerEvent('pointerdown',{...init,clientY:12}));
  el.dispatchEvent(new PointerEvent('pointermove',{...init,clientY:68}));
  el.dispatchEvent(new PointerEvent('pointerup',{...init,clientY:72}));
 });
+const swipeUp=async selector=>quick.locator(selector).evaluate(el=>{
+ const init={bubbles:true,cancelable:true,pointerType:'touch',pointerId:21,button:0,clientX:23};
+ el.dispatchEvent(new PointerEvent('pointerdown',{...init,clientY:72}));
+ el.dispatchEvent(new PointerEvent('pointermove',{...init,clientY:16}));
+ el.dispatchEvent(new PointerEvent('pointerup',{...init,clientY:10}));
+});
 await swipeDown('#lyric-style-button');
+assert.equal(await quick.locator('#app-shell').getAttribute('data-lyrics-visible'),'false');
+assert.equal(await quick.locator('#bottom-sheet').isVisible(),false,'Hide subtitles must not open a font window');
+await swipeUp('#lyric-style-button');
+assert.equal(await quick.locator('#app-shell').getAttribute('data-lyrics-visible'),'true');
+await swipeUp('#lyric-style-button');
 assert.equal(await quick.locator('#sheet-title').innerText(),'Aa · Estilo de legenda');
 await quick.locator('#close-sheet').click();
+// Re-clicking the Music HEADER shortcut hides the entire drawer; the handle
+// itself retains the original fold/unfold behavior.
+await quick.locator('#music-toggle-button').click();
+assert.equal(await quick.locator('#module-controls').isVisible(),true);
+assert.equal(await quick.locator('#module-controls-body').isVisible(),true);
+await quick.locator('#music-toggle-button').click();
+assert.equal(await quick.locator('#module-controls').isVisible(),false);
+await quick.locator('#music-toggle-button').click();
+assert.equal(await quick.locator('#module-controls').isVisible(),true);
+assert.equal(await quick.locator('#module-controls-body').isVisible(),true);
 await swipeDown('#experience-button');
 assert.match(await quick.locator('#sheet-title').innerText(),/Experiência/i);
 await quick.locator('#close-sheet').click();
