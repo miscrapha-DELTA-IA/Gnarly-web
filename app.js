@@ -2081,6 +2081,9 @@ function syncVisual(){
  const official=state.audioState==='official'&&officialTrackId===state.current?.id;
  visual.setSong(audio.currentTime||0,Number.isFinite(audio.duration)&&state.current?.source!=='preview'?audio.duration:state.current?.duration||0,state.artworkHue);
  const pulse=pads.getPulse(),active=!document.hidden&&(state.playing||pads.running||pulse>.009);
+ // Loading and failed YouTube sessions must not render the full-resolution
+ // shader at 60fps. Restore premium cadence as soon as audio is playing.
+ visual.setPlaybackActive(active);
  let signal=active?engine.sampleSpectrum():{bass:0,mid:0,treble:0,beat:0,energy:0};
  // Ambient-only procedural motion, never an audio/beat measurement from YouTube.
  if(official&&!document.hidden&&state.reaction!=='DESLIGADO'){
