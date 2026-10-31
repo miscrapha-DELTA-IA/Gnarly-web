@@ -65,12 +65,12 @@ test('120 Hz low shelf, reverb limited to 50% and compensated mastering headroom
  near(masteringLevels({bass:0,reverb:0}).wet,0);
 });
 
-test('Safari rate/pitch change updates once without forcing default rate changes',()=>{
+test('Safari rate/pitch writes only when changed and preserves the next-song default',()=>{
  const audio={muted:false,playbackRate:1,defaultPlaybackRate:1,preservesPitch:true};
  const engine=new WebAudioEngine(audio,{device:iPhone});
  engine.setSpeed(.8,false);
  near(audio.playbackRate,.8);assert.equal(audio.preservesPitch,false);
- assert.equal(audio.defaultPlaybackRate,1);
+ assert.equal(audio.defaultPlaybackRate,.8);
  engine.setSpeed(.8,true);
  near(audio.playbackRate,.8);assert.equal(audio.preservesPitch,true);
  assert.equal(engine.ctx,null,'native iOS playback must not claim the media source');
