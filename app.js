@@ -71,46 +71,38 @@ const audioDelivery=new AudioDeliveryRecovery();
 // A provider becomes eligible only after exact metadata and real audio bytes pass verification.
 const sourceRouter=new VerifiedSourceRouter();
 const playbackCooldown=new PlaybackCooldown({storage:localStorage});
-// Only speculative; this never changes the selected audio URL or blocks
-// audio.play(). It uses the same R2-first /fast-prepare route and existing
-// Windows job deduplication, never an alternative audio player.
-const selectedAudioWarmup=new QueueAudioWarmup({
- timeout:6500,minIntervalMs:0,canPrepare:()=>true
-});
+// PC-only speculative preparation, concurrently with native audio.play().
+// R2 cache hits stay untouched and no new Render extraction is started.
 let selectedWarmupProbe=null,selectedWarmupId='';
 function cancelSelectedWarmup(){
  selectedWarmupProbe?.abort();selectedWarmupProbe=null;
- selectedAudioWarmup.cancel();
 }
 function primeSelectedRecording(track,selection){
  const id=youtubeID(track);
  if(!id||!isGnarlyPagesHost(location.hostname)||isOffline(track.id)||
-    !navigator.onLine||navigator.connection?.saveData||
-    selectedWarmupId===id)return;
+    !navigator.onLine||navigator.connection?.saveData||selectedWarmupId===id)return;
  selectedWarmupId=id;
  const controller=new AbortController();
  selectedWarmupProbe?.abort();selectedWarmupProbe=controller;
- const timer=setTimeout(()=>controller.abort(),2800);
+ const timer=setTimeout(()=>controller.abort(),5500);
  void (async()=>{
   try{
-   // Probe only first-party, read-only job health. No expensive extraction
-   // or second media-element play while the current audio is initializing.
-   const response=await fetch(new URL('/pc-node/status/'+id,NATIVE_BACKEND),{
-    method:'GET',cache:'no-store',credentials:'omit',signal:controller.signal
-   });
-   if(!response.ok)return;
+   const [cached,response]=await Promise.all([
+    cachedNativeAvailable(track),
+    fetch(new URL('/pc-node/status/'+id,NATIVE_BACKEND),{
+     method:'GET',cache:'no-store',credentials:'omit',signal:controller.signal})
+   ]);
+   if(cached||!response.ok||controller.signal.aborted)return;
    const status=await response.json();
-   if(!status?.node_online||controller.signal.aborted||state.current!==track||
-       playbackSelection!==selection||state.userPaused||audio.readyState>=3)return;
-   // Pages checks R2 BEFORE calling Render /prepare. If already cached,
-   // this exits at the edge. Otherwise Render uses the existing Windows
-   // queue (and preserves its old extractor only when PC is offline).
-   await selectedAudioWarmup.start(track);
-  }catch{/* Never interfere with existing player or recovery. */}
-  finally{
-   clearTimeout(timer);
-   if(selectedWarmupProbe===controller)selectedWarmupProbe=null;
-  }
+   if(!status?.node_online||status.state==='ready'||state.current!==track||
+      playbackSelection!==selection||state.userPaused||audio.readyState>=3)return;
+   // Only idempotently queue the exact selected recording on an online PC.
+   const queued=await fetch(new URL('/pc-node/prepare/'+id,NATIVE_BACKEND),{
+    method:'POST',cache:'no-store',credentials:'omit',signal:controller.signal});
+   if(queued.ok&&state.current===track&&playbackSelection===selection)
+    signalPlaybackMetric('pc_queued');
+  }catch{/* A speculative hint cannot interfere with playback. */}
+  finally{clearTimeout(timer);if(selectedWarmupProbe===controller)selectedWarmupProbe=null;}
  })();
 }
 const queueAudioWarmup=new QueueAudioWarmup({
@@ -532,6 +524,8 @@ function showOptionalOfficialSource(){
 }
 function hideOptionalOfficialSource(){const choice=$('#playback-source-choice');if(choice)choice.hidden=true;}
 function reportAudioError(text){
+ // A late asynchronous failure must not obscure media already playing.
+ if(state.audioState==='playing'&&!state.userPaused&&!audio.paused&&audio.readyState>=3)return;
  coverCharge.hide();playbackStallGuard.clear();lyricTransportSync.stop();
  if(playbackMetricFinalSelection!==playbackSelection){
   playbackMetricFinalSelection=playbackSelection;
@@ -1139,8 +1133,11 @@ async function recoverIndependentAudio(track,isCurrent,verifiedAlternative=null)
 async function recoverNativeAudio(track,initialError=null){
  const selection=playbackSelection,generation=audioDelivery.generation;
  if(!track||track.source!=='youtube'||state.current!==track||state.userPaused)return false;
+  if(state.audioState==='playing'&&!audio.paused&&audio.readyState>=3)return true;
  coverCharge.show('recovering');
  if(recoveryOperation)return recoveryOperation;
+  signalPlaybackMetric('recovery_started');
+  const audibleVersionAtRecovery=audiblePlaybackVersion;
  // A 429 followed by a verified-source search needs its own bounded
  // recovery window; the initial buffering deadline may nearly be exhausted.
  // This recovery is already bounded by PC job polling (205s) and retry
@@ -1150,19 +1147,24 @@ async function recoverNativeAudio(track,initialError=null){
  const operation=(async()=>{
   // HTMLMediaElement hides HTTP status codes. Read-only backend diagnosis
   // avoids repeatedly hammering a provider currently returning HTTP 429.
-  const current=()=>state.current===track&&playbackSelection===selection&&audioDelivery.generation===generation&&!state.userPaused;
+  const current=()=>state.current===track&&playbackSelection===selection&&
+    audioDelivery.generation===generation&&!state.userPaused&&
+    audiblePlaybackVersion===audibleVersionAtRecovery;
   // The first edge request has already queued the exact recording on the
   // owner's Windows worker. Do not retry the failed 503 HTMLMediaElement,
   // switch to an unrelated origin, or call Play again while it is preparing.
   // Wait only for a real, existing job; never poll indefinitely.
   if(!isOffline(track.id)){
    const pcResult=await waitForPCNodeReady(track.videoId,{
-    current,prepare:true,
+    current,prepare:true,pollMs:playbackPollMs,
     onProgress:()=>{state.audioState='recovering';
      reportAudioStatus('Preparando esta gravação no GNARLY PC Node…');}
    });
    if(!current())return false;
-   if(pcResult==='ready'&&await resumeCompletedPCNode(track,current))return true;
+   if(pcResult==='ready'){
+     signalPlaybackMetric('pc_ready');
+     if(await resumeCompletedPCNode(track,current))return true;
+    }
    if(pcResult==='failed'||pcResult==='timeout'){
     // Real PC failure is not a codec problem. Avoid retrying the same
     // unprepared media URL twice (both returns are HTTP 503), which was
