@@ -31,7 +31,9 @@ jobs:
           python3 -m http.server 8765 --bind 127.0.0.1 >/tmp/gnarly-web-test.log 2>&1 &
           echo $! > /tmp/gnarly-web-test.pid
       - name: Test mobile Stage72 UI
-        run: node tests/stage72-browser.mjs
+        run: |
+          node tests/header-viewport.browser.mjs
+          node tests/stage72-browser.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
