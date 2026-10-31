@@ -2,7 +2,7 @@
  * backend music, user metadata, or cross-origin resources.
  * Downloaded music lives in per-profile IndexedDB; SW caches the interface.
  */
-const SHELL='gnarly-web-shell-20261030-audio-search-watchdog-v13';
+const SHELL='gnarly-web-shell-20261030-idle-render-cache-v14';
 const PREFIX='gnarly-web-shell-';
 const CORE=['/','/index.html','/app.js','/mic.html','/mic.js','/styles.css','/module-dock.css',
  '/performance.css','/ipod-mode.css','/cover-charge.css','/karaoke-art.css','/karaoke-art-refined.css',
@@ -20,22 +20,52 @@ const staticURL=url=>{
 self.addEventListener('install',event=>{
  event.waitUntil((async()=>{
   const cache=await caches.open(SHELL);
-  let urls=CORE;
-  try{
-   const response=await fetch('/offline-assets.json',{cache:'no-store'});
-   if(response.ok){
-    const assets=await response.json();
-    if(Array.isArray(assets))urls=[...new Set([...CORE,...assets])].filter(url=>
-     typeof url==='string'&&url.startsWith('/')&&staticURL(new URL(url,self.location.href)));
-   }
-  }catch{}
-  // Store what is available, without making one optional asset fail install.
-  await Promise.allSettled(urls.map(async path=>{
+  // Keep installation small and cheap. The original install fetched the
+  // ENTIRE module graph in parallel, contending with startup and shader GPU
+  // compilation, especially on the first navigation after each deployment.
+  // Main modules and offline tracks are cached independently as they load.
+  const essentials=['/','/index.html','/app.js','/styles.css',
+                    '/manifest.webmanifest','/logo.svg'];
+  await Promise.allSettled(essentials.map(async path=>{
    const response=await fetch(path,{cache:'reload'});
    if(response.ok&&response.type!=='opaque')await cache.put(path,response);
   }));
   await self.skipWaiting();
  })());
+});
+// Complete optional offline assets only after the app signals it is idle.
+// Never fetch third-party songs or model weights; two concurrent same-origin
+// fetches cannot saturate Safari's connections or first-audio delivery.
+let warming=null;
+async function warmShell(){
+ if(warming)return warming;
+ warming=(async()=>{
+  const cache=await caches.open(SHELL);
+  let paths=[];
+  try{
+   const response=await fetch('/offline-assets.json',{cache:'no-store'});
+   if(response.ok){const found=await response.json();if(Array.isArray(found))
+    paths=[...new Set(found)].filter(p=>typeof p==='string'&&p.startsWith('/')&&
+     staticURL(new URL(p,self.location.href)));
+   }
+  }catch{return}
+  let cursor=0;
+  await Promise.all([0,1].map(async()=>{
+   while(cursor<paths.length){
+    const path=paths[cursor++];
+    try{
+     if(await cache.match(path))continue;
+     const response=await fetch(path,{cache:'reload'});
+     if(response.ok&&response.type!=='opaque')await cache.put(path,response);
+    }catch{}
+   }
+  }));
+ })();
+ try{await warming}finally{warming=null}
+}
+self.addEventListener('message',event=>{
+ if(event.data?.type!=='GNARLY_WARM_SHELL')return;
+ event.waitUntil(warmShell());
 });
 self.addEventListener('activate',event=>{
  event.waitUntil((async()=>{
