@@ -2777,6 +2777,20 @@ void restoreOfflineLibrary();
 if('serviceWorker' in navigator){
  window.addEventListener('load',()=>{
   navigator.serviceWorker.register('/sw.js',{scope:'/'})
+   .then(()=>{
+    // Warm optional offline UI files only after a free browser idle window.
+    // Never compete with the selected track's initial audio buffer.
+    const warm=()=>{
+     if(document.hidden||state.playing||state.audioState==='loading'||
+        state.audioState==='recovering'){
+      setTimeout(warm,15000);return;
+     }
+     void navigator.serviceWorker.ready.then(reg=>
+      reg.active?.postMessage({type:'GNARLY_WARM_SHELL'})).catch(()=>{});
+    };
+    if(typeof requestIdleCallback==='function')requestIdleCallback(warm,{timeout:8000});
+    else setTimeout(warm,6000);
+   })
    .catch(error=>console.debug('GNARLY offline shell unavailable:',error?.message));
  },{once:true});
 }
