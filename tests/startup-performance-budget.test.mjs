@@ -22,7 +22,7 @@ test('unused expensive texture and creative shader programs compile lazily once'
 
 test('animated background preserves 60fps while music is active and uses idle cadence when blocked',()=>{
  const visual=source('lib/visual-engine.js'),app=source('app.js');
- assert.match(visual,/this\.playbackActive\?1000\/60:1000\/24/);
+ assert.match(visual,/this\.playbackActive\?1000\/60:1000\/30/);
  assert.match(visual,/this\.playbackActive\?1:\.82/);
  assert.match(app,/visual\.setPlaybackActive\(active\)/);
  assert.match(visual,/ensureProgram\(texture\?'texture':look\?'creative':'classic'\)/);
