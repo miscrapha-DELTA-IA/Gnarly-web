@@ -102,3 +102,26 @@ html.gnarly-fullscreen .app-shell .quick-actions #omnibox-shell{
  .app-shell .brand-line:has(#omnibox-shell:not([hidden])) .quick-actions{gap:3px}
  .app-shell .brand-line:has(#omnibox-shell:not([hidden])) .brand-identity h1{font-size:clamp(25px,7vw,34px)}
 }
+
+/* The support heart was flush with the page border after adding the loupe.
+ * Reserve an actual safe inset for the rightmost action instead of allowing
+ * the button border/focus ring to be laid out against the shell edge.
+ * The magnifier's 42px diameter, styling, and icon are not modified. */
+@media(max-width:650px){
+ .app-shell .brand-line:not(.search-only){
+  box-sizing:border-box;
+  grid-template-columns:minmax(0,1fr) max-content;
+  gap:5px;
+  padding-inline-end:max(10px,env(safe-area-inset-right,0px));
+ }
+ .app-shell .brand-line:not(.search-only) .brand-identity,
+ .app-shell .brand-line:not(.search-only) .brand-copy{
+  min-width:0;
+ }
+ .app-shell .brand-line:not(.search-only) .quick-actions{
+  min-width:0;gap:3px;flex:0 0 auto;
+ }
+ .app-shell .brand-line:not(.search-only) .build-badge{
+  overflow-wrap:anywhere;
+ }
+}

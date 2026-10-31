@@ -95,6 +95,43 @@ assert.ok(loupe&&supportHeart&&loupe.width<=43&&
  loupe.x+loupe.width<=supportHeart.x+2&&
  Math.abs(loupe.y+loupe.height/2-supportHeart.y-supportHeart.height/2)<4,
  'Search must be a small icon immediately to the left of the support heart');
+// The search loupe adds another action next to the support heart. Neither
+// the heart's circle nor its focusable box may overflow the GNARLY brand row,
+// even on a 320px iPhone after CSS media queries and JS device detection.
+const headerFits=async(width)=>{
+ await page.setViewportSize({width,height:844});
+ await page.waitForTimeout(45);
+ return page.evaluate(()=>{
+  const rect=id=>{
+   const el=document.querySelector(id),r=el.getBoundingClientRect();
+   return {x:r.x,y:r.y,left:r.left,right:r.right,width:r.width,
+    top:r.top,bottom:r.bottom,height:r.height,visible:getComputedStyle(el).display!=='none'};
+  };
+  const brand=rect('#brand-line'),heart=rect('#support-button'),
+   loupe=rect('#omnibox-toggle'),actions=rect('.quick-actions'),
+   more=rect('#more-button'),logo=rect('.brand-identity');
+  return {viewport:innerWidth,brand,heart,loupe,actions,more,logo,
+   pageWidth:document.documentElement.scrollWidth};
+ });
+};
+for(const width of [320,360,375,390,430,768]){
+ const fit=await headerFits(width);
+ const dump=JSON.stringify(fit);
+ assert.ok(fit.heart.visible,`Heart should remain visible at ${width}: ${dump}`);
+ assert.ok(fit.heart.right<=fit.brand.right-2,
+  `Heart escapes GNARLY right border at ${width}: ${dump}`);
+ assert.ok(fit.heart.left>=fit.brand.left,
+  `Heart escapes GNARLY left border at ${width}: ${dump}`);
+ assert.ok(fit.loupe.right<=fit.heart.left+2,
+  `Heart and magnifier overlap at ${width}: ${dump}`);
+ assert.ok(fit.actions.right<=fit.brand.right+1,
+  `Brand actions escape the header at ${width}: ${dump}`);
+ assert.ok(fit.logo.right<=fit.loupe.left+1,
+  `Logo collides with the search and heart buttons at ${width}: ${dump}`);
+ assert.ok(fit.pageWidth<=width+1,
+  `Horizontal overflow after adding magnifier at ${width}: ${dump}`);
+}
+await page.setViewportSize({width:390,height:844});
 assert.equal(await page.locator('#player-section').count(),1);
 await page.waitForTimeout(900);
 const nativeGPU=await page.evaluate(()=>{
