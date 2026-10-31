@@ -532,11 +532,11 @@ function showOptionalOfficialSource(){
 }
 function hideOptionalOfficialSource(){const choice=$('#playback-source-choice');if(choice)choice.hidden=true;}
 function reportAudioError(text){
+ coverCharge.hide();playbackStallGuard.clear();lyricTransportSync.stop();
  if(playbackMetricFinalSelection!==playbackSelection){
   playbackMetricFinalSelection=playbackSelection;
   signalPlaybackMetric('final_error',audio.error?.code||0);
  }
- coverCharge.hide();playbackStallGuard.clear();lyricTransportSync.stop();
  state.audioState='error';state.playbackError=text;
  const status=$('#player-status');if(status){status.textContent=text;status.hidden=false;}
  const ipodStatus=$('#ipod-audio-status');if(ipodStatus)ipodStatus.textContent=text;
