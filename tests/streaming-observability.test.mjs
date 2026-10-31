@@ -56,5 +56,5 @@ test('startup latency measures first Play despite later retries on the same sele
  assert.match(play,/if\(!playbackStartedAt\)playbackStartedAt=performance\.now\(\)/);
  const select=app.slice(app.indexOf('function selectTrack('),app.indexOf('function pause(){'));
  assert.match(select,/playbackSelection\+\+;navigationRevision\+\+;[\s\S]*?playbackStartedAt=0/);
- assert.match(app,/function pause\(\)\{playbackStartedAt=0;coverCharge\.hide\(\)/);
+ assert.match(app,/function pause\(\)\{coverCharge\.hide\(\);clearNextDiscoveryStatus\(\);navigationRevision\+\+;nextDiscovery=null;invalidateSmartFill\(\);playbackStartedAt=0/);
 });
