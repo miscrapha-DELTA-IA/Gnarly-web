@@ -140,3 +140,13 @@ test('continuous speed input is throttled and final speed commit is immediate',(
  assert.match(app,/if\(e\.target\?\.dataset\?\.slider==='speed'\)commitSpeedMix\(\)/);
  assert.doesNotMatch(app,/if\(id==='speed'\)\{state\.speed=v;engine\.setSpeed\(v,state\.pitch\)/);
 });
+
+test('a previously saved Slowed + Reverb mix attaches Studio before first audio.play',()=>{
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ const play=app.slice(app.indexOf('async function play(){'),app.indexOf('function pause(){'));
+ const preattach=play.indexOf("if(engine.nativeTransport&&audioEffectsRequested())void autoEnableStudioEffects();");
+ const start=play.indexOf('const start=audio.play(),unlock=resumePlayerAudio();');
+ assert.ok(preattach>=0&&start>preattach,
+  'create the only Studio audio route before native playback begins');
+ assert.doesNotMatch(play.slice(preattach,start),/await autoEnableStudioEffects\(/);
+});
