@@ -223,7 +223,7 @@ function signalPlaybackMetric(event,code=0,elapsedMs=null){
  const ms=Math.max(0,Math.min(240000,
   Number.isFinite(elapsedMs)?elapsedMs:performance.now()-playbackStartedAt));
  recordStreamingMetric({
-  event,source:audioSourceCategory(audio.currentSrc||audio.src),ms,
+  event,source:audioSourceCategory(audio.currentSrc||audio.src||trackAudioURL(state.current)),ms,
   code:[0,2,3,4].includes(code)?code:0
  });
 }
