@@ -71,6 +71,10 @@ test('Safari rate/pitch writes only when changed and preserves the next-song def
  engine.setSpeed(.8,false);
  near(audio.playbackRate,.8);assert.equal(audio.preservesPitch,false);
  assert.equal(audio.defaultPlaybackRate,.8);
+ engine.setSpeed(1.35,true,{persistDefault:false});
+ assert.equal(audio.defaultPlaybackRate,.8,'during drag no second browser default-rate reset');
+ engine.setSpeed(1.35,true);
+ assert.equal(audio.defaultPlaybackRate,1.35,'slider release saves rate for next song');
  engine.setSpeed(.8,true);
  near(audio.playbackRate,.8);assert.equal(audio.preservesPitch,true);
  assert.equal(engine.ctx,null,'native iOS playback must not claim the media source');
@@ -135,7 +139,7 @@ test('continuous speed input is throttled and final speed commit is immediate',(
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(app,/function scheduleSpeedMix\(\)/);
  assert.match(app,/now-lastSpeedMixTick>=110/);
- assert.match(app,/function commitSpeedMix\(\)/);
+ assert.match(app,/function commitSpeedMix\(\{persistDefault=true\}=\{\}\)/);
  assert.match(app,/if\(id==='speed'\)\{state\.speed=v;scheduleSpeedMix\(\)/);
  assert.match(app,/if\(e\.target\?\.dataset\?\.slider==='speed'\)commitSpeedMix\(\)/);
  assert.doesNotMatch(app,/if\(id==='speed'\)\{state\.speed=v;engine\.setSpeed\(v,state\.pitch\)/);
