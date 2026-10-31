@@ -30,7 +30,7 @@ test('YouTube is a visible GNARLY page section, NOT hidden audio or a blocking p
  const player=html.indexOf('id="player-section"'),official=html.indexOf('id="youtube-player-dialog"');
  const search=html.indexOf('id="omnibox-shell"');
  const cover=html.indexOf('id="cover-button"');
- assert.ok(player>=0&&official>player&&official<cover&&search>cover,'official source must be inside the GNARLY player');
+ assert.ok(player>=0&&official>player&&official<cover&&search>=0&&search<player,'official source stays inside player and search launcher lives in header');
  assert.match(html,/<section id="youtube-player-dialog"[\s\S]*?<\/section>[\s\S]*?<button class="cover-wrap"/);
  assert.match(html,/<section id="youtube-player-dialog" class="youtube-modal official-inline"/);
  assert.match(html,/role="region" aria-label="Reprodução oficial integrada ao GNARLY"/);
