@@ -55,6 +55,7 @@ import {karaokeStageMarkup,KaraokeStage} from './ui/karaoke-stage.js';
 import {createCoverCharge} from './lib/cover-charge.js';
 import {PlaybackStallGuard} from './lib/playback-stall-guard.js';
 import {settleAudioStart} from './lib/audio-start-deadline.js';
+import {playbackTimelineDuration,durationIsInflated} from './lib/playback-duration.js';
 
 const $=(selector)=>document.querySelector(selector);
 const app=$('#app-shell'), background=$('#gnarly-background'), audio=$('#player-audio'), visual=new FluidVisual($('#fluid-canvas'));
@@ -243,7 +244,7 @@ const state={
 // events re-enter the SAME playback, queue and seek functions as onscreen UI.
 function externalSeek(seconds,{fastSeek=false}={}){
  if(!state.current||!Number.isFinite(Number(seconds)))return;
- const duration=Number.isFinite(audio.duration)&&audio.duration>0?audio.duration:Number(state.current.duration);
+ const duration=playbackTimelineDuration(audio,state.current);
  if(!(duration>0))return;
  const position=Math.max(0,Math.min(duration,Number(seconds)));
  try{if(fastSeek&&typeof audio.fastSeek==='function')audio.fastSeek(position);else audio.currentTime=position}catch{return}
@@ -639,12 +640,23 @@ function updatePlayer(){
   $('#youtube-track-art').src=track?.artwork||icon;
  }
  $('#quick-playlist-button').disabled=!track;
- $('#duration-label').textContent=track?.source==='preview'?'PRÉVIA · 0:30':fmt(Number.isFinite(audio.duration)&&audio.duration>0?audio.duration:track?.duration||0);
+ $('#duration-label').textContent=track?.source==='preview'?'PRÉVIA · 0:30':fmt(playbackTimelineDuration(audio,track));
  updatePresetButtons();
  updateBadges(); updateProgress();
  syncSystemPlayback(true);
 }
-function updateProgress(){const d=audio.duration||0,t=audio.currentTime||0,p=d?Math.min(1000,1000*t/d):0;const slider=$('#seek-slider');slider.value=String(p);slider.style.setProperty('--progress',`${p/10}%`);$('#elapsed-label').textContent=fmt(t);if(state.current?.source!=='preview')$('#duration-label').textContent=fmt(d||state.current?.duration||0);$('#ipod-screen-elapsed').textContent=fmt(t);$('#ipod-screen-duration').textContent=fmt(d||state.current?.duration||0);$('#ipod-screen-progress').style.width=(p/10)+'%';externalMedia.position({track:state.current})}
+function updateProgress(){
+ const d=playbackTimelineDuration(audio,state.current),t=audio.currentTime||0;
+ const p=d?Math.min(1000,Math.max(0,1000*t/d)):0;
+ const slider=$('#seek-slider');slider.value=String(p);
+ slider.style.setProperty('--progress',`${p/10}%`);
+ $('#elapsed-label').textContent=fmt(t);
+ if(state.current?.source!=='preview')$('#duration-label').textContent=fmt(d);
+ $('#ipod-screen-elapsed').textContent=fmt(t);
+ $('#ipod-screen-duration').textContent=fmt(d);
+ $('#ipod-screen-progress').style.width=(p/10)+'%';
+ externalMedia.position({track:state.current});
+}
 // Internal artwork uses a separate layer, never the app's backgroundMode.
 // Repeating two identical tiles produces a cyclic lateral loop with no reset jump.
 function safeSurfaceArtwork(raw){
@@ -2241,7 +2253,7 @@ function handleCommand(command){switch(command){
  case 'import':$('#audio-import').click();break;case 'load-lrc':$('#lrc-import').click();break;case 'retry-lyrics':if(state.current)void loadAutoLyrics(state.current);break;case 'lyrics-ai':if(state.current&&!state.lyricsAIWorking)$('#lyrics-ai-import').click();break;case 'load-background':$('#background-import').click();break;case 'use-photo':if(state.backgroundURL){state.backgroundMode='custom';setSetting('backgroundMode','custom');applyBackground();renderActiveSurfaces()}break;case 'adjust-photo':state.photoAdjust=true;renderActiveSurfaces();break;case 'done-photo':state.photoAdjust=false;renderActiveSurfaces();break;case 'show-visual':state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();closeSheet();break;case 'show-cover':if(!state.current?.artwork){toast('Selecione uma música com capa primeiro.');break}state.backgroundMode='cover';setSetting('backgroundMode','cover');applyBackground();closeSheet();break;case 'remove-background':if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL);state.backgroundURL=null;state.photoAdjust=false;state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();toast('Tema animado restaurado');break;case 'clear-queue':clearNextDiscoveryStatus();state.queue.length=0;navigationRevision++;nextDiscovery=null;invalidateSmartFill();queueAudioWarmup.cancel();updatePlayer();renderActiveSurfaces();break;case 'play-youtube':if(state.current?.source==='youtube')openYouTubePlayer(state.current);break;case 'reset-audio':state.speed=1;state.reverb=0;state.bass=0;state.pitch=true;state.preset='ORIGINAL';engine.setSpeed(1,true);engine.setBass(0);engine.setReverb(0);for(const p of ['speed','bass','reverb','pitch','preset'])setSetting(p,p==='pitch'?'yes':p==='preset'?'ORIGINAL':p==='speed'?1:0);renderActiveSurfaces();break;case 'go-theme':openSheet('theme');break;case 'go-experience':openSheet('experience');break;case 'go-reaction':openSheet('reaction');break;case 'go-lyric-style':openSheet('lyric-style');break;case 'restore-theme':state.theme=restoredThemeAfterGnarly(state.previousTheme);setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();break;case 'reset-theme-only':state.theme='ACID';setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();break;case 'reset-experience-only':state.experience='original';setSetting('experience',state.experience);updateBadges();renderActiveSurfaces();break;case 'reset-reaction-only':state.reaction='FLUIDO';setSetting('reaction',state.reaction);updateBadges();renderActiveSurfaces();break;case 'reset-visual':state.theme='ACID';state.experience='original';state.reaction='FLUIDO';state.materialLayer='none';for(const k of ['theme','experience','reaction','materialLayer'])setSetting(k,state[k]);updateBadges();renderActiveSurfaces();break;case 'go-stems':state.musicTab='stems';openSheet('controls');void refreshCloudStemAvailability();break;case 'go-speed-pitch':state.musicTab='speedPitch';openSheet('controls');break;case 'auto-demucs':void startDemucs();break;case 'cancel-stems':state.demucsAbort?.abort();state.stemStatus='Cancelamento solicitado; o provedor pode continuar consumindo a cota.';renderActiveSurfaces();break;case 'load-stems':if(!state.current){toast('Selecione uma música antes de importar Stems.');break}$('#stems-import').click();break;case 'reset-stems':stems.applyPreset('original');renderActiveSurfaces();break;case 'clear-stems':stems.clear();state.stemModel='';state.stemStatus='Mixer desativado. Voltamos ao áudio original.';renderActiveSurfaces();break;case 'go-controls':state.musicTab='speedPitch';openSheet('controls');break;case 'go-performance':openSheet('performance');break;case 'go-library':openSheet('library');break;case 'download-current':if(state.current)void downloadOfflineTrack(state.current);else toast('Selecione uma faixa antes de baixar');break;case 'go-playlists':openSheet('playlists');break;case 'go-favorites':openSheet('favorites');break;case 'go-queue':openSheet('queue');break;case 'karaoke-mic':void karaokeStage.toggleMic();break;case 'karaoke-expand':karaokeStage.open($('#karaoke-expand-button'));closeSheet();break;case 'karaoke-record':void toggleMicRecording();break;case 'karaoke-share-score':void shareKaraokeScore();break;case 'go-karaoke':openSheet('karaoke');karaokeStage.updateScore();break;case 'go-display':openSheet('display');break;case 'toggle-fullscreen':closeSheet();void fullscreen.toggle();break;case 'go-install':openSheet('install');break;case 'close-display':closeSheet();break;case 'hide-display-panels':displayStore.setGroup(['search','presets','controls','header','player','lyrics','export','performance'],false);applyPanelVisibility();renderActiveSurfaces();break;case 'apply-theme':closeSheet();break}}
 function syncVisual(){
  const official=state.audioState==='official'&&officialTrackId===state.current?.id;
- visual.setSong(audio.currentTime||0,Number.isFinite(audio.duration)&&state.current?.source!=='preview'?audio.duration:state.current?.duration||0,state.artworkHue);
+ visual.setSong(audio.currentTime||0,playbackTimelineDuration(audio,state.current),state.artworkHue);
  const pulse=pads.getPulse(),active=!document.hidden&&(state.playing||pads.running||pulse>.009);
  // Loading and failed YouTube sessions must not render the full-resolution
  // shader at 60fps. Restore premium cadence as soon as audio is playing.
@@ -2496,7 +2508,7 @@ $('#youtube-player-dialog').addEventListener('click',e=>{if(e.target.id==='youtu
 document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>applyPreset(b.dataset.preset)));
 $('#next-button').addEventListener('click',next);
 $('#previous-button').addEventListener('click',previous);
-$('#seek-slider').addEventListener('input',e=>{if(Number.isFinite(audio.duration)&&audio.duration)audio.currentTime=audio.duration*Number(e.target.value)/1000;updateProgress()});
+$('#seek-slider').addEventListener('input',e=>{if(playbackTimelineDuration(audio,state.current))audio.currentTime=playbackTimelineDuration(audio,state.current)*Number(e.target.value)/1000;updateProgress()});
 $('#close-sheet').addEventListener('click',closeSheet);$('#panel-backdrop').addEventListener('click',closeSheet);
 for(const el of document.querySelectorAll('[data-drawer]'))el.addEventListener('click',()=>openSheet(el.dataset.drawer));
 for(const host of [$('#sheet-content'),$('#module-dock')])host.addEventListener('pointerdown',e=>{const pad=e.target.closest('[data-dj-pad]');if(!pad||!isModuleOpen('performance')||(e.pointerType==='mouse'&&e.button!==0))return;e.preventDefault();void pads.trigger(Number(pad.dataset.djPad));},{passive:false});
@@ -2862,11 +2874,25 @@ audio.addEventListener('play',()=>{if(!state.current||state.userPaused||audio.pa
  const nextTrack=state.queue[0];
  if(state.playing&&!audio.paused&&nextTrack?.source==='youtube'&&!isOffline(nextTrack?.id)&&canWarmNext({
   current:state.current,next:nextTrack,
-  remaining:(Number.isFinite(audio.duration)?audio.duration:Infinity)-(audio.currentTime||0),
+  remaining:(playbackTimelineDuration(audio,state.current)||Infinity)-(audio.currentTime||0),
   online:navigator.onLine,saveData:navigator.connection?.saveData,
   effectiveType:navigator.connection?.effectiveType
  }))void queueAudioWarmup.start(nextTrack);
 });audio.addEventListener('progress',prepareUpcomingAudio);
+let loggedDurationMismatchSelection=-1;
+function reconcileReportedDuration(){
+ updateProgress();
+ if(durationIsInflated(audio,state.current)&&
+    loggedDurationMismatchSelection!==playbackSelection){
+  loggedDurationMismatchSelection=playbackSelection;
+  // Anonymous numeric diagnostics only, never song/user/URL data.
+  console.debug('GNARLY duration discrepancy (seconds)',{
+   catalog:Math.round(Number(state.current.duration)),
+   media:Math.round(Number(audio.duration))
+  });
+ }
+}
+audio.addEventListener('durationchange',reconcileReportedDuration);
 audio.addEventListener('loadedmetadata',()=>{
  engine.restoreSpeed(); // WebKit can reset the media rate during load.
  updateProgress();const track=state.current;
