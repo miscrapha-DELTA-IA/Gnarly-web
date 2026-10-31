@@ -5,7 +5,8 @@ import {recordStreamingMetric,audioSourceCategory} from '../lib/streaming-metric
 
 test('streaming phase timings are anonymous, bounded and nonblocking',async()=>{
  const payloads=[];
- const events=['pc_queued','pc_ready','first_buffer','rebuffer','recovery_started'];
+ const events=['pc_queued','pc_ready','first_buffer','rebuffer','recovery_started',
+  'duration_reported_long','duration_overrun'];
  for(const event of events){
   const accepted=recordStreamingMetric({event,source:'fast_edge',ms:31000,code:0},{
    sendBeacon:(_url,body)=>{payloads.push(body);return true;},
@@ -39,4 +40,14 @@ test('source classification preserves the R2-first diagnostic split',()=>{
  assert.equal(audioSourceCategory('/fast-audio/PvHL6FfmWJE'),'fast_edge');
  assert.equal(audioSourceCategory('https://nightcorelab.onrender.com/download?url=x'),'render');
  assert.equal(audioSourceCategory('blob:local'),'offline');
+});
+
+test('duration anomalies distinguish header length from audio confirmed beyond official song',()=>{
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ assert.match(app,/function checkDurationAnomaly\(\{confirmPlayback=false\}=\{\}\)/);
+ assert.match(app,/difference<=Math\.max\(25,expected\*\.2\)/);
+ assert.match(app,/audio\.paused\|\|audio\.ended\|\|Number\(audio\.currentTime\)<=expected\+3/);
+ assert.match(app,/signalPlaybackMetric\('duration_reported_long',0,/);
+ assert.match(app,/signalPlaybackMetric\('duration_overrun',0,/);
+ assert.doesNotMatch(app,/audio\.currentTime=expected/);
 });
