@@ -32,8 +32,8 @@ jobs:
           echo $! > /tmp/gnarly-web-test.pid
       - name: Test mobile Stage72 UI
         run: |
-          node tests/header-viewport.browser.mjs
           node tests/stage72-browser.mjs
+          node tests/header-viewport.browser.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
