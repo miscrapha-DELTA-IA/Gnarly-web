@@ -717,18 +717,27 @@ async function loadAutoLyrics(track){
  const immediate=manual||cachedAutoLyrics(track);
  state.lyrics=immediate?.lines||[];state.plainLyrics=immediate?.plainLines||[];
  state.lyricsSource=immediate?.source||null;state.lyricsSynced=!!immediate?.synced;state.lyricsInstrumental=!!immediate?.instrumental;
- state.lyricsLoading=!immediate;state.lastLyric=-2;
+ state.lyricsLoading=!immediate||(!manual&&!immediate?.synced);state.lastLyric=-2;
  state.lyricsStatus=immediate?.status||'Procurando letra automaticamente…';
  syncLyrics();
  if(state.sheet==='karaoke')renderSheet();
- if(immediate)return;
+ // A cached plain result must be displayed immediately AND upgraded to
+ // synchronized LRC. Never freeze an unsynced karaoke result for five minutes.
+ if(manual||immediate?.synced)return;
  try{
-  const found=await autoLyrics(track,{signal:ac.signal});
+  const found=await autoLyrics(track,{signal:ac.signal,preferSynced:!!immediate});
   if(ac.signal.aborted||state.current!==track||lyricWorkshop.active||
     state.lyricsSource==='manual'||state.lyricsSource==='tap-sync')return;
-  state.lyrics=found.lines||[];state.plainLyrics=found.plainLines||[];
-  state.lyricsSource=found.source;state.lyricsSynced=!!found.synced;state.lyricsInstrumental=!!found.instrumental;
-  state.lyricsStatus=found.status;state.lastLyric=-2;
+  // Keep known plain lyrics while a temporary upstream failure is retried;
+  // only replace an existing result with a better verified match.
+  const improved=found.synced||found.plainLines?.length||found.instrumental;
+  if(!improved&&immediate?.plainLines?.length){
+   state.lyricsStatus='Letra carregada · procurando sincronização quando disponível.';
+  }else{
+   state.lyrics=found.lines||[];state.plainLyrics=found.plainLines||[];
+   state.lyricsSource=found.source;state.lyricsSynced=!!found.synced;state.lyricsInstrumental=!!found.instrumental;
+   state.lyricsStatus=found.status;state.lastLyric=-2;
+  }
  }catch{
   if(ac.signal.aborted||state.current!==track)return;
   state.lyricsStatus='Não foi possível consultar as letras neste momento.';
@@ -1064,10 +1073,18 @@ async function recoverNativeAudio(track,initialError=null){
    });
    if(!current())return false;
    if(pcResult==='ready'&&await resumeCompletedPCNode(track,current))return true;
-   if(pcResult==='failed'){
-    reportAudioStatus('O nó não conseguiu preparar esta gravação. Verificando alternativas…');
-   }else if(pcResult==='timeout'){
-    reportAudioStatus('Preparação do áudio excedeu o prazo. Verificando cache…');
+   if(pcResult==='failed'||pcResult==='timeout'){
+    // Real PC failure is not a codec problem. Avoid retrying the same
+    // unprepared media URL twice (both returns are HTTP 503), which was
+    // surfacing falsely as browser MediaError code 4.
+    if(await resumeCachedNative(track,current))return true;
+    if(await recoverIndependentAudio(track,current))return true;
+    if(!current())return false;
+    state.playing=false;updatePlayer();
+    reportAudioError(pcResult==='failed'?
+      'O GNARLY PC Node não conseguiu obter áudio desta gravação. A faixa foi preservada.':
+      'A gravação não ficou pronta dentro do prazo. A faixa foi preservada e pode ser tentada novamente.');
+    return false;
    }
   }
   let rateLimit=await resolvePlaybackCooldown(playbackCooldown);
