@@ -17,6 +17,26 @@ try{
    isMobile:variant.isMobile,hasTouch:variant.hasTouch,deviceScaleFactor:1});
   await page.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#omnibox-toggle');
+  // An old bug: source tests passed because they served repo root while
+  // Cloudflare Pages dist silently omitted the new Search/heart stylesheet.
+  const cssResponse=await page.request.get('http://127.0.0.1:8765/search-hierarchy.css');
+  assert.equal(cssResponse.status(),200,'Published Pages build must serve search CSS');
+  assert.match(cssResponse.headers()['content-type']||'',/text\/css/,
+   'Published search stylesheet must not silently be an HTML fallback');
+  const publishedCss=await cssResponse.text();
+  assert.match(publishedCss,/\.app-shell \.quick-actions #omnibox-shell\{/);
+  assert.match(publishedCss,/grid-template-columns:repeat\(8,minmax\(0,1fr\)\)/);
+  const browserStyles=await page.evaluate(()=>{
+   const topbar=document.querySelector('#topbar');
+   const shell=document.querySelector('#omnibox-shell');
+   const button=document.querySelector('#omnibox-toggle');
+   return {layout:getComputedStyle(topbar).display,shellWidth:shell.getBoundingClientRect().width,
+    buttonWidth:button.getBoundingClientRect().width,buttonRadius:getComputedStyle(button).borderRadius};
+  });
+  if(variant.widths[0]<=650)assert.equal(browserStyles.layout,'grid',
+   'Responsive grid CSS must actually load in deployed site: '+JSON.stringify(browserStyles));
+  assert.ok(browserStyles.shellWidth<=43&&browserStyles.buttonWidth<=43,
+   'Search launcher must actually be compact in the built site: '+JSON.stringify(browserStyles));
   for(const width of variant.widths){
    await page.setViewportSize({width,height:844});
    await page.waitForTimeout(65);

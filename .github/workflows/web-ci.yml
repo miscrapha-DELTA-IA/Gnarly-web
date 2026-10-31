@@ -46,6 +46,8 @@ jobs:
           test -s dist/index.html
           test -s dist/performance.css
           test -s dist/module-dock.css
+          test -s dist/search-hierarchy.css
+          node scripts/verify-pages-build.mjs
           test -s dist/basic-pitch-worker.js
           test -s dist/models/basic-pitch/model.json
           test -s dist/models/basic-pitch/group1-shard1of1.bin
