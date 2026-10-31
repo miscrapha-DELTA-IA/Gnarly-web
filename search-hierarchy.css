@@ -1,0 +1,73 @@
+/* GNARLY search hierarchy — a small search control, full-power sheet.
+ * Loaded after legacy pill and desktop rules; no shader/audio changes.
+ */
+.app-shell .quick-actions #omnibox-shell{
+ position:relative;display:block;flex:0 0 42px;
+ width:42px!important;max-width:42px!important;height:42px;
+ margin:0!important;padding:0;border:0;border-radius:50%;
+ background:transparent;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;
+}
+.app-shell .quick-actions #omnibox-toggle{
+ display:grid;place-items:center;min-width:42px;width:42px;height:42px;
+ min-height:42px;margin:0;padding:0;border-radius:50%;
+ color:#f6fff7;border:1px solid rgba(255,255,255,.21);
+ background:rgba(27,29,28,.48);
+ -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
+ box-shadow:0 0 18px color-mix(in srgb,var(--acid) 7%,transparent);
+ transition:color .18s,border-color .18s,background .18s;
+}
+.app-shell .quick-actions #omnibox-toggle .icon{width:22px;height:22px}
+.app-shell .quick-actions #omnibox-toggle:hover,
+.app-shell .quick-actions #omnibox-toggle[aria-expanded="true"]{
+ color:var(--acid);border-color:color-mix(in srgb,var(--acid) 65%,rgba(255,255,255,.14));
+ background:color-mix(in srgb,var(--acid) 12%,rgba(27,29,28,.65));
+}
+.app-shell .quick-actions #omnibox-toggle:focus-visible{outline:2px solid var(--acid);outline-offset:3px}
+.app-shell .brand-line.search-only{display:flex;justify-content:center}
+.app-shell .brand-line.search-only .brand-identity,
+.app-shell .brand-line.search-only .quick-actions>*:not(#omnibox-shell){display:none!important}
+/* The search launcher stays reachable when the user scrolls through an open
+ * Music/Export/DJ module. It doesn't move the player or GPU canvas.
+ */
+.app-shell:has(.module-drawer.is-open) .brand-line:not([hidden]){
+ position:sticky;top:calc(3px + env(safe-area-inset-top,0px));z-index:7;
+}
+.app-shell:has(.module-drawer.is-open) .brand-line:not([hidden])::before{
+ content:'';position:absolute;inset:-5px -8px;z-index:-1;pointer-events:none;
+ border-radius:16px;background:rgba(9,16,16,.55);
+ -webkit-backdrop-filter:blur(13px);backdrop-filter:blur(13px);
+}
+/* Search and other sheets are VIEWPORT modals, not absolutely placed at the
+ * beginning of the growing page. The Music drawer must never push them away.
+ */
+.app-shell #panel-backdrop{position:fixed;inset:0;z-index:18}
+.app-shell #bottom-sheet{
+ position:fixed;z-index:19;
+ max-height:calc(100dvh - env(safe-area-inset-top,0px) - 8px);
+}
+body.gnarly-sheet-open{overflow:hidden!important;overscroll-behavior:none}
+.app-shell #bottom-sheet .sheet-content{min-height:0;overscroll-behavior:contain}
+@media(max-width:650px){
+ .app-shell .quick-actions #omnibox-shell{
+  flex-basis:clamp(37px,10vw,42px);
+  width:clamp(37px,10vw,42px)!important;
+  max-width:clamp(37px,10vw,42px)!important;
+  height:clamp(37px,10vw,42px);
+ }
+ .app-shell .quick-actions #omnibox-toggle{
+  min-width:37px;width:100%;height:100%;min-height:37px;
+ }
+ .app-shell .quick-actions #omnibox-toggle .icon{width:20px;height:20px}
+ .app-shell #bottom-sheet{width:100%;left:0;right:0;bottom:0}
+}
+@media(min-width:900px) and (pointer:fine){
+ .app-shell #bottom-sheet:not(.display-sheet),
+ .app-shell #bottom-sheet.display-sheet{
+  top:clamp(90px,11vh,125px);bottom:auto;
+  height:min(77dvh,850px);
+  max-height:calc(100dvh - 100px);
+ }
+}
+@media(prefers-reduced-motion:reduce){
+ .app-shell .quick-actions #omnibox-toggle{transition:none}
+}
