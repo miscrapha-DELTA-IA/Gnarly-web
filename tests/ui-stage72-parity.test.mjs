@@ -5,11 +5,13 @@ import {createDisplayStore,renderDisplayPanel} from '../ui/display-panel.js';
 import {renderMusicPanel,mixerValue} from '../ui/music-panel.js';
 const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
-test('Stage72 home has a preset-free player and a retractable Omnibox below it',()=>{
+test('Stage72 keeps preset-free player and full Omnibox tabs behind a compact search loupe',()=>{
  assert.doesNotMatch(html,/<div class="preset-rail"/);
  assert.match(html,/id="player-section"/);
  assert.match(html,/id="omnibox-toggle"/);
- assert.ok(html.indexOf('id="omnibox-toggle"')>html.indexOf('id="player-section"'));
+ assert.ok(html.indexOf('id="omnibox-toggle"')<html.indexOf('id="support-button"'));
+ assert.ok(html.indexOf('id="omnibox-toggle"')<html.indexOf('id="player-section"'));
+ assert.match(app,/const OMNIBOX_TABS=\['search','library','queue','karaoke'\]/);
  assert.match(html,/id="search-toggle".*arraste/);
  assert.match(html,/id="more-button"/);
  assert.match(html,/id="record-button"/);
