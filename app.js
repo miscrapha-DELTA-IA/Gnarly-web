@@ -1604,17 +1604,17 @@ async function importAudio(files){
 // Preserve live feedback but rate-limit heavy decoder changes to ~9 Hz and
 // commit the final setting immediately when the slider is released.
 let speedMixTimer=null,lastSpeedMixTick=-Infinity;
-function commitSpeedMix(){
+function commitSpeedMix({persistDefault=true}={}){
  if(speedMixTimer!==null){clearTimeout(speedMixTimer);speedMixTimer=null}
  lastSpeedMixTick=performance.now();
- engine.setSpeed(state.speed,state.pitch);
+ engine.setSpeed(state.speed,state.pitch,{persistDefault});
  if(stems.ready)stems.sync();
 }
 function scheduleSpeedMix(){
  const now=performance.now();
- if(!state.playing||now-lastSpeedMixTick>=110){commitSpeedMix();return}
+ if(!state.playing||now-lastSpeedMixTick>=110){commitSpeedMix({persistDefault:false});return}
  if(speedMixTimer!==null)return;
- speedMixTimer=setTimeout(()=>{speedMixTimer=null;commitSpeedMix()},Math.max(10,110-(now-lastSpeedMixTick)));
+ speedMixTimer=setTimeout(()=>{speedMixTimer=null;commitSpeedMix({persistDefault:false})},Math.max(10,110-(now-lastSpeedMixTick)));
 }
 // Enable actual DSP automatically at the first user adjustment or playback
 // gesture if saved bass/reverb is nonzero. Keep native iOS lock-screen playback
