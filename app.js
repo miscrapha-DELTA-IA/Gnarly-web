@@ -2953,7 +2953,7 @@ audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('pla
   signalPlaybackMetric(playbackMetricErrorSelection===playbackSelection||
     audioDelivery.attempt>0?'recovered_audio':'first_audio');
   playbackStartedAt=0;
- }prepareUpcomingAudio();void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!audio.error||!state.current||state.userPaused||state.audioState==='official')return;
+ }prepareUpcomingAudio();void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!audio.error||!state.current||state.userPaused||state.audioState==='official'||isAudioAlreadyPlaying())return;
  // Browser MediaError 4 often means the first /fast-audio request got a
  // temporary 503 while the Windows node is still extracting. Record the
  // incident, but DO NOT show a final error or restart a working recovery.
