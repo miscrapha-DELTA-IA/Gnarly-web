@@ -39,7 +39,7 @@ test('single Play is coalesced without moving audio.play away from the original 
 test('pause and selection invalidate prior intents so old promises cannot own playback',()=>{
  const select=app.slice(app.indexOf('function selectTrack('),app.indexOf('function pause(){'));
  const pause=app.slice(app.indexOf('function pause(){'),app.indexOf('let nextDiscovery=null;',app.indexOf('function pause(){')));
- assert.match(select,/playbackSelection\+\+;navigationRevision\+\+;playbackIntentEpoch\+\+;playStartOperation=null/);
+ assert.match(select,/playbackSelection\+\+;navigationRevision\+\+;nextDiscovery=null;invalidateSmartFill\(\);coverCharge\.hide\(\);playbackIntentEpoch\+\+;playStartOperation=null/);
  assert.match(pause,/playbackIntentEpoch\+\+;playStartOperation=null;/);
  assert.match(app,/!state\.userPaused&&\s*playbackIntentEpoch===epoch/);
 });
