@@ -71,7 +71,7 @@ test('both effects are always enabled in UI and automatically attach studio DSP 
 test('enabling studio creates exactly one real WebAudio source; EQ changes live gain',async()=>{
  const previous=globalThis.window;
  class Node{
-  constructor(){this.gain={value:0,setTargetAtTime(){}};this.frequency={value:0};this.fftSize=0;this.smoothingTimeConstant=0;}
+  constructor(){this.gain={value:0,setTargetAtTime(v){this.value=v}};this.frequency={value:0};this.threshold={value:0};this.knee={value:0};this.ratio={value:0};this.attack={value:0};this.release={value:0};this.fftSize=0;this.smoothingTimeConstant=0;}
   connect(){return this}
  }
  class Context{
@@ -80,6 +80,7 @@ test('enabling studio creates exactly one real WebAudio source; EQ changes live 
   createBiquadFilter(){return new Node()}
   createGain(){return new Node()}
   createConvolver(){return new Node()}
+  createDynamicsCompressor(){return new Node()}
   createAnalyser(){const n=new Node();n.frequencyBinCount=512;return n}
   createBuffer(channels,length){return {getChannelData:()=>new Float32Array(length)}}
   resume(){this.state='running';return Promise.resolve()}
@@ -95,7 +96,7 @@ test('enabling studio creates exactly one real WebAudio source; EQ changes live 
   assert.equal(engine.ctx.created,1);
   engine.setBass(8);engine.setReverb(.5);
   assert.equal(engine.bassNode.gain.value,8);
-  assert.equal(engine.wet.gain.value,.5);
+  assert.ok(Math.abs(engine.wet.gain.value-(.5/.7*.5))<1e-6);
   assert.equal(await engine.enableStudioEffects(),true);
   assert.equal(engine.ctx.created,1,'never double-claim the HTML audio element');
   assert.equal(engine.setBackgroundPriority(true),false,'cannot silently restore native after WebAudio owns source');
