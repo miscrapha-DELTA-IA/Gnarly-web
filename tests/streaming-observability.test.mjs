@@ -49,3 +49,12 @@ test('a PC recovery retains its own polling timeout without an additional 20s me
  assert.match(app,/if\(!recoveryOperation&&state\.audioState!=='recovering'\)/);
  assert.match(app,/signalPlaybackMetric\(playbackMetricErrorSelection===playbackSelection/);
 });
+
+test('startup latency measures first Play despite later retries on the same selection',()=>{
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ const play=app.slice(app.indexOf('async function play(){'),app.indexOf('function pause(){'));
+ assert.match(play,/if\(!playbackStartedAt\)playbackStartedAt=performance\.now\(\)/);
+ const select=app.slice(app.indexOf('function selectTrack('),app.indexOf('function pause(){'));
+ assert.match(select,/playbackSelection\+\+;navigationRevision\+\+;[\s\S]*?playbackStartedAt=0/);
+ assert.match(app,/function pause\(\)\{playbackStartedAt=0;coverCharge\.hide\(\)/);
+});
