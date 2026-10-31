@@ -2081,6 +2081,9 @@ function syncVisual(){
  const official=state.audioState==='official'&&officialTrackId===state.current?.id;
  visual.setSong(audio.currentTime||0,Number.isFinite(audio.duration)&&state.current?.source!=='preview'?audio.duration:state.current?.duration||0,state.artworkHue);
  const pulse=pads.getPulse(),active=!document.hidden&&(state.playing||pads.running||pulse>.009);
+ // Loading and failed YouTube sessions must not render the full-resolution
+ // shader at 60fps. Restore premium cadence as soon as audio is playing.
+ visual.setPlaybackActive(active);
  let signal=active?engine.sampleSpectrum():{bass:0,mid:0,treble:0,beat:0,energy:0};
  // Ambient-only procedural motion, never an audio/beat measurement from YouTube.
  if(official&&!document.hidden&&state.reaction!=='DESLIGADO'){
@@ -2774,6 +2777,20 @@ void restoreOfflineLibrary();
 if('serviceWorker' in navigator){
  window.addEventListener('load',()=>{
   navigator.serviceWorker.register('/sw.js',{scope:'/'})
+   .then(()=>{
+    // Warm optional offline UI files only after a free browser idle window.
+    // Never compete with the selected track's initial audio buffer.
+    const warm=()=>{
+     if(document.hidden||state.playing||state.audioState==='loading'||
+        state.audioState==='recovering'){
+      setTimeout(warm,15000);return;
+     }
+     void navigator.serviceWorker.ready.then(reg=>
+      reg.active?.postMessage({type:'GNARLY_WARM_SHELL'})).catch(()=>{});
+    };
+    if(typeof requestIdleCallback==='function')requestIdleCallback(warm,{timeout:8000});
+    else setTimeout(warm,6000);
+   })
    .catch(error=>console.debug('GNARLY offline shell unavailable:',error?.message));
  },{once:true});
 }
