@@ -41,7 +41,7 @@ test('pause and selection invalidate prior intents so old promises cannot own pl
  const pause=app.slice(app.indexOf('function pause(){'),app.indexOf('let nextDiscovery=null;',app.indexOf('function pause(){')));
  assert.match(select,/playbackSelection\+\+;navigationRevision\+\+;playbackIntentEpoch\+\+;playStartOperation=null/);
  assert.match(pause,/playbackIntentEpoch\+\+;playStartOperation=null;/);
- assert.match(app,/playbackIntentEpoch===epoch&&!state\.userPaused/);
+ assert.match(app,/!state\.userPaused&&\s*playbackIntentEpoch===epoch/);
 });
 
 test('a late response can never paint MediaError4 on top of confirmed playback',()=>{
