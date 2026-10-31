@@ -40,4 +40,6 @@ for(const dir of ['assets','lib','ui']){
  walk(join(out,dir));
 }
 writeFileSync(join(out,'offline-assets.json'),JSON.stringify([...new Set(shell)].sort()));
+// Verify the exact files Cloudflare Pages will serve, not only repository sources.
+await import('./verify-pages-build.mjs');
 console.log('Cloudflare Pages staged; offline shell includes '+shell.length+' static resources; media and user data stay in IndexedDB.');
