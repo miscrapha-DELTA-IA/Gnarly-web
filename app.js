@@ -539,6 +539,7 @@ function isAudioAlreadyPlaying(){
   !audio.ended&&audio.readyState>=3;
 }
 function reportAudioError(text){
+ coverCharge.hide();
  // A late /fast-audio failure or an exhausted retry can arrive after the
  // same HTMLAudioElement has already begun audible playback. Do not flash
  // MediaError 4 or turn a working Play button into a broken retry loop.
@@ -546,7 +547,7 @@ function reportAudioError(text){
   coverCharge.hide();playbackStallGuard.clear();state.playbackError='';
   reportAudioStatus('');return;
  }
- coverCharge.hide();playbackStallGuard.clear();lyricTransportSync.stop();
+ playbackStallGuard.clear();lyricTransportSync.stop();
  if(playbackMetricFinalSelection!==playbackSelection){
   playbackMetricFinalSelection=playbackSelection;
   signalPlaybackMetric('final_error',audio.error?.code||0);
@@ -1339,8 +1340,8 @@ async function play(){
  let resolvePending;
  const shared=new Promise(resolve=>{resolvePending=resolve});
  const flight={selection,epoch,promise:shared};playStartOperation=flight;
- const stillSelected=()=>state.current===track&&playbackSelection===selection&&
-  playbackIntentEpoch===epoch&&!state.userPaused;
+ const stillSelected=()=>state.current===track&&playbackSelection===selection&&!state.userPaused&&
+  playbackIntentEpoch===epoch;
  try{
  // Time from the FIRST user Play, not the latest repeated click while the
  // same recording is still being prepared.
