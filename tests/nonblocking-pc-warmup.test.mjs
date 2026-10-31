@@ -16,7 +16,7 @@ test('initial Play remains synchronous; speculative preparation is never awaited
   play.indexOf('await Promise.all([unlock,start])'));
  assert.doesNotMatch(play,/await primeSelectedRecording/);
  assert.match(app,/queueAudioWarmup\.reset\(\);cancelSelectedWarmup\(\)/);
- assert.match(app,/function pause\(\)\{cancelSelectedWarmup\(\)/);
+ assert.match(app,/function pause\(\)\{coverCharge\.hide\(\);cancelSelectedWarmup\(\)/);
 });
 test('first tap health gate is read-only and skips prewarming when PC is offline',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
