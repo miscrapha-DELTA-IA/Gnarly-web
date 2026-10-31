@@ -1391,7 +1391,12 @@ async function play(){
   // the Web Audio graph. Keep duplex while an explicitly authorized mic runs.
   configureBrowserAudioSession({navigatorObject:navigator,
    recording:!!(karaokeStage.mic.active||state.micStream)});
-  // Both calls start synchronously within the user's click gesture (Safari).
+  // For a saved Studio mix, attach the single Web Audio source synchronously
+  // BEFORE native audio.play() starts decoding. This avoids rerouting a song
+  // that has already begun playing when Slowed + Reverb is restored.
+  // Never await before audio.play(): Safari still receives the first gesture.
+  if(engine.nativeTransport&&audioEffectsRequested())void autoEnableStudioEffects();
+  // Both operations start in the same gesture; no extra extraction or load().
   engine.restoreSpeed();
   const start=audio.play(),unlock=resumePlayerAudio();
   // Non-blocking first-tap prewarm. A fast R2 hit still starts immediately;
