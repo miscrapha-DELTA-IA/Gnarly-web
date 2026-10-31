@@ -118,6 +118,8 @@ test('Aa may hide lyrics with a downward swipe and recover them with an upward s
  el.fire('click');
  assert.equal(restored,1);
  assert.equal(cycles,0,'upward gesture does not cycle the font');
+ el.fire('pointerdown',{pointerType:'mouse'});
+ el.fire('pointerup',{pointerType:'mouse'});
  el.fire('contextmenu',{button:2,pointerType:'mouse'});
  assert.equal(opens,1,'font catalog remains accessible on desktop');
  el.fire('pointerdown');
