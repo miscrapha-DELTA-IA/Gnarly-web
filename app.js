@@ -14,7 +14,7 @@ import {OmniboxSession,classifyIntent,rank,normalKey} from './lib/omnibox.js';
 import {instantSearch,personalizedRank} from './lib/live-search.js';
 import {discoveryQueries,mixDiscoveryFeed} from './lib/search-discovery.js';
 import {MUSIC_PRESETS,musicalPreset} from './lib/music-presets.js';
-import {autoLyrics,cachedAutoLyrics,prefetchAutoLyrics} from './lib/lyrics-auto.js';
+import {autoLyrics,cachedAutoLyrics,prefetchAutoLyrics,lyricsIdentity} from './lib/lyrics-auto.js';
 import {LyricSyncWorkshop,serializeManualLRC} from './lib/lyric-sync-workshop.js';
 import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
 import {trackAudioURL,isGnarlyPagesHost,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
@@ -858,7 +858,7 @@ async function enrichSelectedTrack(track,knownDuration=0){
  try{
   const metadata=await resolveTrackMetadata({...track,duration},{signal:controller.signal});
   if(controller.signal.aborted||state.current!==track||!metadata)return;
-  const before=track.artist,changed=applyMetadata(track,metadata);
+  const before=track.artist,oldLyrics=lyricsIdentity(track),changed=applyMetadata(track,metadata);
   if(!changed)return;
   if(isGenericArtist(before)&&!isGenericArtist(track.artist)){
    const choice=lyricFonts.selected(track).style;
@@ -874,7 +874,13 @@ async function enrichSelectedTrack(track,knownDuration=0){
   // resolved; the same media source, queue and playback clock are preserved.
   if(state.playing&&state.queue.length<2&&!isGenericArtist(track.artist))
    void maybeFillSmartQueue();
-  if(isGenericArtist(before)&&!isGenericArtist(track.artist))void loadAutoLyrics(track);
+  // A lookup started with placeholder YouTube metadata may have returned
+  // 'artist unknown' or the wrong unverified title. Metadata enrichment is
+  // asynchronous, so retry whenever the exact lyric identity changes.
+  const newLyrics=lyricsIdentity(track);
+  if(!lyricWorkshop.active&&
+     (oldLyrics.artist!==newLyrics.artist||oldLyrics.title!==newLyrics.title||
+      oldLyrics.duration!==newLyrics.duration))void loadAutoLyrics(track);
   if(state.sheet==='search')displaySearch(state.searchResults);
  }catch(error){if(error?.name!=='AbortError')console.debug('Metadata enrichment unavailable');}
 }
@@ -1052,7 +1058,7 @@ async function recoverNativeAudio(track,initialError=null){
   // Wait only for a real, existing job; never poll indefinitely.
   if(!isOffline(track.id)){
    const pcResult=await waitForPCNodeReady(track.videoId,{
-    current,
+    current,prepare:true,
     onProgress:()=>{state.audioState='recovering';
      reportAudioStatus('Preparando esta gravação no GNARLY PC Node…');}
    });
