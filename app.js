@@ -1000,7 +1000,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
   playbackBackstack.push(state.current);
   if(playbackBackstack.length>30)playbackBackstack.shift();
  }
- playbackSelection++;navigationRevision++;playbackIntentEpoch++;playStartOperation=null;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();
+ playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();playbackIntentEpoch++;playStartOperation=null;
  playbackStartedAt=0;
  playbackStallGuard.clear();lyricTransportSync.stop();
  independentRecoveryController?.abort();independentRecoveryController=null;
@@ -1175,7 +1175,7 @@ async function recoverIndependentAudio(track,isCurrent,verifiedAlternative=null)
 }
 async function recoverNativeAudio(track,initialError=null){
  const selection=playbackSelection,generation=audioDelivery.generation;
- if(!track||track.source!=='youtube'||state.current!==track||state.userPaused)return false;
+ if(!track||track.source!=='youtube'||state.current!==track||state.userPaused||isAudioAlreadyPlaying())return false;
  coverCharge.show('recovering');
  if(recoveryOperation)return recoveryOperation;
  // A 429 followed by a verified-source search needs its own bounded
@@ -1432,12 +1432,7 @@ async function play(){
    }
   }
   if(!stillSelected())return;
-  if(track.source==='youtube'&&!isOffline(track.id)){
-   // A rejected Play promise can be stale even when the current selection
-   // remains the same. Browser 'playing' is stronger than the promise error.
-   if(isAudioAlreadyPlaying())return;
-   await recoverNativeAudio(track,e);
-  }
+  if(track.source==='youtube'&&!isOffline(track.id)){await recoverNativeAudio(track,e);}
   else{state.playing=false;updatePlayer();reportAudioError(track.source==='audius'?'O Audius não conseguiu transmitir esta faixa. Escolha outra música.':track.source==='jamendo'?'O Jamendo não conseguiu transmitir esta faixa. Escolha outra música.':
   track.source==='preview'?'Não foi possível reproduzir a prévia oficial.':'Falha ao reproduzir a cópia local. Remova-a e baixe novamente.');}
   if(stillSelected()&&state.audioState!=='official')console.warn('GNARLY WEB audio play:',e);
