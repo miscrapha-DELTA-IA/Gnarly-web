@@ -52,6 +52,13 @@
       <section class="brand-line" id="brand-line">
         <div class="brand-identity"><img src="./assets/gnarly-icon.png" alt="Logo GNARLY" width="57" height="57" /><div class="brand-copy"><h1>Gnarly</h1><div class="build-badge">WEB α2 · ACID</div></div></div>
         <div class="quick-actions">
+          <div class="omnibox-shell" id="omnibox-shell">
+            <button class="icon-button search-launch glass" id="omnibox-toggle" type="button"
+              aria-controls="bottom-sheet" aria-expanded="false" aria-haspopup="dialog"
+              aria-label="Abrir busca, Mix e biblioteca GNARLY" title="Busca · Mix · Biblioteca">
+              <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
+            </button>
+          </div>
           <a class="icon-button support-heart glass" id="support-button" href="https://apoia.se/gnarlyapp" target="_blank" rel="noopener noreferrer" aria-label="Apoiar o projeto Gnarly pelo Apoia.se" title="Apoiar GNARLY no Apoia.se"><svg class="icon" aria-hidden="true"><use href="#i-heart" /></svg></a>
           <button class="dj-launch glass" id="performance-button" type="button" aria-label="Mostrar ou recolher Performance DJ com 16 pads" aria-controls="module-performance-body" aria-expanded="false" title="Performance · 16 pads">DJ</button>
           <button class="icon-button fullscreen-toggle glass" id="fullscreen-button" type="button" aria-label="Ativar tela cheia" aria-pressed="false" title="Tela cheia"><span data-fullscreen-glyph aria-hidden="true">⛶</span></button>
@@ -160,12 +167,6 @@
           <div class="progress-foot"><span id="elapsed-label">0:00</span><button class="player-surface-pill" id="player-surface-button" type="button" aria-label="Aparência do player" title="Aparência do player" aria-haspopup="menu" aria-controls="player-surface-menu" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-grid" /></svg><span id="player-surface-label" aria-hidden="true">PLAYER</span></button></div>
         </div>
       </section>
-      <div class="omnibox-shell glass" id="omnibox-shell">
-        <button class="omnibox-toggle" id="omnibox-toggle" aria-expanded="false" aria-label="Abrir Omnibox GNARLY">
-          <svg class="icon small"><use href="#i-search" /></svg><span class="omnibox-caption">Buscar música · Mix 15 · Offline</span>
-          <span class="omnibox-accent" aria-hidden="true"></span><svg class="icon small omnibox-chevron" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron" /></svg>
-        </button>
-      </div>
       <section id="module-dock" class="module-dock" aria-label="Janelas retráteis GNARLY">
         <section id="module-controls" class="module-drawer glass" data-module="controls" aria-label="Música, presets e controles">
           <button class="module-handle" type="button" data-module-toggle="controls" aria-controls="module-controls-body" aria-expanded="false">
