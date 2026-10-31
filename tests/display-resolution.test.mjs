@@ -14,7 +14,7 @@ test('desktop background has viewport-wide native GPU drawing surface',()=>{
 test('adaptive quality changes only after sustained missed frames',()=>{
  assert.match(source,/slowWindows>=2/);
  assert.match(source,/stableWindows>=5/);
- assert.match(source,/now-this\.lastQualityChange<8000/);
+ assert.match(source,/this\.slowWindows>=2\?2800:10000/);
  assert.match(source,/this\.nextFrameAt/);
  assert.match(source,/this\.fallbackFrame=c\.createImageData/);
 });
