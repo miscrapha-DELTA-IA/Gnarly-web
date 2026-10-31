@@ -50,6 +50,9 @@
 }
 .app-shell #bottom-sheet{
  position:fixed;z-index:41;
+ /* Legacy @keyframes rise translated the open modal 24px BELOW the viewport
+  * for the first frame. Keep it anchored from the very first paint. */
+ animation:none;
  max-height:calc(100dvh - env(safe-area-inset-top,0px) - 8px);
 }
 html.gnarly-sheet-open,body.gnarly-sheet-open{
