@@ -28,7 +28,7 @@ test('Native creative geometry gains analytical anti-aliasing for toner and cont
 });
 test('GPU remains full resolution and uses refresh-neutral paced rendering',()=>{
  assert.match(engine,/Math\.sqrt\(pixelBudget\/Math\.max\(1,cssWidth\*cssHeight\)\)/);
- assert.match(engine,/const period=this\.reduced\?1000\/12:1000\/60/);
+ assert.match(engine,/this\.playbackActive\?1000\/60:1000\/24/);
  assert.match(engine,/this\.nextFrameAt=Math\.max\(now-period,this\.nextFrameAt\)\+period/);
  assert.match(engine,/g\.uniform1f\(u\.time,elapsed\)/);
  assert.doesNotMatch(engine,/this\.songDuration>0\?this\.songTime:elapsed/);
