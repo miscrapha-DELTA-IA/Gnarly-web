@@ -274,11 +274,14 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
    }
    continue;
   }
+  // The first candidate may now be PC-aware /download, not /stream.
+  // Label transport according to the actual selected route for diagnostics.
+  const progressive=index===0&&!cooldown?.pcNodeOnline;
   const headers=audioHeaders(confirmedProviderLimit?'cached-render-origin':
-   index===0?'progressive-origin':'extraction-origin',
+   progressive?'progressive-origin':'extraction-origin',
    {'Content-Type':upstream.headers.get('Content-Type'),'Cache-Control':'no-store','Server-Timing':
     'edge;dur='+Math.max(0,Date.now()-started)+', origin;desc="'+
-    (confirmedProviderLimit?'cached':index===0?'progressive':'prepared')+'"'});
+    (confirmedProviderLimit?'cached':progressive?'progressive':'prepared')+'"'});
   for(const key of PASSTHROUGH){
    if(upstream.headers.has(key))headers.set(key,upstream.headers.get(key));
   }
