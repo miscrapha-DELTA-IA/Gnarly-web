@@ -2,7 +2,7 @@
  * backend music, user metadata, or cross-origin resources.
  * Downloaded music lives in per-profile IndexedDB; SW caches the interface.
  */
-const SHELL='gnarly-web-shell-20261031-published-search-css-v15';
+const SHELL='gnarly-web-shell-20261101-audio-mix-smart-queue-v16';
 const PREFIX='gnarly-web-shell-';
 const CORE=['/','/index.html','/app.js','/mic.html','/mic.js','/styles.css','/module-dock.css',
  '/performance.css','/ipod-mode.css','/cover-charge.css','/karaoke-art.css','/karaoke-art-refined.css',
@@ -25,6 +25,7 @@ self.addEventListener('install',event=>{
   // compilation, especially on the first navigation after each deployment.
   // Main modules and offline tracks are cached independently as they load.
   const essentials=['/','/index.html','/app.js','/styles.css','/search-hierarchy.css',
+                    '/lib/audio-engine.js','/lib/listening-intelligence.js',
                     '/manifest.webmanifest','/logo.svg'];
   await Promise.allSettled(essentials.map(async path=>{
    const response=await fetch(path,{cache:'reload'});
