@@ -1029,7 +1029,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
   playbackBackstack.push(state.current);
   if(playbackBackstack.length>30)playbackBackstack.shift();
  }
- playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();playbackContinuity.select(playbackSelection);playbackIntentEpoch++;playStartOperation=null;
+ playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();playbackIntentEpoch++;playStartOperation=null;playbackContinuity.select(playbackSelection);
  playbackStartedAt=0;
  playbackStallGuard.clear();lyricTransportSync.stop();
  independentRecoveryController?.abort();independentRecoveryController=null;
