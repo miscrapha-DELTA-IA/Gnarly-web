@@ -118,6 +118,41 @@ test('only one stable DSP graph and one original media source, no rebuild during
  }finally{globalThis.window=previous}
 });
 
+test('explicit Pause gates the entire persistent DSP/reverb bus without graph rebuild',async()=>{
+ const previous=globalThis.window;
+ globalThis.window={AudioContext:FakeAudioContext};
+ try{
+  const audio={muted:false,playbackRate:1,defaultPlaybackRate:1,preservesPitch:true,paused:false};
+  const engine=new WebAudioEngine(audio,{device:{userAgent:'Desktop',platform:'Win32'}});
+  await engine.resume();
+  const ctx=engine.ctx,source=engine.mediaSource;
+  const destination=engine.transportGain;
+  assert.ok(destination,'a dedicated transport gate must exist');
+  assert.ok(engine.masterGain.connected.includes(destination));
+  assert.ok(destination.connected.includes(engine.analyser));
+  engine.setBass(12);engine.setReverb(.7);
+  engine.setTransportPaused(true);
+  near(destination.gain.value,0);
+  assert.equal(engine.transportPaused,true);
+  engine.setBass(8);engine.setReverb(.4);
+  near(destination.gain.value,0,'Bass/Reverb must never reopen paused audio');
+  engine.setTransportPaused(false);
+  near(destination.gain.value,1);
+  assert.equal(engine.ctx,ctx);
+  assert.equal(engine.mediaSource,source);
+  assert.equal(ctx.sources,1);
+ }finally{globalThis.window=previous}
+});
+
+test('user Pause stops sequencer and gates audio before native transport can replay',()=>{
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ const pause=app.slice(app.indexOf('function pause(){'),app.indexOf('let nextDiscovery=null'));
+ assert.match(pause,/engine\.setTransportPaused\(true\);audio\.pause\(\);stems\.pause\(\);pads\.stopLoop\(\)/);
+ assert.match(app,/audio\.addEventListener\('pause',\(\)=>\{lyricTransportSync\.stop\(\);engine\.setTransportPaused\(true\)/);
+ assert.match(app,/audio\.addEventListener\('playing',\(\)=>\{[^\n]*engine\.setTransportPaused\(false\)/);
+ assert.match(app,/if\(state\.userPaused\)\{audio\.pause\(\);return\}/);
+});
+
 test('iPhone preserves native playback until effects are requested; once captured it is one way',async()=>{
  const previous=globalThis.window;
  globalThis.window={AudioContext:FakeAudioContext};

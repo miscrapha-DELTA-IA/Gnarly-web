@@ -1476,7 +1476,7 @@ async function play(){
   resolvePending();
  }
 }
-function pause(){coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;playbackIntentEpoch++;playStartOperation=null;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;audio.pause();stems.pause();closeYouTubePlayer();state.playing=false;updatePlayer()}
+function pause(){coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;playbackIntentEpoch++;playStartOperation=null;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;engine.setTransportPaused(true);audio.pause();stems.pause();pads.stopLoop();closeYouTubePlayer();state.playing=false;updatePlayer()}
 let nextDiscovery=null;
 function clearNextDiscoveryStatus(){if(nextDiscovery)reportAudioStatus('')}
 async function next(){
@@ -2358,7 +2358,9 @@ function handleCommand(command){switch(command){
 function syncVisual(){
  const official=state.audioState==='official'&&officialTrackId===state.current?.id;
  visual.setSong(audio.currentTime||0,state.current?.source!=='preview'?activeTimeline().duration:state.current?.duration||0,state.artworkHue);
- const pulse=pads.getPulse(),active=!document.hidden&&(state.playing||pads.running||pulse>.009);
+ const pulse=pads.getPulse(),active=!document.hidden&&(
+  (state.playing&&state.audioState==='playing'&&!audio.paused&&audio.readyState>=3)||
+  pads.running||pulse>.009);
  // Loading and failed YouTube sessions must not render the full-resolution
  // shader at 60fps. Restore premium cadence as soon as audio is playing.
  visual.setPlaybackActive(active);
@@ -2973,7 +2975,7 @@ async function runSearch(raw,{live=false}={}){
  if(delay)searchDebounce=setTimeout(()=>{searchDebounce=null;void fetchLiveSearch(page)},delay);
  else void fetchLiveSearch(page);
 }
-audio.addEventListener('play',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;updatePlayer()});audio.addEventListener('pause',()=>{lyricTransportSync.stop();stems.pause();state.playing=false;if(state.userPaused||!['loading','recovering'].includes(state.audioState))coverCharge.hide();updatePlayer()});audio.addEventListener('timeupdate',()=>{
+audio.addEventListener('play',()=>{if(state.userPaused){audio.pause();return}if(!state.current||audio.paused||audio.ended)return;updatePlayer()});audio.addEventListener('pause',()=>{lyricTransportSync.stop();engine.setTransportPaused(true);stems.pause();pads.stopLoop();state.playing=false;if(state.userPaused||!['loading','recovering'].includes(state.audioState))coverCharge.hide();updatePlayer()});audio.addEventListener('timeupdate',()=>{
  if(stems.ready)stems.sync();updateProgress();syncLyrics();
  // Only finish if a credible catalog duration strongly contradicts the
  // decoded stream AND the actual clock passes the recording plus grace.
@@ -3037,14 +3039,16 @@ function updateBufferingCue(){
  if(state.audioState==='loading')coverCharge.show('loading');
  else if(state.audioState==='recovering')coverCharge.show('recovering');
  else coverCharge.show('buffering');
- watchPlayback(state.current,playbackSelection,state.audioState==='playing'?'rebuffer':'startup');
+ const rebuffer=state.audioState==='playing'||state.audioState==='buffering';
+ if(rebuffer)state.audioState='buffering'; // Lower shader load while media decoder starves.
+ watchPlayback(state.current,playbackSelection,rebuffer?'rebuffer':'startup');
 }
 audio.addEventListener('waiting',()=>{
  updateBufferingCue();
  if(state.current&&!state.userPaused&&!audio.paused&&!audio.ended)
   reportAudioStatus(state.audioState==='loading'?'Preparando áudio…':'Estabilizando sinal de áudio…');
 });
-audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;hideOptionalOfficialSource();coverCharge.hide();sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
+audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;hideOptionalOfficialSource();coverCharge.hide();engine.setTransportPaused(false);sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
   const ms=Math.round(performance.now()-playbackStartedAt);
   const origin=audio.currentSrc.startsWith('blob:')?'offline':audio.currentSrc.includes('/fast-audio/')?'fast-edge':audio.currentSrc.includes('/audius-audio/')?'audius':audio.currentSrc.includes('/jamendo-audio/')?'jamendo':'render';
   console.debug('GNARLY startup ms',ms,'origin',origin);
