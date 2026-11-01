@@ -231,8 +231,15 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
    continue;
   }
   if([401,403,416,429,503,504].includes(upstream.status)){
-   const status=confirmedProviderLimit&&[429,503,504].includes(upstream.status)?429:upstream.status;
-   const headers={'X-Gnarly-Playback-Source':confirmedProviderLimit?'origin-rate-limited':'origin-unavailable'};
+   // A PC job legitimately preparing audio is NOT a fresh YouTube 429.
+   // The player can continue waiting on that exact PC job instead of
+   // presenting rate-limit failure before the R2 upload is complete.
+   const pcPending=cooldown?.pcNodeOnline&&upstream.status===503&&
+    upstream.headers.get('X-Download-Error')==='pc_node_preparing';
+   const status=pcPending?503:
+    confirmedProviderLimit&&[429,503,504].includes(upstream.status)?429:upstream.status;
+   const headers={'X-Gnarly-Playback-Source':pcPending?'pc-node-preparing':
+    confirmedProviderLimit?'origin-rate-limited':'origin-unavailable'};
    if(confirmedProviderLimit&&status===429)headers['Retry-After']=confirmedProviderLimit;
    else if([429,503,504].includes(status))headers['Retry-After']=retryAfter(upstream);
    if(status===416&&/^bytes \*\/\d+$/.test(upstream.headers.get('Content-Range')||''))
