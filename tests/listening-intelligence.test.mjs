@@ -116,7 +116,8 @@ test('automatic discovery prefers no suggestion to an unwanted replay when catal
  assert.equal(recentlyHeardRecording(a,mem,{now:now+25*3600000}),false,
   'history guard has bounded time and cannot permanently blacklist a song');
 });
-test('app supplies full bounded session backstack to radio and retains exact currently playing speed',()=>{
+test('app supplies full bounded session backstack to radio and retains exact currently playing speed',async()=>{
+ const {readFileSync}=await import('node:fs');
  const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(source,/recent:playbackBackstack\.slice\(-30\)/);
  assert.match(source,/function scheduleSpeedMix\(\)/);
