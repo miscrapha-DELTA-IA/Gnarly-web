@@ -56,6 +56,10 @@ try{
     await new Promise(resolve=>setTimeout(resolve,90));
     const resumedAudibly=!audio.paused&&engine.transportGain.gain.value>.85;
     engine.setBass(10);engine.setReverb(.45);
+    // Bass uses setTargetAtTime: allow the intended smooth .022s
+    // ramp to converge before measuring rather than sampling its previous
+    // 8 dB value on the same JavaScript tick.
+    await new Promise(resolve=>setTimeout(resolve,170));
     return {pausedAudibly,staysSilent,resumedAudibly,rateBeforePause,
      paused:audio.paused,playbackRate:audio.playbackRate,
      defaultRate:audio.defaultPlaybackRate,preservesPitch:audio.preservesPitch,
