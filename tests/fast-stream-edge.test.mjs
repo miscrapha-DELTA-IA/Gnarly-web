@@ -245,3 +245,36 @@ test('PC job preparing during a real Render cooldown stays 503 instead of false 
  assert.equal(response.headers.get('x-gnarly-playback-source'),'pc-node-preparing');
  assert.deepEqual(calls,['/playback-status','/download']);
 });
+
+
+test('PC preparing is not misclassified as origin unavailable even without YouTube cooldown',async()=>{
+ const calls=[];
+ const result=await handleFastAudio({
+  request:request('/fast-audio/ABCDEFGHIJK'),env:{},params:{id:'ABCDEFGHIJK'}
+ },async(url)=>{
+  const p=new URL(url).pathname;calls.push(p);
+  if(p!=='/stream')throw Error('MUST NOT make redundant /download requests');
+  return new Response('preparing',{status:503,headers:{
+   'X-Download-Error':'pc_node_preparing','Retry-After':'3'
+  }});
+ });
+ assert.equal(result.status,503);
+ assert.equal(result.headers.get('x-gnarly-playback-source'),'pc-node-preparing');
+ assert.equal(result.headers.get('retry-after'),'3');
+ assert.deepEqual(calls,['/stream']);
+});
+test('PC queue full is not a misleading YouTube HTTP 429',async()=>{
+ const calls=[];
+ const result=await handleFastAudio({
+  request:request('/fast-audio/ABCDEFGHIJK'),env:{},params:{id:'ABCDEFGHIJK'}
+ },async(url)=>{
+  calls.push(new URL(url).pathname);
+  return new Response('busy',{status:429,headers:{
+   'X-Download-Error':'pc_node_queue_full','Retry-After':'5'
+  }});
+ });
+ assert.equal(result.status,503);
+ assert.equal(result.headers.get('x-gnarly-playback-source'),'pc-node-busy');
+ assert.equal(result.headers.get('retry-after'),'5');
+ assert.deepEqual(calls,['/stream']);
+});

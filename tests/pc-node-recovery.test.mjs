@@ -105,3 +105,50 @@ test('PC node job that appears shortly after original media error is not lost',a
  assert.equal(result,'ready');
  assert.equal(calls,3);
 });
+
+
+test('PC busy is distinct from provider HTTP 429, without repeated extraction',async()=>{
+ const calls=[];
+ const result=await waitForPCNodeReady(ID,{
+  prepare:true,fetcher:async(url,options)=>{
+   calls.push({url,method:options.method});
+   return {ok:false,status:429,json:async()=>({state:'busy'})};
+  },wait:async()=>{throw Error('busy request cannot create work')}
+ });
+ assert.equal(result,'busy');
+ assert.deepEqual(calls.map(x=>x.method),['POST']);
+});
+test('offline PC rejects preparation immediately without reporting an unsupported codec',async()=>{
+ const result=await waitForPCNodeReady(ID,{
+  prepare:true,fetcher:async()=>({ok:false,status:503,json:async()=>({state:'offline'})}),
+  wait:async()=>{throw Error('offline node should not poll')}
+ });
+ assert.equal(result,'unavailable');
+});
+test('transient PC prepare gateway 503 does not discard a previously accepted job',async()=>{
+ let calls=0,clock=0;
+ const result=await waitForPCNodeReady(ID,{
+  prepare:true,now:()=>clock,wait:async ms=>{clock+=ms;},
+  fetcher:async(_url,options)=>{
+   calls++;
+   if(options.method==='POST')return {ok:false,status:503,json:async()=>{throw Error('gateway html')}};
+   return response('ready');
+  }
+ });
+ assert.equal(result,'ready');
+ assert.equal(calls,2);
+});
+test('success recovery accepts player playing event as terminal state, not stale selection',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ const cache=source.slice(source.indexOf('async function resumeCachedNative('),
+  source.indexOf('async function awaitAlreadyPreparingCache('));
+ const pc=source.slice(source.indexOf('async function resumeCompletedPCNode('),
+  source.indexOf('async function recoverIndependentAudio('));
+ for(const helper of [cache,pc]){
+  assert.match(helper,/const selection=playbackSelection/);
+  assert.match(helper,/state\.current!==track\|\|playbackSelection!==selection\|\|state\.userPaused/);
+  assert.doesNotMatch(helper,/await settleAudioStart[\s\S]*?if\(!isCurrent\(\)\)return false/);
+ }
+ assert.match(source,/if\(pcResult==='ready'\)\{[\s\S]*?await resumeCompletedPCNode\(track,current\)[\s\S]*?await resumeCachedNative\(track,current\)/);
+});
