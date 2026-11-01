@@ -54,6 +54,7 @@ import {createFullscreenController} from './lib/fullscreen-controller.js';
 import {karaokeStageMarkup,KaraokeStage} from './ui/karaoke-stage.js';
 import {createCoverCharge} from './lib/cover-charge.js';
 import {PlaybackStallGuard} from './lib/playback-stall-guard.js';
+import {PlaybackContinuityMonitor,playableBufferAhead} from './lib/playback-continuity.js';
 import {mediaTimeline,shouldFinishGhostTail} from './lib/media-duration.js';
 import {settleAudioStart} from './lib/audio-start-deadline.js';
 
@@ -63,6 +64,16 @@ const engine=new WebAudioEngine(audio);
 // Purely visual loading cue, deferred so instant cache hits never flash.
 const coverCharge=createCoverCharge({target:$('#player-section')});
 const playbackStallGuard=new PlaybackStallGuard();
+// Lightweight, local-only diagnosis; never publishes track IDs, URLs or tokens.
+const playbackContinuity=new PlaybackContinuityMonitor({
+ onInstability:(reason,detail)=>{
+  visual.prioritizeAudio(reason);
+  if(reason==='forward_jump')
+   console.warn('GNARLY playback discontinuity (seconds; buffer ahead)',
+    detail.seconds,detail.ahead);
+ }
+});
+window.gnarlyAudioDiagnostics=()=>playbackContinuity.snapshot();
 const stems=new StemMixer(engine,audio);
 const pads=new PerformancePads(engine);
 const midiAnalysis={busy:false,status:'MIDI estimado, sem alterar a reprodução.',notes:[],duration:0,harmony:null,abort:null,trackId:null,revision:0};
@@ -1018,7 +1029,8 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
   playbackBackstack.push(state.current);
   if(playbackBackstack.length>30)playbackBackstack.shift();
  }
- playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();playbackIntentEpoch++;playStartOperation=null;
+ playbackSelection++;playbackContinuity.select(playbackSelection);
+ navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();playbackIntentEpoch++;playStartOperation=null;
  playbackStartedAt=0;
  playbackStallGuard.clear();lyricTransportSync.stop();
  independentRecoveryController?.abort();independentRecoveryController=null;
@@ -2975,7 +2987,13 @@ async function runSearch(raw,{live=false}={}){
  if(delay)searchDebounce=setTimeout(()=>{searchDebounce=null;void fetchLiveSearch(page)},delay);
  else void fetchLiveSearch(page);
 }
-audio.addEventListener('play',()=>{if(state.userPaused){audio.pause();return}if(!state.current||audio.paused||audio.ended)return;updatePlayer()});audio.addEventListener('pause',()=>{lyricTransportSync.stop();engine.setTransportPaused(true);stems.pause();pads.stopLoop();state.playing=false;if(state.userPaused||!['loading','recovering'].includes(state.audioState))coverCharge.hide();updatePlayer()});audio.addEventListener('timeupdate',()=>{
+audio.addEventListener('play',()=>{if(state.userPaused){audio.pause();return}if(!state.current||audio.paused||audio.ended)return;updatePlayer()});audio.addEventListener('pause',()=>{playbackContinuity.resetClock();lyricTransportSync.stop();engine.setTransportPaused(true);stems.pause();pads.stopLoop();state.playing=false;if(state.userPaused||!['loading','recovering'].includes(state.audioState))coverCharge.hide();updatePlayer()});audio.addEventListener('timeupdate',()=>{
+ if(state.current)playbackContinuity.sample({
+  position:audio.currentTime,timeMs:performance.now(),rate:audio.playbackRate,
+  paused:audio.paused,seeking:audio.seeking,readyState:audio.readyState,
+  visible:!document.hidden,source:audio.currentSrc||audio.src,
+  bufferedAhead:playableBufferAhead(audio),duration:activeTimeline().duration
+ });
  if(stems.ready)stems.sync();updateProgress();syncLyrics();
  // Only finish if a credible catalog duration strongly contradicts the
  // decoded stream AND the actual clock passes the recording plus grace.
@@ -3006,7 +3024,8 @@ audio.addEventListener('loadedmetadata',()=>{
   track.duration=audio.duration;
  void enrichSelectedTrack(track,activeTimeline().duration);
  void enrichOfficialAlbumArt(track);
-});audio.addEventListener('seeked',()=>{stems.seek();syncLyrics();karaokeStage.tick(true);if(!audio.paused&&!audio.ended)lyricTransportSync.start()});let completedPlaybackSelection=-1;
+});audio.addEventListener('seeking',()=>playbackContinuity.transportEvent('seeking'));
+audio.addEventListener('seeked',()=>{playbackContinuity.transportEvent('seeked');stems.seek();syncLyrics();karaokeStage.tick(true);if(!audio.paused&&!audio.ended)lyricTransportSync.start()});let completedPlaybackSelection=-1;
 function completeCurrentRecording({ghost=false}={}){
  if(!state.current||state.userPaused||completedPlaybackSelection===playbackSelection)return;
  const completed=playbackSelection;
@@ -3044,11 +3063,15 @@ function updateBufferingCue(){
  watchPlayback(state.current,playbackSelection,rebuffer?'rebuffer':'startup');
 }
 audio.addEventListener('waiting',()=>{
+ playbackContinuity.transportEvent('waiting');visual.prioritizeAudio('waiting');
  updateBufferingCue();
  if(state.current&&!state.userPaused&&!audio.paused&&!audio.ended)
   reportAudioStatus(state.audioState==='loading'?'Preparando áudio…':'Estabilizando sinal de áudio…');
 });
-audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;hideOptionalOfficialSource();coverCharge.hide();engine.setTransportPaused(false);sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
+audio.addEventListener('stalled',()=>{
+ playbackContinuity.transportEvent('stalled');visual.prioritizeAudio('stalled');
+ updateBufferingCue();
+});audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;hideOptionalOfficialSource();coverCharge.hide();engine.setTransportPaused(false);sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
   const ms=Math.round(performance.now()-playbackStartedAt);
   const origin=audio.currentSrc.startsWith('blob:')?'offline':audio.currentSrc.includes('/fast-audio/')?'fast-edge':audio.currentSrc.includes('/audius-audio/')?'audius':audio.currentSrc.includes('/jamendo-audio/')?'jamendo':'render';
   console.debug('GNARLY startup ms',ms,'origin',origin);
@@ -3085,6 +3108,7 @@ audio.addEventListener('stalled',updateBufferingCue);audio.addEventListener('pla
 // Source swaps can trigger an asynchronous browser reset to 1x. Repair only
 // unexpected rate changes: a user preset/slider has already changed engine.speed.
 audio.addEventListener('ratechange',()=>{
+ playbackContinuity.transportEvent('ratechange');
  if(state.current&&(!Number.isFinite(Number(audio.playbackRate))||
     Math.abs(Number(audio.playbackRate)-engine.speed)>0.001))engine.restoreSpeed();
 });
@@ -3123,7 +3147,7 @@ window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select
  if(routeMenuKeyboard(e))return;
  if(e.code==='Space'){e.preventDefault();state.playing?pause():void play()}if(e.code==='Escape'){if(!$('#player-surface-menu').hidden){e.preventDefault();closePlayerSurfaceMenu(true);return}closeSheet();closeYouTubePlayer()};if(e.key==='ArrowRight'&&state.current)audio.currentTime=Math.min(audio.duration||0,audio.currentTime+5);if(e.key==='ArrowLeft'&&state.current)audio.currentTime=Math.max(0,audio.currentTime-5)});
 window.addEventListener('dragover',e=>{if(e.dataTransfer?.types.includes('Files')){e.preventDefault();app.classList.add('dragover')}});window.addEventListener('dragleave',e=>{if(!e.relatedTarget)app.classList.remove('dragover')});window.addEventListener('drop',e=>{e.preventDefault();app.classList.remove('dragover');importAudio(e.dataTransfer?.files||[])});
-document.addEventListener('visibilitychange',()=>{if(document.hidden){lyricTransportSync.stop();karaokeStage.mic.stop();karaokeStage.scorer.stop();karaokeStage.updateScore();if(pads.running)pads.stopLoop();}else if(!audio.paused&&!audio.ended&&state.current)lyricTransportSync.start();syncSystemPlayback(true);});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){playbackContinuity.resetClock();lyricTransportSync.stop();karaokeStage.mic.stop();karaokeStage.scorer.stop();karaokeStage.updateScore();if(pads.running)pads.stopLoop();}else if(!audio.paused&&!audio.ended&&state.current)lyricTransportSync.start();syncSystemPlayback(true);});
 window.addEventListener('storage',event=>{if(event.key===MEMORY_KEY){listeningMemory.refresh();if(state.sheet==='search'||state.sheet==='queue')renderSheet();}});
 window.addEventListener('beforeunload',()=>{coverCharge.destroy();playbackStallGuard.clear();lyricTransportSync.stop();karaokeStage.destroy();fontPreviewObserver?.disconnect();midiAnalysis.abort?.abort();lyricsAIController?.abort();metadataAbort?.abort();pads.destroy();state.micRecorder?.state==='recording'&&state.micRecorder.stop();state.micStream?.getTracks()?.forEach(x=>x.stop());state.demucsAbort?.abort();stems.clear();for(const url of offlineURLs.values())URL.revokeObjectURL(url);if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL);if(ipodSkinURL)URL.revokeObjectURL(ipodSkinURL)});
 applyPlayerSurfaceMode(state.playerSurfaceMode,{persist:false});updatePlayer();applyPanelVisibility();
