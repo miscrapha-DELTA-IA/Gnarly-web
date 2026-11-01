@@ -1029,8 +1029,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={})
   playbackBackstack.push(state.current);
   if(playbackBackstack.length>30)playbackBackstack.shift();
  }
- playbackSelection++;playbackContinuity.select(playbackSelection);
- navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();playbackIntentEpoch++;playStartOperation=null;
+ playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();playbackContinuity.select(playbackSelection);playbackIntentEpoch++;playStartOperation=null;
  playbackStartedAt=0;
  playbackStallGuard.clear();lyricTransportSync.stop();
  independentRecoveryController?.abort();independentRecoveryController=null;
@@ -2987,7 +2986,7 @@ async function runSearch(raw,{live=false}={}){
  if(delay)searchDebounce=setTimeout(()=>{searchDebounce=null;void fetchLiveSearch(page)},delay);
  else void fetchLiveSearch(page);
 }
-audio.addEventListener('play',()=>{if(state.userPaused){audio.pause();return}if(!state.current||audio.paused||audio.ended)return;updatePlayer()});audio.addEventListener('pause',()=>{playbackContinuity.resetClock();lyricTransportSync.stop();engine.setTransportPaused(true);stems.pause();pads.stopLoop();state.playing=false;if(state.userPaused||!['loading','recovering'].includes(state.audioState))coverCharge.hide();updatePlayer()});audio.addEventListener('timeupdate',()=>{
+audio.addEventListener('play',()=>{if(state.userPaused){audio.pause();return}if(!state.current||audio.paused||audio.ended)return;updatePlayer()});audio.addEventListener('pause',()=>{lyricTransportSync.stop();engine.setTransportPaused(true);stems.pause();pads.stopLoop();playbackContinuity.resetClock();state.playing=false;if(state.userPaused||!['loading','recovering'].includes(state.audioState))coverCharge.hide();updatePlayer()});audio.addEventListener('timeupdate',()=>{
  if(state.current)playbackContinuity.sample({
   position:audio.currentTime,timeMs:performance.now(),rate:audio.playbackRate,
   paused:audio.paused,seeking:audio.seeking,readyState:audio.readyState,
