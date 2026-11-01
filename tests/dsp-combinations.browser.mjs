@@ -44,7 +44,20 @@ try{
     }
     engine.setSpeed(.8,false);engine.setBass(10);engine.setReverb(.45);
     await new Promise(resolve=>setTimeout(resolve,250));
-    return {paused:audio.paused,playbackRate:audio.playbackRate,
+    const rateBeforePause=audio.playbackRate;
+    engine.setTransportPaused(true);audio.pause();
+    await new Promise(resolve=>setTimeout(resolve,100));
+    const pausedAudibly=audio.paused&&engine.transportGain.gain.value<.05;
+    // Reverb and EQ automation while paused must not reopen the output bus.
+    engine.setBass(8);engine.setReverb(.5);
+    await new Promise(resolve=>setTimeout(resolve,60));
+    const staysSilent=engine.transportGain.gain.value<.05;
+    await audio.play();engine.setTransportPaused(false);
+    await new Promise(resolve=>setTimeout(resolve,90));
+    const resumedAudibly=!audio.paused&&engine.transportGain.gain.value>.85;
+    engine.setBass(10);engine.setReverb(.45);
+    return {pausedAudibly,staysSilent,resumedAudibly,rateBeforePause,
+     paused:audio.paused,playbackRate:audio.playbackRate,
      defaultRate:audio.defaultPlaybackRate,preservesPitch:audio.preservesPitch,
      elapsed:audio.currentTime-begin,ctxState:engine.ctx.state,
      oneGraph:engine.ctx===originalCtx,oneMediaSource:engine.mediaSource===originalSrc,
@@ -52,6 +65,10 @@ try{
      audioError:audio.error?.code||0};
    }finally{audio.pause();URL.revokeObjectURL(url);audio.remove()}
   },scenario);
+  assert.equal(result.pausedAudibly,true,scenario+' actual DSP output must gate on Pause '+JSON.stringify(result));
+  assert.equal(result.staysSilent,true,scenario+' effects must not reopen Pause '+JSON.stringify(result));
+  assert.equal(result.resumedAudibly,true,scenario+' same graph resumes audio cleanly '+JSON.stringify(result));
+  assert.ok(Math.abs(result.rateBeforePause-.8)<.01,scenario+' Pause must not mutate speed');
   assert.equal(result.audioError,0,scenario+' '+JSON.stringify(result));
   assert.equal(result.paused,false,scenario+' media must keep playing');
   assert.equal(result.ctxState,'running',scenario+' Web Audio must keep running');
