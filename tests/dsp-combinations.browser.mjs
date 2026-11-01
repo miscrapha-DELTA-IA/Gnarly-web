@@ -56,11 +56,34 @@ try{
     await new Promise(resolve=>setTimeout(resolve,90));
     const resumedAudibly=!audio.paused&&engine.transportGain.gain.value>.85;
     engine.setBass(10);engine.setReverb(.45);
+    // Sustained preset scenario, not merely a 250ms happy path: decode
+    // browser media for >2s with BOTH slowdown and algorithmic reverb on.
+    // Uses a local synthetic WAV blob, never network or YouTube.
+    const {PlaybackContinuityMonitor,playableBufferAhead}=
+     await import('./lib/playback-continuity.js');
+    const monitor=new PlaybackContinuityMonitor(),baselineSrc=audio.currentSrc;
+    monitor.select(1);
+    let waitEvents=0;
+    const noteWait=()=>waitEvents++;
+    audio.addEventListener('waiting',noteWait);audio.addEventListener('stalled',noteWait);
+    const sustainedStart=audio.currentTime;
+    for(let i=0;i<24;i++){
+     await new Promise(resolve=>setTimeout(resolve,100));
+     monitor.sample({position:audio.currentTime,timeMs:performance.now(),
+      rate:audio.playbackRate,paused:audio.paused,seeking:audio.seeking,
+      readyState:audio.readyState,visible:true,source:audio.currentSrc,
+      duration:audio.duration,bufferedAhead:playableBufferAhead(audio)});
+    }
+    const sustainedElapsed=audio.currentTime-sustainedStart;
+    const sustainedJumps=monitor.snapshot().forwardJumps;
+    const singleSource=audio.currentSrc===baselineSrc;
+    audio.removeEventListener('waiting',noteWait);audio.removeEventListener('stalled',noteWait);
     // Bass uses setTargetAtTime: allow the intended smooth .022s
     // ramp to converge before measuring rather than sampling its previous
     // 8 dB value on the same JavaScript tick.
     await new Promise(resolve=>setTimeout(resolve,170));
     return {pausedAudibly,staysSilent,resumedAudibly,rateBeforePause,
+     sustainedElapsed,sustainedJumps,waitEvents,singleSource,
      paused:audio.paused,playbackRate:audio.playbackRate,
      defaultRate:audio.defaultPlaybackRate,preservesPitch:audio.preservesPitch,
      elapsed:audio.currentTime-begin,ctxState:engine.ctx.state,
@@ -73,6 +96,14 @@ try{
   assert.equal(result.staysSilent,true,scenario+' effects must not reopen Pause '+JSON.stringify(result));
   assert.equal(result.resumedAudibly,true,scenario+' same graph resumes audio cleanly '+JSON.stringify(result));
   assert.ok(Math.abs(result.rateBeforePause-.8)<.01,scenario+' Pause must not mutate speed');
+  assert.ok(result.sustainedElapsed>1.6,
+   scenario+' combined DSP must advance smoothly for the sustained 2.4s test '+JSON.stringify(result));
+  assert.equal(result.sustainedJumps,0,
+   scenario+' unchanged preset cannot create forward audio discontinuities '+JSON.stringify(result));
+  assert.equal(result.waitEvents,0,
+   scenario+' local buffered source must not enter a waiting/stalled loop '+JSON.stringify(result));
+  assert.equal(result.singleSource,true,
+   scenario+' combined DSP must keep the original media URL '+JSON.stringify(result));
   assert.equal(result.audioError,0,scenario+' '+JSON.stringify(result));
   assert.equal(result.paused,false,scenario+' media must keep playing');
   assert.equal(result.ctxState,'running',scenario+' Web Audio must keep running');

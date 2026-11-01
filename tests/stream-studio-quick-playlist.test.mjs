@@ -71,7 +71,7 @@ test('both effects are always enabled in UI and automatically attach studio DSP 
 test('enabling studio creates exactly one real WebAudio source; EQ changes live gain',async()=>{
  const previous=globalThis.window;
  class Node{
-  constructor(){this.gain={value:0,setTargetAtTime(v){this.value=v}};this.frequency={value:0};this.threshold={value:0};this.knee={value:0};this.ratio={value:0};this.attack={value:0};this.release={value:0};this.fftSize=0;this.smoothingTimeConstant=0;}
+  constructor(){this.gain={value:0,setTargetAtTime(v){this.value=v}};this.frequency={value:0};this.delayTime={value:0};this.threshold={value:0};this.knee={value:0};this.ratio={value:0};this.attack={value:0};this.release={value:0};this.fftSize=0;this.smoothingTimeConstant=0;}
   connect(){return this}
  }
  class Context{
@@ -79,7 +79,8 @@ test('enabling studio creates exactly one real WebAudio source; EQ changes live 
   createMediaElementSource(){this.created++;return new Node()}
   createBiquadFilter(){return new Node()}
   createGain(){return new Node()}
-  createConvolver(){return new Node()}
+  createConvolver(){throw new Error('algorithmic hall must not allocate ConvolverNode')}
+  createDelay(){return new Node()}
   createDynamicsCompressor(){return new Node()}
   createAnalyser(){const n=new Node();n.frequencyBinCount=512;return n}
   createBuffer(channels,length){return {getChannelData:()=>new Float32Array(length)}}

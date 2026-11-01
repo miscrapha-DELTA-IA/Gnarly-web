@@ -17,6 +17,7 @@ class FakeNode{
   this.connected=[];this.gain=new FakeParam(1);this.frequency=new FakeParam();
   this.Q=new FakeParam();this.threshold=new FakeParam();this.knee=new FakeParam();
   this.ratio=new FakeParam();this.attack=new FakeParam();this.release=new FakeParam();
+  this.delayTime=new FakeParam();
  }
  connect(node){this.connected.push(node);return node}
  disconnect(node){if(!node){this.connected=[];return}this.connected=this.connected.filter(x=>x!==node)}
@@ -30,7 +31,8 @@ class FakeAudioContext{
  }
  createMediaElementSource(){this.sources++;return new FakeNode()}
  createGain(){return new FakeNode()}
- createConvolver(){return new FakeNode()}
+ createConvolver(){throw new Error('Algorithmic reverb must never allocate ConvolverNode')}
+ createDelay(){return new FakeNode()}
  createBiquadFilter(){return new FakeNode()}
  createDynamicsCompressor(){return new FakeNode()}
  createAnalyser(){const n=new FakeNode();n.frequencyBinCount=512;return n}
@@ -80,6 +82,30 @@ test('Safari rate/pitch writes only when changed and preserves the next-song def
  assert.equal(engine.ctx,null,'native iOS playback must not claim the media source');
 });
 
+test('active desktop DSP changes the decoder once, never the default playback rate twice',()=>{
+ const writes={pitch:0,legacy:0,rate:0,defaultRate:0};
+ const internal={pitch:true,legacy:true,rate:1,defaultRate:1};
+ const audio={paused:false,muted:false};
+ for(const [key,counter,slot] of [
+  ['preservesPitch','pitch','pitch'],['webkitPreservesPitch','legacy','legacy'],
+  ['playbackRate','rate','rate'],['defaultPlaybackRate','defaultRate','defaultRate']
+ ]){
+  Object.defineProperty(audio,key,{configurable:true,
+   get(){return internal[slot]},
+   set(value){writes[counter]++;internal[slot]=value}});
+ }
+ const engine=new WebAudioEngine(audio,{device:{userAgent:'Desktop',platform:'Win32'}});
+ engine.setSpeed(.8,false);
+ assert.deepEqual(writes,{pitch:1,legacy:0,rate:1,defaultRate:0});
+ engine.setSpeed(.8,false);
+ assert.deepEqual(writes,{pitch:1,legacy:0,rate:1,defaultRate:0},
+  'applying the identical preset twice does not reconfigure the decoder');
+ engine.setSpeed(1.25,false);
+ assert.equal(writes.rate,2);assert.equal(writes.defaultRate,0);
+ audio.paused=true;engine.setSpeed(1.25,false);
+ assert.equal(writes.defaultRate,1,'update default only after player is paused');
+});
+
 test('only one stable DSP graph and one original media source, no rebuild during presets',async()=>{
  const previous=globalThis.window;
  globalThis.window={AudioContext:FakeAudioContext};
@@ -95,8 +121,10 @@ test('only one stable DSP graph and one original media source, no rebuild during
   assert.equal(engine.limiter.ratio.value,16);
   assert.equal(engine.limiter.attack.value,.003);
   assert.equal(engine.limiter.release.value,.08);
-  assert.equal(engine.eqOutput.connected.includes(engine.convolver),false,
-   'convolver input disconnected when reverb is off');
+  assert.equal(engine.eqOutput.connected.includes(engine.hall.input),false,
+   'hall send is bypassed when reverb is off');
+  assert.equal(engine.hall.voices.length,4);
+  const hall=engine.hall;
   engine.setBass(12);
   engine.setReverb(.4);
   near(engine.bassNode.gain.value,12);
@@ -104,16 +132,17 @@ test('only one stable DSP graph and one original media source, no rebuild during
   near(engine.masterGain.gain.value,Math.pow(10,-1.5/20));
   near(engine.wet.gain.value,.4/.7*.5);
   near(engine.dry.gain.value,1-.4/.7*.5);
-  assert.equal(engine.eqOutput.connected.filter(x=>x===engine.convolver).length,1);
+  assert.equal(engine.eqOutput.connected.filter(x=>x===engine.hall.input).length,1);
   for(let i=0;i<30;i++){
    engine.setSpeed(.5+i/30,true);engine.setBass(i/3);engine.setReverb(.1+i/60);
   }
   await engine.resume();
   assert.equal(engine.ctx,graph);
   assert.equal(graph.sources,1);
-  assert.equal(engine.eqOutput.connected.filter(x=>x===engine.convolver).length,1);
+  assert.equal(engine.eqOutput.connected.filter(x=>x===engine.hall.input).length,1);
+  assert.equal(engine.hall,hall,'wet changes never rebuild the algorithmic hall');
   engine.setReverb(0);
-  assert.equal(engine.eqOutput.connected.includes(engine.convolver),false);
+  assert.equal(engine.eqOutput.connected.includes(engine.hall.input),false);
   near(engine.wet.gain.value,0);
  }finally{globalThis.window=previous}
 });
@@ -170,10 +199,10 @@ test('iPhone preserves native playback until effects are requested; once capture
  }finally{globalThis.window=previous}
 });
 
-test('continuous speed input is throttled and final speed commit is immediate',()=>{
+test('live speed drag updates are debounced; a release immediately commits the desired speed',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(app,/function scheduleSpeedMix\(\)/);
- assert.match(app,/now-lastSpeedMixTick>=110/);
+ assert.match(app,/speedMixTimer=setTimeout\(\(\)=>\{[\s\S]*?\},220\)/);
  assert.match(app,/function commitSpeedMix\(\{persistDefault=true\}=\{\}\)/);
  assert.match(app,/if\(id==='speed'\)\{state\.speed=v;scheduleSpeedMix\(\)/);
  assert.match(app,/if\(e\.target\?\.dataset\?\.slider==='speed'\)commitSpeedMix\(\)/);
