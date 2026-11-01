@@ -128,6 +128,36 @@ async function edgeAudio(bucket,id,range,headOnly){
  }
  return new Response(headOnly?null:obj.body,{status:200,headers});
 }
+/** Cache-only means ALL trusted cache layers, not just this edge bucket.
+ * A browser can see a 429 while the exact recording already exists in
+ * Render R2/local cache. This path is explicitly read-only in the backend:
+ * it NEVER enqueues, extracts or contacts YouTube.
+ */
+export async function cachedRenderAudio({id,range=null,signal=null,bucket=null,waitUntil=null,timeoutMs=6500},fetcher=fetch){
+ const origin=new URL('/download',RENDER);
+ origin.searchParams.set('url','https://www.youtube.com/watch?v='+id);
+ origin.searchParams.set('delivery','browser');
+ origin.searchParams.set('cache_only','1');
+ let upstream;
+ try{
+  upstream=await fetchAudioHeaders(fetcher,origin.href,{
+   method:'GET',headers:range?{Range:range}:{},redirect:'manual'
+  },{signal,timeoutMs});
+ }catch{return null}
+ if(!validAudioResponse(upstream)){discardAudioBody(upstream);return null}
+ const headers=audioHeaders('cached-render-origin',{
+  'Content-Type':upstream.headers.get('Content-Type'),'Cache-Control':'no-store'
+ });
+ for(const key of PASSTHROUGH){
+  if(upstream.headers.has(key))headers.set(key,upstream.headers.get(key));
+ }
+ if(!upstream.headers.has('content-length'))headers.delete('content-length');
+ if(!upstream.headers.has('content-range'))headers.delete('content-range');
+ // Promote only a complete, valid M4A, never a partial or error body.
+ const body=promoteCompleteStream({upstream,bucket,id,waitUntil});
+ return new Response(body,{status:upstream.status,headers});
+}
+
 /** A cheap, read-only circuit check on uncached tracks. Never accesses
  * YouTube, extracts audio, or blocks R2 hits. Degrades open on network errors.
  */
@@ -190,9 +220,12 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
  // A confirmed global upstream cooldown does not make R2 hits unavailable.
  // The web player asks for *cached-only* playback after observing a real 429.
  // A miss must NEVER issue /stream or /download or reset origin cooldown.
- if(new URL(request.url).searchParams.get('cached-only')==='1')
-  return reply(503,'Faixa ainda não armazenada no cache',{
+ if(new URL(request.url).searchParams.get('cached-only')==='1'){
+  const cached=await cachedRenderAudio({id,range,signal:request.signal,
+   bucket:env?.GNARLY_AUDIO_R2,waitUntil:contextWaitUntil},fetcher);
+  return cached||reply(503,'Faixa ainda não armazenada no cache',{
    'Retry-After':'30','X-Gnarly-Playback-Source':'cache-miss-during-cooldown'});
+ }
  // The Render-origin extraction IP is frequently in a provider cooldown.
  // Fail in milliseconds instead of creating a 13-40 s spinner and repeated
  // yt-dlp attempts. A cache hit already returned above without this probe.
