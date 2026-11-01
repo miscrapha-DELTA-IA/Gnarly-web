@@ -144,8 +144,14 @@ export async function originCooldown(fetcher,signal,{timeoutMs=1500}={}){
    discardAudioBody(response);return null;
   }
   const data=await response.json();
-  const seconds=Number(data?.retry_after);
-  return data?.status==='upstream_rate_limited'&&Number.isFinite(seconds)&&seconds>0?
+  // "ready" can mean the PC Node is online, not that yt-dlp on Render
+  // recovered. Honor the origin-specific cooldown even when status=ready.
+  // A confirmed cooldown must never trigger /stream's second YouTube probe.
+  const originSeconds=Number(data?.youtube_retry_after);
+  const statusSeconds=Number(data?.retry_after);
+  const seconds=Number.isFinite(originSeconds)&&originSeconds>0?originSeconds:
+   data?.status==='upstream_rate_limited'?statusSeconds:0;
+  return Number.isFinite(seconds)&&seconds>0?
    String(Math.max(1,Math.min(3600,Math.ceil(seconds)))):null;
  }catch{return null}
  finally{clearTimeout(timer);signal?.removeEventListener('abort',abort)}
