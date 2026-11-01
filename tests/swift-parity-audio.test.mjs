@@ -148,7 +148,7 @@ test('user Pause stops sequencer and gates audio before native transport can rep
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  const pause=app.slice(app.indexOf('function pause(){'),app.indexOf('let nextDiscovery=null'));
  assert.match(pause,/engine\.setTransportPaused\(true\);audio\.pause\(\);stems\.pause\(\);pads\.stopLoop\(\)/);
- assert.match(app,/audio\.addEventListener\('pause',\(\)=>\{engine\.setTransportPaused\(true\)/);
+ assert.match(app,/audio\.addEventListener\('pause',\(\)=>\{lyricTransportSync\.stop\(\);engine\.setTransportPaused\(true\)/);
  assert.match(app,/audio\.addEventListener\('playing',\(\)=>\{[^\n]*engine\.setTransportPaused\(false\)/);
  assert.match(app,/if\(state\.userPaused\)\{audio\.pause\(\);return\}/);
 });
