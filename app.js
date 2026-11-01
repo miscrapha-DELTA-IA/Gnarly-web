@@ -1642,22 +1642,23 @@ async function importAudio(files){
 // Enable actual DSP automatically at the first user adjustment or playback
 // gesture if saved bass/reverb is nonzero. Keep native iOS lock-screen playback
 // when both controls are at zero; never build a graph just to render sliders.
-// Browser playbackRate changes can rebuild native pitch-stretch decoding.
- // Commit continuously edited speed at most ~9 Hz while playing, then
- // commit the exact final value when the input emits change. Never reset
- // speed as a side-effect of changing bass or reverb.
-let speedMixTimer=null,lastSpeedMixTick=-Infinity;
+// HTMLMediaElement playbackRate is a decoder reconfiguration, NOT an
+// AVAudioUnitVarispeed parameter. iOS can update varispeed at control rate;
+// Chromium/WebKit may produce brief gaps if retimed every 110 ms during drag.
+// Keep the live slider responsive, but change the decoder only after the
+// user's input settles, or immediately on its final "change" event.
+let speedMixTimer=null;
 function commitSpeedMix({persistDefault=true}={}){
  if(speedMixTimer!==null){clearTimeout(speedMixTimer);speedMixTimer=null}
- lastSpeedMixTick=performance.now();
  engine.setSpeed(state.speed,state.pitch,{persistDefault});
  if(stems.ready)stems.sync();
 }
 function scheduleSpeedMix(){
- const now=performance.now();
- if(!state.playing||now-lastSpeedMixTick>=110){commitSpeedMix({persistDefault:false});return}
- if(speedMixTimer!==null)return;
- speedMixTimer=setTimeout(()=>{speedMixTimer=null;commitSpeedMix({persistDefault:false})},Math.max(10,110-(now-lastSpeedMixTick)));
+ if(!state.playing){commitSpeedMix({persistDefault:false});return}
+ if(speedMixTimer!==null)clearTimeout(speedMixTimer);
+ speedMixTimer=setTimeout(()=>{
+  speedMixTimer=null;commitSpeedMix({persistDefault:false});
+ },220);
 }
 let studioEffectsPending=null;
 function audioEffectsRequested(){return state.bass>0||state.reverb>0}
