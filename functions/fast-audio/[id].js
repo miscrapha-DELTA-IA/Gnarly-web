@@ -151,9 +151,17 @@ export async function originCooldown(fetcher,signal,{timeoutMs=1500}={}){
   const statusSeconds=Number(data?.retry_after);
   const seconds=Number.isFinite(originSeconds)&&originSeconds>0?originSeconds:
    data?.status==='upstream_rate_limited'?statusSeconds:0;
-  return Number.isFinite(seconds)&&seconds>0?
-   {retryAfter:String(Math.max(1,Math.min(3600,Math.ceil(seconds)))),
-    pcNodeOnline:data?.pc_node_online===true}:null;
+  // An online, authorized PC worker is an alternative delivery path even
+  // when Render's YouTube cooldown is zero. Select /download directly so
+  // its R2/local/PC queue checks execute before any yt-dlp calls. Sending
+  // /stream first only adds a redundant 12s request and exposes a 503 as
+  // a misleading browser MediaError 4.
+  const pcNodeOnline=data?.pc_node_online===true;
+  if(Number.isFinite(seconds)&&seconds>0)return {
+   retryAfter:String(Math.max(1,Math.min(3600,Math.ceil(seconds)))),
+   pcNodeOnline
+  };
+  return pcNodeOnline?{retryAfter:null,pcNodeOnline:true}:null;
  }catch{return null}
  finally{clearTimeout(timer);signal?.removeEventListener('abort',abort)}
 }
@@ -203,9 +211,10 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
  // Therefore allow exactly ONE PC-aware request when the Render YouTube
  // origin is limited; never call /stream or initiate a second extraction.
  const pcOrigin=new URL('/download?delivery=browser&url='+encodeURIComponent(youtube),RENDER);
- const candidates=cooldown?[cooldown.pcNodeOnline?pcOrigin:cachedOrigin]:[
-  new URL('/stream?url='+encodeURIComponent(youtube),RENDER),pcOrigin
- ];
+ const candidates=cooldown?.pcNodeOnline?[pcOrigin]:
+  cooldown?[cachedOrigin]:[
+   new URL('/stream?url='+encodeURIComponent(youtube),RENDER),pcOrigin
+  ];
  // /stream checks the backend's local cache, while /download checks R2
  // before enforcing its provider cooldown. A *confirmed* upstream 429 from
  // /stream must still allow this one cache-first /download lookup.
@@ -228,6 +237,11 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
    upstream.headers.get('X-Download-Error')==='upstream_rate_limited'){
    confirmedProviderLimit=retryAfter(upstream,'300');
    discardAudioBody(upstream);
+   // Only a progressive /stream request may be followed by one
+   // cache_only lookup. An explicitly PC-first /download has already
+   // checked R2, local audio and the PC queue; never repeat extraction.
+   if(candidates.length===1)return reply(429,'Audio source temporarily unavailable',{
+    'Retry-After':confirmedProviderLimit,'X-Gnarly-Playback-Source':'origin-rate-limited'});
    continue;
   }
   if([401,403,416,429,503,504].includes(upstream.status)){
@@ -260,11 +274,14 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
    }
    continue;
   }
+  // The first candidate may now be PC-aware /download, not /stream.
+  // Label transport according to the actual selected route for diagnostics.
+  const progressive=index===0&&!cooldown?.pcNodeOnline;
   const headers=audioHeaders(confirmedProviderLimit?'cached-render-origin':
-   index===0?'progressive-origin':'extraction-origin',
+   progressive?'progressive-origin':'extraction-origin',
    {'Content-Type':upstream.headers.get('Content-Type'),'Cache-Control':'no-store','Server-Timing':
     'edge;dur='+Math.max(0,Date.now()-started)+', origin;desc="'+
-    (confirmedProviderLimit?'cached':index===0?'progressive':'prepared')+'"'});
+    (confirmedProviderLimit?'cached':progressive?'progressive':'prepared')+'"'});
   for(const key of PASSTHROUGH){
    if(upstream.headers.has(key))headers.set(key,upstream.headers.get(key));
   }

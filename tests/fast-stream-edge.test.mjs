@@ -278,3 +278,61 @@ test('PC queue full is not a misleading YouTube HTTP 429',async()=>{
  assert.equal(result.headers.get('retry-after'),'5');
  assert.deepEqual(calls,['/stream']);
 });
+
+
+test('PC online with healthy Render origin chooses one cache-first PC route; no redundant /stream extractor',async()=>{
+ const urls=[];
+ const fetcher=async url=>{
+  urls.push(url);
+  if(new URL(url).pathname==='/playback-status')return Response.json({
+   status:'ready',youtube_retry_after:0,retry_after:0,pc_node_online:true
+  });
+  if(new URL(url).pathname==='/download')return new Response('PC still preparing',{status:503,
+   headers:{'X-Download-Error':'pc_node_preparing','Retry-After':'3'}});
+  throw Error('Unexpected duplicate origin request to '+url);
+ };
+ const response=await rawFastAudio({
+  request:request('/fast-audio/ABCDEFGHIJK'),env:{},
+  params:{id:'ABCDEFGHIJK'},originProbe:true
+ },fetcher);
+ assert.equal(response.status,503);
+ assert.equal(response.headers.get('x-gnarly-playback-source'),'pc-node-preparing');
+ assert.deepEqual(urls.map(u=>new URL(u).pathname),['/playback-status','/download']);
+ assert.ok(urls[1].includes('delivery=browser'));
+});
+test('PC online and origin cooldown reject only once without /stream or duplicate retries',async()=>{
+ const urls=[];
+ const response=await rawFastAudio({
+  request:request('/fast-audio/ABCDEFGHIJK'),env:{},
+  params:{id:'ABCDEFGHIJK'},originProbe:true
+ },async url=>{
+  urls.push(url);
+  if(new URL(url).pathname==='/playback-status')return Response.json({
+   status:'ready',youtube_retry_after:150,retry_after:0,pc_node_online:true
+  });
+  return new Response('Upstream 429',{status:429,headers:{
+   'X-Download-Error':'upstream_rate_limited','Retry-After':'150'
+  }});
+ });
+ assert.equal(response.status,429);
+ assert.equal(response.headers.get('retry-after'),'150');
+ assert.deepEqual(urls.map(u=>new URL(u).pathname),['/playback-status','/download']);
+});
+test('PC online + local R2 hit returns native audio without youtube player lookup',async()=>{
+ const calls=[];
+ const response=await rawFastAudio({
+  request:request('/fast-audio/ABCDEFGHIJK'),env:{},
+  params:{id:'ABCDEFGHIJK'},originProbe:true
+ },async url=>{
+  calls.push(new URL(url).pathname);
+  if(new URL(url).pathname==='/playback-status')return Response.json({
+   status:'ready',youtube_retry_after:0,pc_node_online:true
+  });
+  return new Response(audio,{status:200,headers:{
+   'Content-Type':'audio/mp4','Content-Length':String(audio.length)
+  }});
+ });
+ assert.equal(response.status,200);
+ assert.equal(response.headers.get('x-gnarly-playback-source'),'extraction-origin');
+ assert.deepEqual(calls,['/playback-status','/download']);
+});

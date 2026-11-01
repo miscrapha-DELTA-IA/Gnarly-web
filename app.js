@@ -1209,7 +1209,8 @@ async function recoverNativeAudio(track,initialError=null){
  const operation=(async()=>{
   // HTMLMediaElement hides HTTP status codes. Read-only backend diagnosis
   // avoids repeatedly hammering a provider currently returning HTTP 429.
-  const current=()=>state.current===track&&playbackSelection===selection&&audioDelivery.generation===generation&&!state.userPaused&&!isAudioAlreadyPlaying();
+  const sameSelection=()=>state.current===track&&playbackSelection===selection&&audioDelivery.generation===generation&&!state.userPaused;
+  const current=()=>sameSelection()&&!isAudioAlreadyPlaying();
   // The first edge request has already queued the exact recording on the
   // owner's Windows worker. Do not retry the failed 503 HTMLMediaElement,
   // switch to an unrelated origin, or call Play again while it is preparing.
@@ -1291,10 +1292,12 @@ async function recoverNativeAudio(track,initialError=null){
     }finally{audio.removeEventListener('loadedmetadata',restore);}
    }
   });
-  if(!current())return false;
+  // An actual first 'playing' event makes current() false by design. Do
+  // not interpret that successful audio as a stale/cancelled recovery.
+  if(!sameSelection())return false;
   if(recovered||isAudioAlreadyPlaying()){
-  coverCharge.hide();state.audioState='playing';state.playbackError='';reportAudioStatus('');return true;
- }
+   coverCharge.hide();state.audioState='playing';state.playbackError='';reportAudioStatus('');return true;
+  }
   // A cooldown can begin while the bounded retry attempt is in progress.
   if(!rateLimit)rateLimit=await resolvePlaybackCooldown(playbackCooldown);
   if(rateLimit){playbackCooldown.remember(rateLimit);queueAudioWarmup.cancel();}

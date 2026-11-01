@@ -122,7 +122,7 @@ test('stale browser cooldown cannot keep a recovered origin unavailable',async()
   play.indexOf('const start=audio.play()'));
  const edge=readFileSync(new URL('../functions/fast-audio/[id].js',import.meta.url),'utf8');
  assert.match(edge,/const cooldown=originProbe\?await originCooldown/);
- assert.match(edge,/const candidates=cooldown\?\[cooldown\.pcNodeOnline\?pcOrigin:cachedOrigin\]/);
+ assert.match(edge,/const candidates=cooldown\?\.pcNodeOnline\?\[pcOrigin\]/);
  assert.match(edge,/cache_only=1/);
  assert.doesNotMatch(edge,/if\(cooldown\)return reply\(429/);
  assert.match(edge,/if\(env\?\.GNARLY_AUDIO_R2\)/);
@@ -174,4 +174,39 @@ test('healthy Render YouTube origin can clear stale 429 even when PC is offline'
    youtube_retry_after:0,pc_node_online:false})
  })});
  assert.deepEqual(result,{code:'ready'});
+});
+
+
+test('a real successful playing event must not be discarded as stale recovery (MediaError 4)',async()=>{
+ const c=new AudioDeliveryRecovery({delays:[0],wait:async()=>{}});
+ c.select(a);
+ let pending=true,calls=0;
+ const recovered=await c.retry({
+  track:a,mediaError:{code:4},
+  isCurrent:()=>pending,
+  restart:async()=>{
+   calls++;
+   pending=false; // HTMLAudioElement playing event fired on same selection.
+   return true;
+  }
+ });
+ assert.equal(recovered,true,'audible audio is recovery success, not a reason to report code 4');
+ assert.equal(calls,1,'do not send a second extraction after playback began');
+});
+test('selection/cancel still invalidates successful-but-stale audio retry',async()=>{
+ const c=new AudioDeliveryRecovery({delays:[0],wait:async()=>{}});
+ c.select(a);
+ const recovered=await c.retry({
+  track:a,mediaError:{code:4},isCurrent:()=>true,
+  restart:async()=>{c.cancel();return true}
+ });
+ assert.equal(recovered,false,'user cancel must still defeat an old success');
+});
+test('native 429/code4 recovery uses separate pending vs same-selection identity guards',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ const section=app.slice(app.indexOf('async function recoverNativeAudio('),app.indexOf('function stopUnresponsivePlayback('));
+ assert.match(section,/const sameSelection=\(\)=>state\.current===track/);
+ assert.match(section,/const current=\(\)=>sameSelection\(\)&&!isAudioAlreadyPlaying\(\)/);
+ assert.match(section,/if\(!sameSelection\(\)\)return false;\s*if\(recovered\|\|isAudioAlreadyPlaying\(\)\)/);
 });
