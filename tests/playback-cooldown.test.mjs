@@ -77,16 +77,19 @@ test('R2-only route serves cached media even when origin is limited',async()=>{
  assert.equal(result.headers.get('x-gnarly-playback-source'),'r2-edge');
  assert.equal(originCalls,0);
 });
-test('R2-only misses never trigger streaming nor yt-dlp fallback',async()=>{
- let originCalls=0;
+test('cached-only R2 miss checks exactly one Render cache-only route, never extracts YouTube',async()=>{
+ const urls=[];
  const bucket={async get(){return null}};
  const result=await handleFastAudio({
   request:request('/fast-audio/ABCDEFGHIJK?cached-only=1'),
   env:{GNARLY_AUDIO_R2:bucket},params:{id:'ABCDEFGHIJK'}
- },()=>{originCalls++;throw Error('unexpected origin call')});
+ },async url=>{urls.push(url);return new Response('not cached',{status:404})});
  assert.equal(result.status,503);
  assert.equal(result.headers.get('x-gnarly-playback-source'),'cache-miss-during-cooldown');
- assert.equal(originCalls,0);
+ assert.equal(urls.length,1);
+ assert.match(urls[0],/\/download\?/);
+ assert.match(urls[0],/cache_only=1/);
+ assert.doesNotMatch(urls[0],/\/stream\?/);
 });
 test('edge prewarm preserves confirmed provider 429 but queue full remains non-global',async()=>{
  for(const [reason,status] of [['upstream_rate_limited',429],['queue_full',503]]){
