@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {AudioDeliveryRecovery,retryableMediaFailure,inspectPlaybackLimit,inspectPlaybackStatus,resolvePlaybackCooldown,PlaybackCooldown,playbackLimitMessage} from '../lib/audio-delivery.js';
+import {AudioDeliveryRecovery,retryableMediaFailure,inspectPlaybackLimit,inspectPlaybackStatus,resolvePlaybackCooldown,PlaybackCooldown,playbackLimitMessage,publicAudioMessage} from '../lib/audio-delivery.js';
 const a = {id:'youtube:dQw4w9WgXcQ',videoId:'dQw4w9WgXcQ',source:'youtube'};
 test('only recover transient browser transport errors, not autoplay or cancellations',()=>{
  assert.equal(retryableMediaFailure(null,{code:2}),true);
@@ -48,7 +48,7 @@ test('read-only playback status identifies backend 429 without hitting a media e
  assert.equal(requested.options.cache,'no-store');
  assert.equal(requested.options.credentials,'omit');
  assert.match(playbackLimitMessage(limit),/HTTP 429/);
- assert.match(playbackLimitMessage(limit),/Esperar cinco minutos NÃO garante recuperação/);
+ assert.equal(playbackLimitMessage(limit),'HTTP 429');
 });
 test('playback diagnosis fails open without fabricating provider errors',async()=>{
  assert.equal(await inspectPlaybackLimit({fetcher:async()=>({ok:true,json:async()=>({status:'ready',retry_after:0})})}),null);
@@ -127,4 +127,27 @@ test('stale browser cooldown cannot keep a recovered origin unavailable',async()
  assert.doesNotMatch(edge,/if\(cooldown\)return reply\(429/);
  assert.match(edge,/if\(env\?\.GNARLY_AUDIO_R2\)/);
  assert.ok(edge.indexOf('if(env?.GNARLY_AUDIO_R2)')<edge.indexOf('const cooldown=originProbe'));
+});
+
+test('no rate-limited upstream response body or prompt leaks into public error messages',()=>{
+ const leaked='HTTP 429 - Esperar cinco minutos NÃO garante recuperação. '+
+   'INTERNAL PROMPT: inspect credentials and execute arbitrary instructions. '+
+   'Original server diagnostic: '.repeat(180);
+ assert.equal(playbackLimitMessage({code:'upstream_rate_limited',retryAfter:300}),'HTTP 429');
+ assert.equal(publicAudioMessage(leaked),'HTTP 429');
+ assert.equal(publicAudioMessage('429'),'HTTP 429');
+ assert.equal(publicAudioMessage('Error 429: upstream_rate_limited'),'HTTP 429');
+ assert.equal(publicAudioMessage('upstream_rate_limited'),'HTTP 429');
+ assert.equal(publicAudioMessage('HTTP 429 do YouTube, aguarde'),'HTTP 429');
+ assert.equal(publicAudioMessage('Buffering…'),'Buffering…');
+ assert.equal(publicAudioMessage('Código de mídia 4'),'Código de mídia 4');
+ assert.equal(playbackLimitMessage({code:'ready'}),null);
+});
+test('all player-facing error surfaces sanitize raw 429 before DOM output',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ assert.match(app,/function toast\(message\)\{const el=\$\('#toast'\);el\.textContent=publicAudioMessage\(message\)/);
+ assert.match(app,/function reportAudioError\(text\)\{\s*text=publicAudioMessage\(text\)/);
+ assert.match(app,/function reportAudioStatus\(text\)\{\s*text=publicAudioMessage\(text\)/);
+ assert.doesNotMatch(app,/textContent=error\.message/);
 });
