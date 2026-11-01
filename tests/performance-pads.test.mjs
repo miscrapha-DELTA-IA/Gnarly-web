@@ -66,3 +66,29 @@ test('Page build includes performance styles and shared audio engine integration
  assert.match(app,/pads\.getPulse\(\)/);
  assert.match(script,/performance\.css/);
 });
+
+test('Pause cancels DJ loop even when AudioContext unlock resolves afterward',async()=>{
+ let unlock,unlocks=0;
+ const engine={ctx:{currentTime:0},resume:()=>{unlocks++;return new Promise(resolve=>{unlock=resolve})}};
+ const pads=new PerformancePads(engine);
+ const starting=pads.startLoop();
+ pads.stopLoop();
+ unlock();
+ await starting;
+ assert.equal(unlocks,1);
+ assert.equal(pads.running,false);
+ assert.equal(pads.timer,null,'late unlock must not create a new interval');
+ assert.equal(pads.snapshot().running,false);
+});
+
+test('Pause stops already scheduled loop voices, not just future loop ticks',()=>{
+ let stopped=0;
+ const pads=new PerformancePads({});
+ pads.activeVoices.add({stop(){stopped++}});
+ pads.activeVoices.add({stop(){stopped++}});
+ pads.running=true;
+ pads.stopLoop();
+ assert.equal(stopped,2);
+ assert.equal(pads.activeVoices.size,0);
+ assert.equal(pads.running,false);
+});
