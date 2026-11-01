@@ -82,6 +82,30 @@ test('Safari rate/pitch writes only when changed and preserves the next-song def
  assert.equal(engine.ctx,null,'native iOS playback must not claim the media source');
 });
 
+test('active desktop DSP changes the decoder once, never the default playback rate twice',()=>{
+ const writes={pitch:0,legacy:0,rate:0,defaultRate:0};
+ const internal={pitch:true,legacy:true,rate:1,defaultRate:1};
+ const audio={paused:false,muted:false};
+ for(const [key,counter,slot] of [
+  ['preservesPitch','pitch','pitch'],['webkitPreservesPitch','legacy','legacy'],
+  ['playbackRate','rate','rate'],['defaultPlaybackRate','defaultRate','defaultRate']
+ ]){
+  Object.defineProperty(audio,key,{configurable:true,
+   get(){return internal[slot]},
+   set(value){writes[counter]++;internal[slot]=value}});
+ }
+ const engine=new WebAudioEngine(audio,{device:{userAgent:'Desktop',platform:'Win32'}});
+ engine.setSpeed(.8,false);
+ assert.deepEqual(writes,{pitch:1,legacy:0,rate:1,defaultRate:0});
+ engine.setSpeed(.8,false);
+ assert.deepEqual(writes,{pitch:1,legacy:0,rate:1,defaultRate:0},
+  'applying the identical preset twice does not reconfigure the decoder');
+ engine.setSpeed(1.25,false);
+ assert.equal(writes.rate,2);assert.equal(writes.defaultRate,0);
+ audio.paused=true;engine.setSpeed(1.25,false);
+ assert.equal(writes.defaultRate,1,'update default only after player is paused');
+});
+
 test('only one stable DSP graph and one original media source, no rebuild during presets',async()=>{
  const previous=globalThis.window;
  globalThis.window={AudioContext:FakeAudioContext};
@@ -175,10 +199,10 @@ test('iPhone preserves native playback until effects are requested; once capture
  }finally{globalThis.window=previous}
 });
 
-test('continuous speed input is throttled and final speed commit is immediate',()=>{
+test('live speed drag updates are debounced; a release immediately commits the desired speed',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(app,/function scheduleSpeedMix\(\)/);
- assert.match(app,/now-lastSpeedMixTick>=110/);
+ assert.match(app,/speedMixTimer=setTimeout\(\(\)=>\{[\s\S]*?\},220\)/);
  assert.match(app,/function commitSpeedMix\(\{persistDefault=true\}=\{\}\)/);
  assert.match(app,/if\(id==='speed'\)\{state\.speed=v;scheduleSpeedMix\(\)/);
  assert.match(app,/if\(e\.target\?\.dataset\?\.slider==='speed'\)commitSpeedMix\(\)/);
