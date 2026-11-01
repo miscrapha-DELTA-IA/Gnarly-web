@@ -231,15 +231,18 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
    continue;
   }
   if([401,403,416,429,503,504].includes(upstream.status)){
-   // A PC job legitimately preparing audio is NOT a fresh YouTube 429.
-   // The player can continue waiting on that exact PC job instead of
-   // presenting rate-limit failure before the R2 upload is complete.
-   const pcPending=cooldown?.pcNodeOnline&&upstream.status===503&&
-    upstream.headers.get('X-Download-Error')==='pc_node_preparing';
-   const status=pcPending?503:
+   // MediaError 4 is Chrome/Safari's representation of these HTTP failures.
+   // A real PC preparation is not an unsupported codec, nor a YouTube 429.
+   // Detect it from the origin's explicit error header regardless of whether
+   // Render itself is also in cooldown (the old condition missed healthy PC jobs).
+   const reason=upstream.headers.get('X-Download-Error');
+   const pcPending=upstream.status===503&&reason==='pc_node_preparing';
+   const pcBusy=upstream.status===429&&
+    ['pc_node_queue_full','queue_full'].includes(reason);
+   const status=pcPending||pcBusy?503:
     confirmedProviderLimit&&[429,503,504].includes(upstream.status)?429:upstream.status;
    const headers={'X-Gnarly-Playback-Source':pcPending?'pc-node-preparing':
-    confirmedProviderLimit?'origin-rate-limited':'origin-unavailable'};
+    pcBusy?'pc-node-busy':confirmedProviderLimit?'origin-rate-limited':'origin-unavailable'};
    if(confirmedProviderLimit&&status===429)headers['Retry-After']=confirmedProviderLimit;
    else if([429,503,504].includes(status))headers['Retry-After']=retryAfter(upstream);
    if(status===416&&/^bytes \*\/\d+$/.test(upstream.headers.get('Content-Range')||''))
