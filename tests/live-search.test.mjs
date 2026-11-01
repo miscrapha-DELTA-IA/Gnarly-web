@@ -42,3 +42,31 @@ test('live input is debounced and obsolete provider requests are canceled',()=>{
  assert.match(code,/refreshLiveResults\(page\)/);
  assert.match(code,/searchNativeBackend\(query,\{limit:size,signal:controller\.signal\}\)/);
 });
+
+
+test('live search retains verified playable R2 recording over an unverified video of the exact same song',()=>{
+ const native={id:'youtube:BBBBBBBBBBB',videoId:'BBBBBBBBBBB',title:'So FN',
+  artist:'Nine Vicious',duration:135,source:'youtube'};
+ const cached={id:'youtube:kb8UsWvW5Hw',videoId:'kb8UsWvW5Hw',
+  title:'So FN',artist:'Nine Vicious',duration:0,source:'youtube',
+  playbackAvailability:'r2'};
+ const sorted=personalizedRank('Nine Vicious So FN',[native,cached],
+  {history:[native],favorites:[native],originLimited:true});
+ assert.equal(sorted.length,1,'do not show two indistinguishable versions');
+ assert.equal(sorted[0].id,'youtube:kb8UsWvW5Hw',
+  'verified same-song R2 wins even when the old unverified video is in history');
+ const inverse=personalizedRank('So FN',[cached,native]);
+ assert.equal(inverse[0].id,cached.id,'a later unverified entry cannot displace R2');
+});
+test('cached audio cannot silently replace differently named songs, versions or different durations',()=>{
+ const ordinary=track('youtube:CCCCCCCCCCC','So FN Live','Nine Vicious');
+ const cached={id:'youtube:kb8UsWvW5Hw',videoId:'kb8UsWvW5Hw',
+  title:'So FN',artist:'Nine Vicious',duration:134,source:'youtube',playbackAvailability:'r2'};
+ const otherArtist={...cached,id:'youtube:DDDDDDDDDDD',videoId:'DDDDDDDDDDD',artist:'Another Artist'};
+ const ranking=personalizedRank('So FN',[ordinary,otherArtist,cached]);
+ assert.equal(ranking.length,3);
+ const remaster={...cached,id:'youtube:EEEEEEEEEEE',videoId:'EEEEEEEEEEE',duration:240,playbackAvailability:undefined};
+ const together=personalizedRank('So FN',[remaster,cached]);
+ assert.equal(together[0].id,remaster.id,'different length must not be forcibly substituted');
+ assert.equal(together.length,1,'existing exact-key dedup remains stable');
+});

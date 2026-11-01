@@ -2,7 +2,7 @@
  * backend music, user metadata, or cross-origin resources.
  * Downloaded music lives in per-profile IndexedDB; SW caches the interface.
  */
-const SHELL='gnarly-web-shell-20261101-pc-first-playing-recovery-v21';
+const SHELL='gnarly-web-shell-20261101-r2-same-song-search-v22';
 const PREFIX='gnarly-web-shell-';
 const CORE=['/','/index.html','/app.js','/mic.html','/mic.js','/styles.css','/module-dock.css',
  '/performance.css','/ipod-mode.css','/cover-charge.css','/karaoke-art.css','/karaoke-art-refined.css',
