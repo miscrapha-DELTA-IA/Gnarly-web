@@ -34,6 +34,7 @@ jobs:
           echo $! > /tmp/gnarly-web-test.pid
       - name: Test mobile Stage72 UI
         run: |
+          node tests/pc-code4.browser.mjs
           node tests/stage72-browser.mjs
           node tests/header-viewport.browser.mjs
           node tests/dsp-combinations.browser.mjs
