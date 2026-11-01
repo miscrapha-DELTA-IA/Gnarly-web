@@ -237,8 +237,7 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
    // Render itself is also in cooldown (the old condition missed healthy PC jobs).
    const reason=upstream.headers.get('X-Download-Error');
    const pcPending=upstream.status===503&&reason==='pc_node_preparing';
-   const pcBusy=upstream.status===429&&
-    ['pc_node_queue_full','queue_full'].includes(reason);
+   const pcBusy=upstream.status===429&&reason==='pc_node_queue_full';
    const status=pcPending||pcBusy?503:
     confirmedProviderLimit&&[429,503,504].includes(upstream.status)?429:upstream.status;
    const headers={'X-Gnarly-Playback-Source':pcPending?'pc-node-preparing':
