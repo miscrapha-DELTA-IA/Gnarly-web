@@ -31,4 +31,4 @@ jobs:
           node-version: '22'
       - run: node tests/live-audio-diagnostics.mjs
         env:
-          GNARLY_PROBE_URL: https://fix-verified-first-streaming.gnarly-web-pages.pages.dev
+          GNARLY_PROBE_URL: https://gnarly-web-pages.pages.dev
