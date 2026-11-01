@@ -23,6 +23,6 @@ assert.match(css,/position:fixed;z-index:41/);
 const assets=JSON.parse(readFileSync(join(dist,'offline-assets.json'),'utf8'));
 assert.ok(assets.includes('/search-hierarchy.css'),'PWA offline asset manifest is missing layout stylesheet');
 const sw=readFileSync(join(dist,'sw.js'),'utf8');
-assert.match(sw,/gnarly-web-shell-20261101-r2-same-song-search-v22/);
+assert.match(sw,/gnarly-web-shell-20261101-audio-continuity-v23/);
 assert.match(sw,/'\/search-hierarchy\.css'/);
 console.log('Cloudflare Pages dist verified: '+links.length+' stylesheets, Search layout source parity and PWA precache.');
