@@ -1082,17 +1082,20 @@ async function cachedNativeAvailable(track){
 }
 async function resumeCachedNative(track,isCurrent){
  if(!await cachedNativeAvailable(track)||!isCurrent())return false;
+ const selection=playbackSelection;
  const url=offlineAudio(track.id)||trackAudioURL(track,{cacheOnly:true});
  if(!url)return false;
  audio.pause();audio.src=new URL(url,location.href).href;engine.restoreSpeed();
  try{
   const started=audio.play(),unlocked=resumePlayerAudio();
   await settleAudioStart(started,unlocked,{timeoutMs:5200});
-  if(!isCurrent())return false;
+  // Successful playback makes isCurrent() false (it includes
+  // !isAudioAlreadyPlaying()). That must NOT reject a successful recovery.
+  if(state.current!==track||playbackSelection!==selection||state.userPaused)return false;
   coverCharge.hide();state.playing=true;state.audioState='playing';state.playbackError='';
   reportAudioStatus('');updatePlayer();return true;
  }catch(error){
-  if(!isCurrent())return false;
+  if(state.current!==track||playbackSelection!==selection||state.userPaused)return false;
   if(error?.name==='NotAllowedError'){
    // Safari may require another gesture after the asynchronous cache probe.
    coverCharge.hide();state.playing=false;state.audioState='idle';
@@ -1131,6 +1134,7 @@ async function awaitAlreadyPreparingCache(track,isCurrent){
  */
 async function resumeCompletedPCNode(track,isCurrent){
  if(!isCurrent())return false;
+ const selection=playbackSelection;
  audio.pause();
  if(!prepareNativeAudio(track,1))return false;
  audioDelivery.attempt=Math.max(1,audioDelivery.attempt);
@@ -1139,12 +1143,12 @@ async function resumeCompletedPCNode(track,isCurrent){
  try{
   const started=audio.play(),unlocked=resumePlayerAudio();
   await settleAudioStart(started,unlocked,{timeoutMs:7500});
-  if(!isCurrent())return false;
+  if(state.current!==track||playbackSelection!==selection||state.userPaused)return false;
   playbackStallGuard.clear();coverCharge.hide();state.playing=true;
   state.audioState='playing';state.playbackError='';
   reportAudioStatus('');updatePlayer();return true;
  }catch(error){
-  if(!isCurrent())return false;
+  if(state.current!==track||playbackSelection!==selection||state.userPaused)return false;
   if(error?.name==='NotAllowedError'){
    playbackStallGuard.clear();coverCharge.hide();state.audioState='idle';
    state.playing=false;state.playbackError='';
@@ -1217,8 +1221,15 @@ async function recoverNativeAudio(track,initialError=null){
      reportAudioStatus('Preparando esta gravação no GNARLY PC Node…');}
    });
    if(!current())return false;
-   if(pcResult==='ready'&&await resumeCompletedPCNode(track,current))return true;
-   if(pcResult==='failed'||pcResult==='timeout'){
+   if(pcResult==='ready'){
+    if(await resumeCompletedPCNode(track,current))return true;
+    if(!current())return false;
+    // A successful PC upload may have reached edge R2 while Render's
+    // native /download suffered a transient network/media-format error.
+    // Recover the EXACT recording from the cache, never via yt-dlp.
+    if(await resumeCachedNative(track,current))return true;
+   }
+   if(pcResult==='failed'||pcResult==='timeout'||pcResult==='busy'){
     // Real PC failure is not a codec problem. Avoid retrying the same
     // unprepared media URL twice (both returns are HTTP 503), which was
     // surfacing falsely as browser MediaError code 4.
@@ -1226,9 +1237,9 @@ async function recoverNativeAudio(track,initialError=null){
     if(await recoverIndependentAudio(track,current))return true;
     if(!current())return false;
     state.playing=false;updatePlayer();
-    reportAudioError(pcResult==='failed'?
-      'O GNARLY PC Node não conseguiu obter áudio desta gravação. A faixa foi preservada.':
-      'A gravação não ficou pronta dentro do prazo. A faixa foi preservada e pode ser tentada novamente.');
+    reportAudioError(pcResult==='busy'?'Nó de áudio ocupado. Tente novamente.':
+     pcResult==='failed'?'Nó de áudio não conseguiu preparar esta música.':
+     'Áudio não ficou pronto dentro do prazo.');
     return false;
    }
   }
