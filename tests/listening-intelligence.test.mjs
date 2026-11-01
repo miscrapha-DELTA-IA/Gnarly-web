@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {ListeningMemory,MEMORY_KEY,songFingerprint,sameRecording,recommendTracks,retainManualQueue,markAutoTracks,discoverySuggestions} from '../lib/listening-intelligence.js';
+import {ListeningMemory,MEMORY_KEY,songFingerprint,sameRecording,recentlyHeardRecording,recommendTracks,retainManualQueue,markAutoTracks,discoverySuggestions} from '../lib/listening-intelligence.js';
 const t=(id,artist='AURORA',album='All My Demons',title='Track '+id)=>({
  id:'youtube:'+id,videoId:id,source:'youtube',artist,album,title,duration:210,artwork:'https://example.com/art.png'});
 const anchor=t('AAAAAAAAAAA'),a=t('BBBBBBBBBBB'),b=t('CCCCCCCCCCC','AURORA','Infections Of A Different Kind'),c=t('DDDDDDDDDDD','AURORA','All My Demons'),d=t('EEEEEEEEEEE','Florence','Ceremonials'),e=t('FFFFFFFFFFF','Florence','How Big'),f=t('GGGGGGGGGGG','Other','Other');
@@ -92,4 +92,33 @@ test('integration maintains manual entries and only logs actual audio playback, 
  assert.match(source,/instantSearch\(query,options\)/);
  assert.match(source,/rankRequestedSongFirst\(personalizedRank\(page\.query,\[\.\.\.page\.local,\.\.\.available\]/);
  assert.match(source,/case 'taste-reset'/);
+});
+
+test('smart auto-radio never insists on a track just heard, even with a different provider/video ID',()=>{
+ const mem=new ListeningMemory(storage()),now=Date.now();
+ mem.record('play',a,now-2*60000);
+ const alias={...a,id:'youtube:ZZZZZZZZZZZ',videoId:'ZZZZZZZZZZZ',title:a.title,artist:'aurora'};
+ assert.equal(recentlyHeardRecording(a,mem,{now}),true);
+ assert.equal(recentlyHeardRecording(alias,mem,{now}),true,'match recording metadata despite differing provider ID');
+ const proposed=recommendTracks({mode:'mix',anchor,candidates:[a,alias,b,c],memory:mem,now,revision:8});
+ assert.ok(proposed.length>=1,'unheard artist tracks can still be recommended');
+ assert.ok(proposed.every(x=>!sameRecording(x,a)),'played recording is blocked from automatic repeat');
+ assert.ok(!proposed.some(x=>x.id===alias.id),'alias must not sneak past recent-play protection');
+ const manual=markAutoTracks([a],'playlist');
+ assert.equal(manual[0].id,a.id,'saved playlists remain under explicit user control');
+});
+test('automatic discovery prefers no suggestion to an unwanted replay when catalog is sparse',()=>{
+ const mem=new ListeningMemory(storage()),now=Date.now();
+ mem.record('finish',a,now-60000);
+ mem.record('skip',b,now-50000);
+ const onlyOld=recommendTracks({mode:'artist',anchor,candidates:[a,b],memory:mem,now,revision:27});
+ assert.deepEqual(onlyOld,[],'never refill the radio with a known recent repeat');
+ assert.equal(recentlyHeardRecording(a,mem,{now:now+25*3600000}),false,
+  'history guard has bounded time and cannot permanently blacklist a song');
+});
+test('app supplies full bounded session backstack to radio and retains exact currently playing speed',()=>{
+ const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ assert.match(source,/recent:playbackBackstack\.slice\(-30\)/);
+ assert.match(source,/function scheduleSpeedMix\(\)/);
+ assert.match(source,/engine\.restoreSpeed\(\)/);
 });
