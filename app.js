@@ -19,7 +19,7 @@ import {LyricSyncWorkshop,serializeManualLRC} from './lib/lyric-sync-workshop.js
 import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
 import {trackAudioURL,isGnarlyPagesHost,youtubeID,NATIVE_BACKEND,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
 import {officialEmbedURL,officialWatchURL,canUseOfficial,shouldUseOfficialAfterNativeFailure} from './lib/official-playback.js';
-import {AudioDeliveryRecovery,PlaybackCooldown,resolvePlaybackCooldown,playbackLimitMessage} from './lib/audio-delivery.js';
+import {AudioDeliveryRecovery,PlaybackCooldown,resolvePlaybackCooldown,playbackLimitMessage,publicAudioMessage} from './lib/audio-delivery.js';
 import {waitForPCNodeReady} from './lib/pc-node-recovery.js';
 import {audioSourceCategory,recordStreamingMetric} from './lib/streaming-metrics.js';
 import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-library.js';
@@ -426,7 +426,7 @@ visual.startLoop();
 applyLyricStyle(app,state.lyricStyle);
 void loadLyricTypeface(designFont(state.lyricStyle));
 engine.setSpeed(state.speed,state.pitch);engine.setReverb(state.reverb);engine.setBass(state.bass);
-function toast(message){const el=$('#toast');el.textContent=message;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,4200)}
+function toast(message){const el=$('#toast');el.textContent=publicAudioMessage(message);el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,4200)}
 function flashDJPad(index){
  const pad=document.querySelector('[data-dj-pad="'+index+'"]');
  if(!pad)return;
@@ -543,6 +543,7 @@ function isAudioAlreadyPlaying(){
   !audio.ended&&audio.readyState>=3;
 }
 function reportAudioError(text){
+ text=publicAudioMessage(text);
  coverCharge.hide();
  // A late /fast-audio failure or an exhausted retry can arrive after the
  // same HTMLAudioElement has already begun audible playback. Do not flash
@@ -561,10 +562,11 @@ function reportAudioError(text){
  const ipodStatus=$('#ipod-audio-status');if(ipodStatus)ipodStatus.textContent=text;
  showOptionalOfficialSource();
  // Keep a persistent, compact source choice instead of repeating an intrusive 429 toast.
- if(!/HTTP 429|limitou novas músicas/i.test(text))toast(text);
+ if(text!=='HTTP 429'&&!/limitou novas músicas/i.test(text))toast(text);
  playbackStartedAt=0;
 }
 function reportAudioStatus(text){
+ text=publicAudioMessage(text);
  const status=$('#player-status');if(status){status.textContent=text;status.hidden=!text;}
  const ipodStatus=$('#ipod-audio-status');if(ipodStatus)ipodStatus.textContent=text;
 }
