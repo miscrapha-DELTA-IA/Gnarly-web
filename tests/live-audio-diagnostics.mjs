@@ -31,7 +31,9 @@ const status=await get(backend+'/playback-status',{timeout:9000});
 results.push({check:'render-health',status:health.status,error:health.error,
  r2_enabled:health.body?.r2_enabled});
 results.push({check:'render-playback',status:status.status,error:status.error,
- origin_state:status.body?.status,retry_after:status.body?.retry_after});
+ origin_state:status.body?.status,retry_after:status.body?.retry_after,
+ youtube_retry_after:status.body?.youtube_retry_after,
+ pc_node_online:status.body?.pc_node_online});
 for(const endpoint of [
  'https://api.audius.co/v1/tracks/search?query=electronic&limit=2&app_name=Gnarly',
  'https://discoveryprovider.audius.co/v1/tracks/search?query=electronic&limit=2&app_name=Gnarly'
