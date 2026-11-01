@@ -60,7 +60,7 @@ try{
   assert.equal(result.preservesPitch,false,scenario+' pitch must stay in Slowed tape mode');
   assert.equal(result.oneGraph,true,scenario+' no DSP graph rebuild');
   assert.equal(result.oneMediaSource,true,scenario+' media element must not be reattached');
-  assert.equal(result.bassGain,10,scenario+' bass stays enabled after reverb adjustment');
+  assert.ok(Math.abs(result.bassGain-10)<.02,scenario+' bass gain converges smoothly without resets '+JSON.stringify(result));
   assert.equal(result.reverb,.45,scenario+' reverb stays enabled after speed adjustment');
   console.log('DSP combined playback OK',scenario,result);
   await page.close();
