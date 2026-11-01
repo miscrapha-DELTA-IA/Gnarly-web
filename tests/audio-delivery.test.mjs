@@ -122,7 +122,7 @@ test('stale browser cooldown cannot keep a recovered origin unavailable',async()
   play.indexOf('const start=audio.play()'));
  const edge=readFileSync(new URL('../functions/fast-audio/[id].js',import.meta.url),'utf8');
  assert.match(edge,/const cooldown=originProbe\?await originCooldown/);
- assert.match(edge,/const candidates=cooldown\?\[cooldown\.pcNodeOnline\?pcOrigin:cachedOrigin\]/);
+ assert.match(edge,/const candidates=cooldown\?\.pcNodeOnline\?\[pcOrigin\]/);
  assert.match(edge,/cache_only=1/);
  assert.doesNotMatch(edge,/if\(cooldown\)return reply\(429/);
  assert.match(edge,/if\(env\?\.GNARLY_AUDIO_R2\)/);
