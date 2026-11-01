@@ -144,9 +144,16 @@ export async function originCooldown(fetcher,signal,{timeoutMs=1500}={}){
    discardAudioBody(response);return null;
   }
   const data=await response.json();
-  const seconds=Number(data?.retry_after);
-  return data?.status==='upstream_rate_limited'&&Number.isFinite(seconds)&&seconds>0?
-   String(Math.max(1,Math.min(3600,Math.ceil(seconds)))):null;
+  // "ready" can mean the PC Node is online, not that yt-dlp on Render
+  // recovered. Honor the origin-specific cooldown even when status=ready.
+  // A confirmed cooldown must never trigger /stream's second YouTube probe.
+  const originSeconds=Number(data?.youtube_retry_after);
+  const statusSeconds=Number(data?.retry_after);
+  const seconds=Number.isFinite(originSeconds)&&originSeconds>0?originSeconds:
+   data?.status==='upstream_rate_limited'?statusSeconds:0;
+  return Number.isFinite(seconds)&&seconds>0?
+   {retryAfter:String(Math.max(1,Math.min(3600,Math.ceil(seconds)))),
+    pcNodeOnline:data?.pc_node_online===true}:null;
  }catch{return null}
  finally{clearTimeout(timer);signal?.removeEventListener('abort',abort)}
 }
@@ -191,15 +198,19 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
  const youtube='https://www.youtube.com/watch?v='+id;
  const options={method:'GET',headers:range?{Range:range}:{},redirect:'manual'};
  const cachedOrigin=new URL('/download?delivery=browser&cache_only=1&url='+encodeURIComponent(youtube),RENDER);
- const candidates=cooldown?[cachedOrigin]:[
-  new URL('/stream?url='+encodeURIComponent(youtube),RENDER),
-  new URL('/download?delivery=browser&url='+encodeURIComponent(youtube),RENDER)
+ // A connected owner's PC Node is a separate preparation route. Render's
+ // /download checks R2/local and the PC queue BEFORE considering yt-dlp.
+ // Therefore allow exactly ONE PC-aware request when the Render YouTube
+ // origin is limited; never call /stream or initiate a second extraction.
+ const pcOrigin=new URL('/download?delivery=browser&url='+encodeURIComponent(youtube),RENDER);
+ const candidates=cooldown?[cooldown.pcNodeOnline?pcOrigin:cachedOrigin]:[
+  new URL('/stream?url='+encodeURIComponent(youtube),RENDER),pcOrigin
  ];
  // /stream checks the backend's local cache, while /download checks R2
  // before enforcing its provider cooldown. A *confirmed* upstream 429 from
  // /stream must still allow this one cache-first /download lookup.
  // It cannot issue a new extraction while the backend's global cooldown runs.
- let confirmedProviderLimit=cooldown;
+ let confirmedProviderLimit=cooldown?.retryAfter||null;
  for(let index=0;index<candidates.length;index++){
   let upstream;
   try{upstream=await fetchAudioHeaders(fetcher,
@@ -220,8 +231,15 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
    continue;
   }
   if([401,403,416,429,503,504].includes(upstream.status)){
-   const status=confirmedProviderLimit&&[429,503,504].includes(upstream.status)?429:upstream.status;
-   const headers={'X-Gnarly-Playback-Source':confirmedProviderLimit?'origin-rate-limited':'origin-unavailable'};
+   // A PC job legitimately preparing audio is NOT a fresh YouTube 429.
+   // The player can continue waiting on that exact PC job instead of
+   // presenting rate-limit failure before the R2 upload is complete.
+   const pcPending=cooldown?.pcNodeOnline&&upstream.status===503&&
+    upstream.headers.get('X-Download-Error')==='pc_node_preparing';
+   const status=pcPending?503:
+    confirmedProviderLimit&&[429,503,504].includes(upstream.status)?429:upstream.status;
+   const headers={'X-Gnarly-Playback-Source':pcPending?'pc-node-preparing':
+    confirmedProviderLimit?'origin-rate-limited':'origin-unavailable'};
    if(confirmedProviderLimit&&status===429)headers['Retry-After']=confirmedProviderLimit;
    else if([429,503,504].includes(status))headers['Retry-After']=retryAfter(upstream);
    if(status===416&&/^bytes \*\/\d+$/.test(upstream.headers.get('Content-Range')||''))
@@ -235,8 +253,8 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
    // after that failed lookup, before opening a second extraction.
    if(index===0&&originProbe&&!confirmedProviderLimit){
     const limited=await originCooldown(fetcher,request.signal,{timeoutMs:750});
-    if(limited)return reply(429,'Audio origin rate limited',{
-     'Retry-After':limited,'X-Gnarly-Playback-Source':'origin-rate-limited'});
+    if(limited?.retryAfter)return reply(429,'Audio origin rate limited',{
+     'Retry-After':limited.retryAfter,'X-Gnarly-Playback-Source':'origin-rate-limited'});
    }
    continue;
   }

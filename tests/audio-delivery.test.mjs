@@ -122,7 +122,7 @@ test('stale browser cooldown cannot keep a recovered origin unavailable',async()
   play.indexOf('const start=audio.play()'));
  const edge=readFileSync(new URL('../functions/fast-audio/[id].js',import.meta.url),'utf8');
  assert.match(edge,/const cooldown=originProbe\?await originCooldown/);
- assert.match(edge,/const candidates=cooldown\?\[cachedOrigin\]/);
+ assert.match(edge,/const candidates=cooldown\?\[cooldown\.pcNodeOnline\?pcOrigin:cachedOrigin\]/);
  assert.match(edge,/cache_only=1/);
  assert.doesNotMatch(edge,/if\(cooldown\)return reply\(429/);
  assert.match(edge,/if\(env\?\.GNARLY_AUDIO_R2\)/);
@@ -150,4 +150,28 @@ test('all player-facing error surfaces sanitize raw 429 before DOM output',async
  assert.match(app,/function reportAudioError\(text\)\{\s*text=publicAudioMessage\(text\)/);
  assert.match(app,/function reportAudioStatus\(text\)\{\s*text=publicAudioMessage\(text\)/);
  assert.doesNotMatch(app,/textContent=error\.message/);
+});
+
+test('PC Node heartbeat never hides a confirmed Render YouTube origin 429',async()=>{
+ let requests=0;
+ const report=await inspectPlaybackStatus({fetcher:async()=>{
+  requests++;
+  return {ok:true,json:async()=>({status:'ready',retry_after:0,
+   youtube_retry_after:247,pc_node_online:true})};
+ }});
+ assert.deepEqual(report,{code:'upstream_rate_limited',retryAfter:247});
+ assert.equal(requests,1);
+ const limiter=new PlaybackCooldown({now:()=>1000});
+ limiter.remember({code:'upstream_rate_limited',retryAfter:300});
+ const checked=await resolvePlaybackCooldown(limiter,{inspect:async()=>report});
+ assert.equal(checked.code,'upstream_rate_limited');
+ assert.equal(limiter.snapshot().retryAfter,247,
+  'a false ready due to PC heartbeat must not clear origin cooldown');
+});
+test('healthy Render YouTube origin can clear stale 429 even when PC is offline',async()=>{
+ const result=await inspectPlaybackStatus({fetcher:async()=>({
+  ok:true,json:async()=>({status:'ready',retry_after:0,
+   youtube_retry_after:0,pc_node_online:false})
+ })});
+ assert.deepEqual(result,{code:'ready'});
 });

@@ -183,3 +183,65 @@ test('partial or oversized origin media is never promoted into a complete R2 obj
   'Content-Length':'4096','Content-Range':'bytes 0-4095/4096'
  }})),4096);
 });
+
+test('confirmed Render 429 is detected even when PC heartbeat masks status as ready',async()=>{
+ const calls=[];
+ const fetcher=async url=>{
+  const path=new URL(url).pathname;
+  calls.push(path+new URL(url).search);
+  if(path==='/playback-status')return Response.json({
+   status:'ready',retry_after:0,youtube_retry_after:220,pc_node_online:false
+  });
+  if(path==='/download')return new Response('no cached copy',{status:404});
+  throw new Error('MUST NOT probe YouTube while origin is rate limited: '+path);
+ };
+ const response=await rawFastAudio({
+  request:request('/fast-audio/ABCDEFGHIJK'),env:{},
+  params:{id:'ABCDEFGHIJK'},originProbe:true
+ },fetcher);
+ assert.equal(response.status,429);
+ assert.equal(response.headers.get('retry-after'),'220');
+ assert.deepEqual(calls.map(x=>new URL('https://host'+x).pathname),
+  ['/playback-status','/download']);
+ assert.match(calls[1],/cache_only=1/);
+});
+test('an online PC Node remains an eligible independent playback route during Render cooldown',async()=>{
+ const calls=[];
+ const fetcher=async url=>{
+  const path=new URL(url).pathname;calls.push(url);
+  if(path==='/playback-status')return Response.json({
+   status:'ready',retry_after:0,youtube_retry_after:180,pc_node_online:true
+  });
+  if(path==='/download')return new Response(audio,{status:200,
+   headers:{'Content-Type':'audio/mp4','Content-Length':String(audio.byteLength)}});
+  throw new Error('Unexpected YouTube /stream request while origin 429');
+ };
+ const response=await rawFastAudio({
+  request:request('/fast-audio/ABCDEFGHIJK'),env:{},
+  params:{id:'ABCDEFGHIJK'},originProbe:true
+ },fetcher);
+ assert.equal(response.status,200);
+ assert.equal(calls.length,2);
+ assert.match(calls[1],/\/download\?/);
+ assert.doesNotMatch(calls[1],/cache_only=1|\/stream/);
+ assert.equal(response.headers.get('x-gnarly-playback-source'),'cached-render-origin');
+});
+test('PC job preparing during a real Render cooldown stays 503 instead of false 429',async()=>{
+ const calls=[];
+ const fetcher=async url=>{
+  calls.push(new URL(url).pathname);
+  if(new URL(url).pathname==='/playback-status')
+   return Response.json({status:'ready',youtube_retry_after:220,
+    pc_node_online:true});
+  return new Response('PC job preparing',{status:503,
+   headers:{'X-Download-Error':'pc_node_preparing','Retry-After':'3'}});
+ };
+ const response=await rawFastAudio({
+  request:request('/fast-audio/ABCDEFGHIJK'),env:{},params:{id:'ABCDEFGHIJK'},
+  originProbe:true
+ },fetcher);
+ assert.equal(response.status,503);
+ assert.equal(response.headers.get('retry-after'),'3');
+ assert.equal(response.headers.get('x-gnarly-playback-source'),'pc-node-preparing');
+ assert.deepEqual(calls,['/playback-status','/download']);
+});
