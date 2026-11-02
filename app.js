@@ -104,8 +104,8 @@ function primeSelectedRecording(track,selection){
  // entire Render roundtrip (or a 2.8-second timeout) BEFORE queuing the
  // selected exact recording. The first-party /fast-prepare route already
  // checks R2 first and the backend deduplicates PC / Render work. Send ONE
- // non-blocking prepare after audio.play() has been issued in the gesture.
- // Never change <audio>.src, media identity or the current playback promise.
+ // non-blocking prepare after the initial native media gesture.
+ // Never change the media source, identity or current playback promise.
  if(state.current!==track||playbackSelection!==selection||state.userPaused)return;
  void selectedAudioWarmup.start(track).catch(()=>{});
 }
