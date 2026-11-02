@@ -207,7 +207,7 @@ export async function originCooldown(fetcher,signal,{timeoutMs=1500,videoId=null
     headers:{Accept:'application/json'}
    });
    if(state?.status!==200||
-       !/application\\/json/i.test(state.headers?.get?.('content-type')||'')){
+       !/application\/json/i.test(state.headers?.get?.('content-type')||'')){
     discardAudioBody(state);return null;
    }
    const job=await state.json();
