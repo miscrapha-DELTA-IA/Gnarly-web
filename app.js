@@ -1226,7 +1226,8 @@ async function recoverNativeAudio(track,initialError=null){
   if(!isOffline(track.id)){
    const pcResult=await waitForPCNodeReady(track.videoId,{
     current,prepare:true,autoRetryTimeout:true,
-    onProgress:(phase,details)=>{state.audioState='recovering';
+    onProgress:(phase,details)=>{const firstRecovery=state.audioState!=='recovering';
+     state.audioState='recovering';
      const ahead=Number.isInteger(details?.queueAhead)?details.queueAhead:0;
      const message=phase==='retrying'
       ?'Extração demorou além do prazo · retomando automaticamente uma vez…'
@@ -1236,7 +1237,7 @@ async function recoverNativeAudio(track,initialError=null){
        :phase==='pending'
         ?'Gravação na fila do Guardian · aguardando processamento…'
         :'Guardian preparando esta gravação · Play automático ao ficar pronta…';
-     reportAudioStatus(message);updatePlayer();}
+     reportAudioStatus(message);if(firstRecovery)updatePlayer();}
    });
    if(!current())return false;
    if(pcResult==='ready'){
