@@ -18,15 +18,19 @@ test('initial Play remains synchronous; speculative preparation is never awaited
  assert.match(app,/queueAudioWarmup\.reset\(\);cancelSelectedWarmup\(\)/);
  assert.match(app,/function pause\(\)\{coverCharge\.hide\(\);clearNextDiscoveryStatus\(\);navigationRevision\+\+;nextDiscovery=null;invalidateSmartFill\(\);cancelSelectedWarmup\(\)/);
 });
-test('first tap health gate is read-only and skips prewarming when PC is offline',()=>{
+test('first tap directly prewarms one exact recording without a redundant GET status gate',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  const gate=app.slice(app.indexOf('function primeSelectedRecording('),app.indexOf('const queueAudioWarmup=new QueueAudioWarmup'));
- assert.match(gate,/\/pc-node\/status\//);
- assert.match(gate,/method:'GET'/);
- assert.match(gate,/!status\?\.node_online/);
- assert.match(gate,/audio\.readyState>=3/);
  assert.match(gate,/selectedAudioWarmup\.start\(track\)/);
+ assert.match(gate,/selectedWarmupId===id/);
+ assert.match(gate,/playbackSelection!==selection\|\|state\.userPaused/);
+ assert.doesNotMatch(gate,/\/pc-node\/status\/|await fetch\(|method:'GET'/);
  assert.doesNotMatch(gate,/audio\.src\s*=|audio\.play\(|audio\.load\(/);
+});
+test('edge holds the original media request through the PC fast-start window',()=>{
+ const edge=readFileSync(new URL('../functions/fast-audio/[id].js',import.meta.url),'utf8');
+ assert.match(edge,/originTimeoutMs=30000,originProbe=true/);
+ assert.match(edge,/if\(env\?\.GNARLY_AUDIO_R2\)\{/);
 });
 test('speculative first Play only requests exact song via existing R2-first preparation route',async()=>{
  const calls=[];
