@@ -79,3 +79,33 @@ test('R2 write-through retains existing metadata instead of hiding cached songs'
  assert.equal(write.options.customMetadata.title,'Canonical Title');
  assert.equal(write.options.customMetadata.thumbnail,'https://example.org/cover.jpg');
 });
+
+test('global status outage still reaches connected PC without slow progressive extractor',async()=>{
+ const urls=[];
+ const response=await handleFastAudio({request:req(),env:{GNARLY_AUDIO_R2:bucket},params:{id}},async url=>{
+  const path=new URL(url).pathname;urls.push(path);
+  if(path==='/playback-status')throw Error('simulated upstream status outage');
+  if(path==='/pc-node/status/'+id)return Response.json({state:'leased',node_online:true});
+  if(path==='/download')return new Response('node preparing',{status:503,
+   headers:{'X-Download-Error':'pc_node_preparing','Retry-After':'3'}});
+  throw Error('must not invoke progressive extractor: '+path);
+ });
+ assert.equal(response.status,503);
+ assert.equal(response.headers.get('x-gnarly-playback-source'),'pc-node-preparing');
+ assert.deepEqual(urls,['/playback-status','/pc-node/status/'+id,'/download']);
+});
+
+test('status outage cannot invent a PC hit from a failed read-only probe',async()=>{
+ const urls=[],audio=new Uint8Array(1024);
+ const response=await handleFastAudio({request:req(),env:{GNARLY_AUDIO_R2:bucket},params:{id}},async url=>{
+  const path=new URL(url).pathname;urls.push(path);
+  if(path==='/playback-status')throw Error('simulated status outage');
+  if(path==='/pc-node/status/'+id)return Response.json({state:'absent',node_online:false});
+  if(path==='/stream')return new Response(audio,{status:200,headers:{
+   'Content-Type':'audio/mp4','Content-Length':'1024'}});
+  throw Error('unexpected fallback '+path);
+ });
+ assert.equal(response.status,200);
+ assert.equal(response.headers.get('x-gnarly-playback-source'),'progressive-origin');
+ assert.deepEqual(urls,['/playback-status','/pc-node/status/'+id,'/stream']);
+});

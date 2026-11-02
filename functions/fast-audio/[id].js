@@ -161,7 +161,7 @@ export async function cachedRenderAudio({id,range=null,signal=null,bucket=null,w
 /** A cheap, read-only circuit check on uncached tracks. Never accesses
  * YouTube, extracts audio, or blocks R2 hits. Degrades open on network errors.
  */
-export async function originCooldown(fetcher,signal,{timeoutMs=1500}={}){
+export async function originCooldown(fetcher,signal,{timeoutMs=1500,videoId=null}={}){
  const ctl=new AbortController(),abort=()=>ctl.abort();
  signal?.addEventListener('abort',abort,{once:true});
  const timer=setTimeout(abort,timeoutMs);
@@ -192,7 +192,29 @@ export async function originCooldown(fetcher,signal,{timeoutMs=1500}={}){
    pcNodeOnline
   };
   return pcNodeOnline?{retryAfter:null,pcNodeOnline:true}:null;
- }catch{return null}
+ }catch{
+  // Render's global health endpoint can intermittently time out while the
+  // Windows Guardian remains online. Before taking the expensive progressive
+  // /stream path (up to 13s of YouTube metadata), use ONE read-only exact-ID
+  // check with its own sub-second deadline. No extraction or queue creation.
+  if(!VIDEO_ID.test(videoId||'')||signal?.aborted)return null;
+  const retryCtl=new AbortController(),stop=()=>retryCtl.abort();
+  signal?.addEventListener('abort',stop,{once:true});
+  const retryTimer=setTimeout(stop,900);
+  try{
+   const state=await fetcher(new URL('/pc-node/status/'+videoId,RENDER).href,{
+    method:'GET',signal:retryCtl.signal,redirect:'manual',
+    headers:{Accept:'application/json'}
+   });
+   if(state?.status!==200||
+       !/application\/json/i.test(state.headers?.get?.('content-type')||'')){
+    discardAudioBody(state);return null;
+   }
+   const job=await state.json();
+   return job?.node_online===true?{retryAfter:null,pcNodeOnline:true}:null;
+  }catch{return null}
+  finally{clearTimeout(retryTimer);signal?.removeEventListener('abort',stop)}
+ }
  finally{clearTimeout(timer);signal?.removeEventListener('abort',abort)}
 }
 export async function handleFastAudio({request,env,params,waitUntil:contextWaitUntil,originTimeoutMs=30000,originProbe=true},fetcher=fetch){
@@ -231,7 +253,8 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
  // yt-dlp attempts. A cache hit already returned above without this probe.
  if(originTimeoutMs<=0)return reply(504,'Audio origin timed out',{
   'Retry-After':'8','X-Gnarly-Playback-Source':'origin-timeout'});
- const cooldown=originProbe?await originCooldown(fetcher,request.signal,{timeoutMs:Math.min(1500,originTimeoutMs)}):null;
+ const cooldown=originProbe?await originCooldown(fetcher,request.signal,{
+  timeoutMs:Math.min(1500,originTimeoutMs),videoId:id}):null;
  // During an upstream cooldown, a different cache layer (Render R2 or its
  // local LRU) may already contain this exact recording. Probe it using the
  // backend's explicit cache_only=1 path, which never extracts new media.
