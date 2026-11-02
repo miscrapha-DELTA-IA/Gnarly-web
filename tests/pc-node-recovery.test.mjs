@@ -210,3 +210,58 @@ test('completed-PC recovery does not launch an extraction or change the recordin
  assert.match(branch,/probe:\(\)=>resumeCachedNative\(track,current\)/);
  assert.doesNotMatch(branch,/selectedAudioWarmup\.start|\/stream\?|\/download\?|sourceRouter\.resolve/);
 });
+
+test('one timeout is retried automatically only after server cooldown, without another Play',async()=>{
+ let clock=0,prepareCalls=0,statusCalls=0;
+ const result=await waitForPCNodeReady(ID,{
+  prepare:true,autoRetryTimeout:true,maxWaitMs:12000,
+  now:()=>clock,wait:async ms=>{clock+=ms;},
+  fetcher:async(_url,{method})=>{
+   if(method==='POST'){
+    prepareCalls++;
+    return {ok:true,json:async()=>({state:prepareCalls===1?'failed':'pending'})};
+   }
+   statusCalls++;
+   return {ok:true,json:async()=>statusCalls===1?
+    {state:'failed',failure_category:'timeout',retry_after_seconds:3,node_online:true,cooldown_seconds:0}:
+    {state:'ready',node_online:true}};
+  }
+ });
+ assert.equal(result,'ready');
+ assert.equal(prepareCalls,2,'only one delayed retry is allowed');
+ assert.equal(statusCalls,2);
+ assert.ok(clock>=3750,'respect the advertised server cooldown plus margin');
+});
+
+test('protected, rate-limited and unavailable formats cannot trigger another extraction',async()=>{
+ for(const reason of ['upstream_rate_limited','age_restricted','authentication_required','format_unavailable','source_unavailable']){
+  let prepares=0;
+  const state={state:'failed',failure_category:reason,retry_after_seconds:1,node_online:true,cooldown_seconds:0};
+  const result=await waitForPCNodeReady(ID,{
+   prepare:true,autoRetryTimeout:true,
+   fetcher:async(_url,{method})=>{
+    if(method==='POST'){prepares++;return {ok:true,json:async()=>({state:'failed'})}}
+    return {ok:true,json:async()=>state}
+   },
+   wait:async()=>{throw Error('must not wait after non-timeout failure')}
+  });
+  assert.equal(result,'failed');
+  assert.equal(prepares,1,reason+' is terminal for automatic retries');
+ }
+});
+
+test('one automatic retry never enters a third extraction after second timeout',async()=>{
+ let clock=0,prepares=0,statuses=0;
+ const failed={state:'failed',failure_category:'timeout',retry_after_seconds:0,node_online:true,cooldown_seconds:0};
+ const result=await waitForPCNodeReady(ID,{
+  prepare:true,autoRetryTimeout:true,maxWaitMs:12000,
+  now:()=>clock,wait:async ms=>{clock+=ms;},
+  fetcher:async(_url,{method})=>{
+   if(method==='POST'){prepares++;return {ok:true,json:async()=>({state:prepares===1?'failed':'pending'})}}
+   statuses++;return {ok:true,json:async()=>failed};
+  }
+ });
+ assert.equal(result,'failed');
+ assert.equal(prepares,2);
+ assert.equal(statuses,2);
+});
