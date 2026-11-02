@@ -20,7 +20,7 @@ import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
 import {trackAudioURL,isGnarlyPagesHost,youtubeID,NATIVE_BACKEND,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
 import {officialEmbedURL,officialWatchURL,canUseOfficial,shouldUseOfficialAfterNativeFailure} from './lib/official-playback.js';
 import {AudioDeliveryRecovery,PlaybackCooldown,resolvePlaybackCooldown,playbackLimitMessage,publicAudioMessage} from './lib/audio-delivery.js';
-import {waitForPCNodeReady} from './lib/pc-node-recovery.js';
+import {waitForPCNodeReady,waitForPCNodeCache} from './lib/pc-node-recovery.js';
 import {audioSourceCategory,recordStreamingMetric} from './lib/streaming-metrics.js';
 import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-library.js';
 import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from './lib/queue-audio-warmup.js';
@@ -1236,10 +1236,18 @@ async function recoverNativeAudio(track,initialError=null){
    if(pcResult==='ready'){
     if(await resumeCompletedPCNode(track,current))return true;
     if(!current())return false;
-    // A successful PC upload may have reached edge R2 while Render's
-    // native /download suffered a transient network/media-format error.
-    // Recover the EXACT recording from the cache, never via yt-dlp.
-    if(await resumeCachedNative(track,current))return true;
+    // The PC marks its upload ready before the asynchronous R2 promotion
+    // necessarily reaches this Cloudflare edge POP. An immediate cache miss
+    // is NOT a terminal media failure: keep the first Play intent alive.
+    // Poll ONLY the existing exact-ID R2 cache, without starting yt-dlp,
+    // a second PC job, or an unrelated recording.
+    const cacheResult=await waitForPCNodeCache({
+     current,probe:()=>resumeCachedNative(track,current),
+     onProgress:()=>{state.audioState='recovering';
+      reportAudioStatus('Gravação entregue pelo PC · sincronizando cache para reprodução…');}
+    });
+    if(cacheResult==='ready'||isAudioAlreadyPlaying())return true;
+    if(!current())return false;
    }
    if(pcResult==='failed'||pcResult==='timeout'||pcResult==='busy'){
     // Real PC failure is not a codec problem. Avoid retrying the same
