@@ -195,7 +195,7 @@ export async function originCooldown(fetcher,signal,{timeoutMs=1500}={}){
  }catch{return null}
  finally{clearTimeout(timer);signal?.removeEventListener('abort',abort)}
 }
-export async function handleFastAudio({request,env,params,waitUntil:contextWaitUntil,originTimeoutMs=17000,originProbe=true},fetcher=fetch){
+export async function handleFastAudio({request,env,params,waitUntil:contextWaitUntil,originTimeoutMs=30000,originProbe=true},fetcher=fetch){
  const id=params?.id;
  if(!VIDEO_ID.test(id||''))return reply(400,'Invalid track ID');
  if(request.method!=='GET'&&request.method!=='HEAD')
