@@ -100,30 +100,14 @@ function primeSelectedRecording(track,selection){
     !navigator.onLine||navigator.connection?.saveData||
     selectedWarmupId===id)return;
  selectedWarmupId=id;
- const controller=new AbortController();
- selectedWarmupProbe?.abort();selectedWarmupProbe=controller;
- const timer=setTimeout(()=>controller.abort(),2800);
- void (async()=>{
-  try{
-   // Probe only first-party, read-only job health. No expensive extraction
-   // or second media-element play while the current audio is initializing.
-   const response=await fetch(new URL('/pc-node/status/'+id,NATIVE_BACKEND),{
-    method:'GET',cache:'no-store',credentials:'omit',signal:controller.signal
-   });
-   if(!response.ok)return;
-   const status=await response.json();
-   if(!status?.node_online||controller.signal.aborted||state.current!==track||
-       playbackSelection!==selection||state.userPaused||audio.readyState>=3)return;
-   // Pages checks R2 BEFORE calling Render /prepare. If already cached,
-   // this exits at the edge. Otherwise Render uses the existing Windows
-   // queue (and preserves its old extractor only when PC is offline).
-   await selectedAudioWarmup.start(track);
-  }catch{/* Never interfere with existing player or recovery. */}
-  finally{
-   clearTimeout(timer);
-   if(selectedWarmupProbe===controller)selectedWarmupProbe=null;
-  }
- })();
+ // Fast first-tap preparation: the previous GET /pc-node/status added an
+ // entire Render roundtrip (or a 2.8-second timeout) BEFORE queuing the
+ // selected exact recording. The first-party /fast-prepare route already
+ // checks R2 first and the backend deduplicates PC / Render work. Send ONE
+ // non-blocking prepare after the initial native media gesture.
+ // Never change the media source, identity or current playback promise.
+ if(state.current!==track||playbackSelection!==selection||state.userPaused)return;
+ void selectedAudioWarmup.start(track).catch(()=>{});
 }
 const queueAudioWarmup=new QueueAudioWarmup({
  // Optional prewarm should never create a burst when listeners skip quickly.
