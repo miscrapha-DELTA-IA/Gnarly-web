@@ -1212,9 +1212,11 @@ async function recoverNativeAudio(track,initialError=null){
   // Wait only for a real, existing job; never poll indefinitely.
   if(!isOffline(track.id)){
    const pcResult=await waitForPCNodeReady(track.videoId,{
-    current,prepare:true,
-    onProgress:()=>{state.audioState='recovering';
-     reportAudioStatus('Preparando esta gravação no GNARLY PC Node…');}
+    current,prepare:true,autoRetryTimeout:true,
+    onProgress:phase=>{state.audioState='recovering';
+     reportAudioStatus(phase==='retrying'
+      ?'Extração demorou além do prazo · retomando automaticamente uma vez…'
+      :'Preparando esta gravação no GNARLY PC Node…');}
    });
    if(!current())return false;
    if(pcResult==='ready'){
