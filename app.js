@@ -537,6 +537,17 @@ function isAudioAlreadyPlaying(){
  return state.audioState==='playing'&&!state.userPaused&&!audio.paused&&
   !audio.ended&&audio.readyState>=3;
 }
+// Once a listener taps Play, a queued or extracting recording owns that
+// intent until it plays, fails or is cancelled. A second tap must CANCEL
+// waiting, not create another overlapping media request.
+function isAwaitingInitialAudio(){
+ return !state.userPaused&&
+  (state.audioState==='loading'||state.audioState==='recovering');
+}
+function toggleFirstPlay(){
+ if(state.playing||isAwaitingInitialAudio())pause();
+ else void play();
+}
 function reportAudioError(text){
  text=publicAudioMessage(text);
  coverCharge.hide();
@@ -619,8 +630,8 @@ function updateIPodScreen(){
  $('#ipod-screen-source').textContent=state.audioState==='official'?
   'YOUTUBE · PLAYER OFICIAL':ipodSourceLabel(state.playing);
  const label=state.audioState==='official'?'Ver player oficial abaixo':state.playing?'Pausar':'Reproduzir';
- $('#ipod-play-button').setAttribute('aria-label',label);
- $('#ipod-center-button').setAttribute('aria-label',label);
+ $('#ipod-play-button').setAttribute('aria-label',isAwaitingInitialAudio()?'Cancelar preparação':label);
+ $('#ipod-center-button').setAttribute('aria-label',isAwaitingInitialAudio()?'Cancelar preparação':label);
  $('#ipod-next-button').disabled=!canAdvancePlayback();
 }
 function updatePlayer(){
@@ -645,8 +656,10 @@ function updatePlayer(){
  $('#cover-button').setAttribute('aria-label',track?'Configurar fundo a partir da capa':'Abrir busca de músicas');
  applyBackground();
  $('#cover-button').classList.toggle('has-audio',!!track);
- $('#play-button').innerHTML=svg(state.playing?'pause':'play');
- $('#play-button').setAttribute('aria-label',state.playing?'Pausar':'Reproduzir');
+ const preparing=isAwaitingInitialAudio();
+ $('#play-button').innerHTML=svg(state.playing||preparing?'pause':'play');
+ $('#play-button').setAttribute('aria-label',preparing?'Cancelar preparação':state.playing?'Pausar':'Reproduzir');
+ $('#play-button').setAttribute('aria-busy',preparing?'true':'false');
  $('#next-button').disabled=!canAdvancePlayback();
  if(state.audioState==='official'){
   $('#youtube-next').disabled=!canAdvancePlayback();
@@ -1213,10 +1226,17 @@ async function recoverNativeAudio(track,initialError=null){
   if(!isOffline(track.id)){
    const pcResult=await waitForPCNodeReady(track.videoId,{
     current,prepare:true,autoRetryTimeout:true,
-    onProgress:phase=>{state.audioState='recovering';
-     reportAudioStatus(phase==='retrying'
+    onProgress:(phase,details)=>{state.audioState='recovering';
+     const ahead=Number.isInteger(details?.queueAhead)?details.queueAhead:0;
+     const message=phase==='retrying'
       ?'Extração demorou além do prazo · retomando automaticamente uma vez…'
-      :'Preparando esta gravação no GNARLY PC Node…');}
+      :phase==='pending'&&ahead>0
+       ?'GNARLY Guardian na fila · '+ahead+
+        (ahead===1?' gravação à frente…':' gravações à frente…')
+       :phase==='pending'
+        ?'Gravação na fila do Guardian · aguardando processamento…'
+        :'Guardian preparando esta gravação · Play automático ao ficar pronta…';
+     reportAudioStatus(message);updatePlayer();}
    });
    if(!current())return false;
    if(pcResult==='ready'){
@@ -2439,7 +2459,7 @@ $('#ipod-menu-button').addEventListener('click',()=>{
 $('#ipod-previous-button').addEventListener('click',()=>previous());
 $('#ipod-next-button').addEventListener('click',()=>void next());
 for(const id of ['ipod-play-button','ipod-center-button']){
- $('#'+id).addEventListener('click',()=>state.playing?pause():void play());
+ $('#'+id).addEventListener('click',toggleFirstPlay);
 }
 $('#cover-button').addEventListener('click',()=>{closePlayerSurfaceMenu();if(!state.current)openSheet('search');else openSheet('background')});
 $('#player-surface-button').addEventListener('click',()=>{
@@ -2610,7 +2630,7 @@ async function toggleMicRecording(){
 }
 $('#record-button').addEventListener('click',()=>void toggleMicRecording());
 $('#karaoke-expand-button').addEventListener('click',e=>{karaokeStage.open(e.currentTarget);if(state.sheet)closeSheet()});
-$('#play-button').addEventListener('click',()=>state.playing?pause():void play());
+$('#play-button').addEventListener('click',toggleFirstPlay);
 $('#youtube-close').addEventListener('click',closeYouTubePlayer);
 $('#youtube-optin-button').addEventListener('click',()=>{if(state.current&&canUseOfficial(state.current,{offline:!!offlineAudio(state.current.id)}))openYouTubePlayer(state.current)});
 $('#youtube-native-retry').addEventListener('click',()=>void tryNativeFromOfficial());
