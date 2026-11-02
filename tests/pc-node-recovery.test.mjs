@@ -265,3 +265,34 @@ test('one automatic retry never enters a third extraction after second timeout',
  assert.equal(prepares,2);
  assert.equal(statuses,2);
 });
+
+test('public queue position slows redundant status polling but stays responsive once leased',async()=>{
+ let now=0,calls=0,seen=[],waits=[];
+ const states=[
+  {state:'pending',queue_ahead:4,node_online:true},
+  {state:'pending',queue_ahead:2,node_online:true},
+  {state:'leased',queue_ahead:0,node_online:true},
+  {state:'ready',queue_ahead:null,node_online:true}
+ ];
+ const result=await waitForPCNodeReady(ID,{
+  now:()=>now,maxWaitMs:17000,
+  wait:async ms=>{waits.push(ms);now+=ms;},
+  onProgress:(phase,info)=>seen.push({phase,ahead:info?.queueAhead}),
+  fetcher:async()=>({ok:true,status:200,json:async()=>states[calls++]})
+ });
+ assert.equal(result,'ready');
+ assert.equal(calls,4);
+ assert.deepEqual(waits,[4500,4500,1700]);
+ assert.deepEqual(seen.map(x=>x.ahead),[4,2,0]);
+});
+test('single first-Play loading state can be cancelled without another media request',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ const toggle=app.slice(app.indexOf('function isAwaitingInitialAudio(){'),
+  app.indexOf('function reportAudioError('));
+ assert.match(toggle,/state\.audioState==='loading'\|\|state\.audioState==='recovering'/);
+ assert.match(toggle,/if\(state\.playing\|\|isAwaitingInitialAudio\(\)\)pause\(\)/);
+ assert.match(app,/\$\('#play-button'\)\.addEventListener\('click',toggleFirstPlay\)/);
+ assert.match(app,/\$\('#'\+id\)\.addEventListener\('click',toggleFirstPlay\)/);
+ assert.match(app,/setAttribute\('aria-busy',preparing\?'true':'false'\)/);
+});
