@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {waitForPCNodeReady} from '../lib/pc-node-recovery.js';
+import {waitForPCNodeReady,waitForPCNodeCache} from '../lib/pc-node-recovery.js';
 
 const ID='PvHL6FfmWJE';
 const response=state=>({ok:true,status:200,json:async()=>({state,node_online:true})});
@@ -150,5 +150,63 @@ test('success recovery accepts player playing event as terminal state, not stale
   assert.match(helper,/state\.current!==track\|\|playbackSelection!==selection\|\|state\.userPaused/);
   assert.doesNotMatch(helper,/await settleAudioStart[\s\S]*?if\(!isCurrent\(\)\)return false/);
  }
- assert.match(source,/if\(pcResult==='ready'\)\{[\s\S]*?await resumeCompletedPCNode\(track,current\)[\s\S]*?await resumeCachedNative\(track,current\)/);
+ assert.match(source,/if\(pcResult==='ready'\)\{[\s\S]*?await resumeCompletedPCNode\(track,current\)[\s\S]*?waitForPCNodeCache\(/);
+ assert.match(source,/probe:\(\)=>resumeCachedNative\(track,current\)/);
+});
+
+test('one Play survives R2 propagation after PC reports ready',async()=>{
+ let clock=0,calls=0,progress=0;
+ const result=await waitForPCNodeCache({
+  now:()=>clock,wait:async ms=>{clock+=ms;},
+  probe:async()=>{calls++;return calls===3;},
+  onProgress:()=>{progress++}
+ });
+ assert.equal(result,'ready');
+ assert.equal(calls,3);
+ assert.equal(progress,2);
+ assert.ok(clock<6000);
+});
+
+test('transient edge cache check does not show a terminal error',async()=>{
+ let clock=0,checks=0;
+ const result=await waitForPCNodeCache({
+  now:()=>clock,wait:async ms=>{clock+=ms;},
+  probe:async()=>{checks++;if(checks===1)throw Error('R2 temporarily unreachable');return true;}
+ });
+ assert.equal(result,'ready');
+ assert.equal(checks,2);
+});
+
+test('paused or changed selection cancels cache settling without extra requests',async()=>{
+ let clock=0,selected=true,checks=0;
+ const result=await waitForPCNodeCache({
+  now:()=>clock,current:()=>selected,
+  wait:async ms=>{clock+=ms;selected=false;},
+  probe:async()=>{checks++;return false;}
+ });
+ assert.equal(result,'cancelled');
+ assert.equal(checks,1);
+});
+
+test('R2 never becoming ready is bounded with read-only probes',async()=>{
+ let clock=0,checks=0;
+ const result=await waitForPCNodeCache({
+  maxWaitMs:4400,pollMs:1800,now:()=>clock,
+  wait:async ms=>{clock+=ms;},
+  probe:async()=>{checks++;return false;}
+ });
+ assert.equal(result,'timeout');
+ assert.ok(checks>=2&&checks<=4);
+ assert.equal(clock,4400);
+});
+
+test('completed-PC recovery does not launch an extraction or change the recording',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ const branch=app.slice(app.indexOf("if(pcResult==='ready'){"),
+                       app.indexOf("if(pcResult==='failed'"));
+ assert.match(branch,/await resumeCompletedPCNode\(track,current\)/);
+ assert.match(branch,/waitForPCNodeCache\(/);
+ assert.match(branch,/probe:\(\)=>resumeCachedNative\(track,current\)/);
+ assert.doesNotMatch(branch,/selectedAudioWarmup\.start|\/stream\?|\/download\?|sourceRouter\.resolve/);
 });
