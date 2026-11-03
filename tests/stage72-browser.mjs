@@ -161,6 +161,27 @@ async function openCreativeLayer(button){
  if(await page.locator('#bottom-sheet').isVisible())await page.locator('#close-sheet').click();
  await page.locator(button).click({button:'right'});
 }
+// Real tap regression: after the final material palette, the next shortcut
+// click must progress through every GNARLY mode and wrap back to ACID.
+// Right-click/manual selection remains a GNARLY reference recolor, not an exit.
+await page.locator('#theme-button').click({button:'right'});
+await page.locator('[data-theme="LENTICULAR WILD"]').click();
+if(await page.locator('#bottom-sheet').isVisible())await page.locator('#close-sheet').click();
+const expectQuickTheme=async name=>{
+ await page.locator('#theme-button').click();
+ await page.waitForFunction(expected=>
+  document.querySelector('.build-badge')?.textContent==='WEB · '+expected,
+ name,{timeout:6000});
+};
+await expectQuickTheme('GNARLY');
+await page.locator('#theme-button').click({button:'right'});
+await page.locator('[data-theme="ULTRAVIOLET"]').click();
+assert.equal(await page.locator('.build-badge').textContent(),'WEB · GNARLY',
+ 'Choosing a color manually inside GNARLY must not exit its authored shader');
+if(await page.locator('#bottom-sheet').isVisible())await page.locator('#close-sheet').click();
+for(const theme of ['GNARLY 2','GNARLY STRATA','GNARLY COMPILER',
+ 'GNARLY ORGANISM','ACID','CYBER NIGHT'])await expectQuickTheme(theme);
+// Restore baseline before the material/experience GPU acceptance below.
 await page.locator('#theme-button').click({button:'right'});
 await page.locator('[data-theme="PRISM CARMINE"]').click();
 await page.waitForFunction(({name,want})=>{

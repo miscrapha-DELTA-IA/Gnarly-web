@@ -23,7 +23,7 @@ assert.match(css,/position:fixed;z-index:41/);
 const assets=JSON.parse(readFileSync(join(dist,'offline-assets.json'),'utf8'));
 assert.ok(assets.includes('/search-hierarchy.css'),'PWA offline asset manifest is missing layout stylesheet');
 const sw=readFileSync(join(dist,'sw.js'),'utf8');
-assert.match(sw,/gnarly-web-shell-20261103-tdr-dashboard-v25/);
+assert.match(sw,/gnarly-web-shell-20261103-palette-gnarly-cycle-v26/);
 assert.match(sw,/'\/search-hierarchy\.css'/);
 assert.ok(existsSync(join(dist,'ui/tdr-panel.js')),'Pages output is missing TDR dashboard module');
 console.log('Cloudflare Pages dist verified: '+links.length+' stylesheets, Search layout source parity and PWA precache.');

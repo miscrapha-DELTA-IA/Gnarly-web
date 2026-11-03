@@ -2706,9 +2706,12 @@ const QUICK_THEMES=[...CLASSIC_THEMES,...NATIVE_COLOR_THEMES,...CREATIVE_COLOR_T
 const QUICK_EXPERIENCES=EXPERIENCES.map(x=>x.id);
 // While GNARLY 2 is active, selecting other colors/materials edits its anchor
 // rather than silently leaving the procedural universe.
-function selectVisualTheme(next){
+function selectVisualTheme(next,{quickCycle=false}={}){
  if(!PALETTES[next])return;
- if(GNARLY_MODES.includes(state.theme)&&!GNARLY_MODES.includes(next)){
+ // The manual picker keeps GNARLY's authored geometry and only updates its
+ // reference palette. The one-tap palette shortcut MUST instead switch to
+ // the next actual theme, including the boundary GNARLY ORGANISM → ACID.
+ if(!quickCycle&&GNARLY_MODES.includes(state.theme)&&!GNARLY_MODES.includes(next)){
   if(state.theme==='GNARLY 2'&&MATERIAL_THEMES.includes(next)){
    state.gnarly2Material=next;state.gnarly2LockMaterial=true;
    setSetting('gnarly2Material',next);setSetting('gnarly2LockMaterial','yes');
@@ -2742,8 +2745,10 @@ function configureGnarly2Lock(id){
 const QUICK_LYRIC_STYLES=['original','art-magazine-cutout','art-xerox-ransom','art-glitch-zine','art-chrome-surge','studio-vogue-editorial','studio-concrete-poster','art-y2k-warp','studio-neon-serif','art-stereo-echo'];
 bindQuickCreative($('#theme-button'),{
  cycle:()=>{
-  const next=cycleValue(QUICK_THEMES,GNARLY_MODES.includes(state.theme)?state.previousTheme:state.theme);
-  selectVisualTheme(next);
+  // Never substitute previousTheme here: that pins the shortcut forever at
+  // the first GNARLY mode after the final material theme.
+  const next=cycleValue(QUICK_THEMES,state.theme);
+  selectVisualTheme(next,{quickCycle:true});
  },
  expand:()=>openSheet('theme')
 });

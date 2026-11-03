@@ -2,6 +2,7 @@ import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {cycleValue,bindQuickCreative} from '../lib/quick-creative-controls.js';
+import {CLASSIC_THEMES,NATIVE_COLOR_THEMES,CREATIVE_COLOR_THEMES,MATERIAL_THEMES,GNARLY_MODES} from '../lib/visual-selection.js';
 test('quick actions cycle deterministically without replacing unrelated state',()=>{
  assert.equal(cycleValue(['ACID','CRIMSON','ACID'],'ACID'),'CRIMSON');
  assert.equal(cycleValue(['ACID','CRIMSON'],'CRIMSON'),'ACID');
@@ -22,6 +23,28 @@ function button(){
    return prevented;
   },listeners};
 }
+test('palette shortcut traverses all five GNARLY modes and wraps to ACID',()=>{
+ const order=[...CLASSIC_THEMES,...NATIVE_COLOR_THEMES,
+  ...CREATIVE_COLOR_THEMES,...MATERIAL_THEMES,...GNARLY_MODES];
+ let current=MATERIAL_THEMES.at(-1);
+ const observed=[];
+ for(let i=0;i<GNARLY_MODES.length+2;i++){
+  current=cycleValue(order,current);
+  observed.push(current);
+ }
+ assert.deepEqual(observed,[...GNARLY_MODES,'ACID','CYBER NIGHT']);
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ const action=app.slice(app.indexOf("bindQuickCreative($('#theme-button')"),
+  app.indexOf("bindQuickCreative($('#experience-button')"));
+ assert.match(action,/cycleValue\(QUICK_THEMES,state\.theme\)/,
+  'shortcut must step from the active GNARLY mode, never previousTheme');
+ assert.match(action,/selectVisualTheme\(next,\{quickCycle:true\}\)/,
+  'one-tap cycle must exit GNARLY rather than recolor its manual reference');
+ const definition=app.slice(app.indexOf('function selectVisualTheme('),
+  app.indexOf('function configureGnarly2Lock('));
+ assert.match(definition,/if\(!quickCycle&&GNARLY_MODES\.includes\(state\.theme\)/,
+  'manual selection inside GNARLY must retain reference-palette behavior');
+});
 test('tap cycles; downward swipe opens a palette without ghost cycling',()=>{
  const el=button();let cycles=0,panels=0;
  bindQuickCreative(el,{cycle:()=>cycles++,expand:()=>panels++});
@@ -91,7 +114,7 @@ test('quick theme, experience and Aa changes are silent without silencing import
   ["bindQuickCreative($('#lyric-style-button')","$('#background-button').addEventListener"]
  ])assert.doesNotMatch(section(start,end),/\btoast\s*\(/);
  // Manual palette and GNARLY 2 visual refinements are silent too.
- assert.doesNotMatch(section('function selectVisualTheme(next)','function configureGnarly2Lock'),/\btoast\s*\(/);
+ assert.doesNotMatch(section('function selectVisualTheme(next,{quickCycle=false}={})','function configureGnarly2Lock'),/\btoast\s*\(/);
  assert.doesNotMatch(section('function configureGnarly2Lock(id)','const QUICK_LYRIC_STYLES'),/\btoast\s*\(/);
  assert.doesNotMatch(section('if(target.dataset.materialLayer)','if(target.dataset.stemPreset)'),/\btoast\s*\(/);
  // Playback failures are visible only as a single inline retry message; other tool errors still toast.
