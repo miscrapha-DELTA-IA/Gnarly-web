@@ -134,6 +134,28 @@ for(const width of [320,360,375,390,430,768]){
 await page.setViewportSize({width:390,height:844});
 assert.equal(await page.locator('#player-section').count(),1);
 await page.waitForTimeout(900);
+// Observe real first-load network requests against the EXACT Pages dist/.
+// We assert request topology rather than fixed milliseconds: CI runners and
+// Safari vary widely in available CPU and bandwidth.
+const startup=await page.evaluate(()=>{
+ const origin=location.origin;
+ const resources=performance.getEntriesByType('resource').filter(x=>{
+  try{return new URL(x.name).origin===origin}catch{return false}
+ });
+ const paths=resources.map(x=>new URL(x.name).pathname);
+ const navigation=performance.getEntriesByType('navigation')[0];
+ return {css:paths.filter(x=>x.endsWith('.css')),js:paths.filter(x=>x.endsWith('.js')),
+  interactiveMs:Math.round(navigation?.domInteractive||0),
+  domReadyMs:Math.round(navigation?.domContentLoadedEventEnd||0),
+  loadMs:Math.round(navigation?.loadEventEnd||0)};
+});
+assert.deepEqual(startup.css.filter(x=>x!=='/ui/share-studio.css'),['/gnarly-ui.css'],
+ 'GNARLY must start with one consolidated stylesheet, not nine render blockers');
+assert.ok(startup.js.includes('/app.js'),'Browser must load its production entrypoint');
+assert.ok(!startup.js.some(x=>x.startsWith('/lib/')||x.startsWith('/ui/')||
+ x.startsWith('/chunks/')),
+ 'Optional studio and source ESM modules must not join initial requests: '+JSON.stringify(startup));
+console.log('GNARLY cold-page startup topology',JSON.stringify(startup));
 const nativeGPU=await page.evaluate(()=>{
  const canvas=document.querySelector('#fluid-canvas');
  const gl=canvas.getContext('webgl2');
