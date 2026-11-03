@@ -130,7 +130,22 @@ const queueAudioWarmup=new QueueAudioWarmup({
  * expose useful buffered ranges, so confirmed stable playback is the backup.
  */
 const requestedPrecache=new Set(),inflightPrecache=new Set();
-function resetQueuePrecache(){requestedPrecache.clear();inflightPrecache.clear()}
+let upcomingPrecacheTimer=null;
+function resetQueuePrecache(){
+ requestedPrecache.clear();inflightPrecache.clear();
+ clearTimeout(upcomingPrecacheTimer);upcomingPrecacheTimer=null;
+}
+function scheduleUpcomingPrecache(){
+ clearTimeout(upcomingPrecacheTimer);
+ const selection=playbackSelection;
+ // Secondary trigger for native engines that do not expose buffered progress
+ // or skip timeupdate during decoded-segment transitions.
+ upcomingPrecacheTimer=setTimeout(()=>{
+  upcomingPrecacheTimer=null;
+  if(selection===playbackSelection&&!audio.paused&&!state.userPaused)
+   prepareUpcomingAudio();
+ },11000);
+}
 function bufferedAudioAhead(element){
  const time=Number(element.currentTime)||0;
  try{for(let i=0;i<element.buffered.length;i++)
@@ -3466,7 +3481,7 @@ audio.addEventListener('stalled',()=>{
   signalPlaybackMetric(playbackMetricErrorSelection===playbackSelection||
     audioDelivery.attempt>0?'recovered_audio':'first_audio');
   playbackStartedAt=0;
- }prepareUpcomingAudio();void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!audio.error||!state.current||state.userPaused||state.audioState==='official'||isAudioAlreadyPlaying())return;
+ }scheduleUpcomingPrecache();prepareUpcomingAudio();void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!audio.error||!state.current||state.userPaused||state.audioState==='official'||isAudioAlreadyPlaying())return;
  tdr.mark(playbackSelection,'media_error');
  // Browser MediaError 4 often means the first /fast-audio request got a
  // temporary 503 while the Windows node is still extracting. Record the
