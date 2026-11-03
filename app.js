@@ -804,6 +804,8 @@ function applyLyricResult(result){
  state.lyricsInstrumental=!!result.instrumental;
  state.lyricsStatus=result.status||'Letras disponíveis';
  state.lastLyric=-2;syncLyrics();
+ if(state.lyricsSynced&&!audio.paused&&!audio.ended&&!document.hidden)
+  lyricTransportSync.start();
  if(state.sheet==='karaoke')renderSheet();
 }
 function lyricSyncControls(){
@@ -836,7 +838,31 @@ function finishWorkshop(){
  toast('Sincronização salva neste dispositivo.');
  return true;
 }
+let lyricUpgradeTimer=null,lyricUpgradeAttemptSelection=-1;
+// One background recheck of an unsynchronized lyric result per selected song.
+// A result with no verified times stays plain: never fabricate LRC timestamps.
+function scheduleLyricUpgrade(track,ac){
+ const query=lyricsIdentity(track),selection=playbackSelection;
+ if(state.lyricsSynced||state.lyricsInstrumental||lyricWorkshop.active||
+    !query.title||!query.artist||lyricUpgradeAttemptSelection===selection)return;
+ lyricUpgradeAttemptSelection=selection;
+ const rateLimited=/limitou/i.test(state.lyricsStatus);
+ lyricUpgradeTimer=setTimeout(async()=>{
+  lyricUpgradeTimer=null;
+  if(ac.signal.aborted||playbackSelection!==selection||state.current!==track||
+     audio.paused||audio.ended||document.hidden||state.lyricsSynced||
+     state.lyricsInstrumental||lyricWorkshop.active)return;
+  try{
+   const found=await autoLyrics(track,{signal:ac.signal,preferSynced:true});
+   if(ac.signal.aborted||playbackSelection!==selection||state.current!==track||
+      state.lyricsSynced||lyricWorkshop.active)return;
+   if(found?.synced&&Array.isArray(found.lines)&&found.lines.length)
+    applyLyricResult(found);
+  }catch(error){if(error?.name!=='AbortError')console.debug('GNARLY lyrics upgrade unavailable')}
+ },rateLimited?70000:25000);
+}
 async function loadAutoLyrics(track){
+ clearTimeout(lyricUpgradeTimer);lyricUpgradeTimer=null;
  state.lyricsAbort?.abort();const ac=new AbortController();state.lyricsAbort=ac;
  const manual=lyricWorkshop.load(track);
  const immediate=manual||cachedAutoLyrics(track);
@@ -869,6 +895,10 @@ async function loadAutoLyrics(track){
  }finally{
   if(state.lyricsAbort===ac&&!ac.signal.aborted&&state.current===track){
    state.lyricsLoading=false;syncLyrics();if(state.sheet==='karaoke')renderSheet();
+   if(state.lyricsSynced&&!audio.paused&&!audio.ended&&!document.hidden)
+    lyricTransportSync.start();
+   else if(!state.lyricsSynced&&!state.lyricsInstrumental)
+    scheduleLyricUpgrade(track,ac);
    if(lyricsAIAutoSession&&track.source==='local'&&track.file&&!state.lyricsSynced&&
     !state.lyricsAIWorking&&!lyricsAIOnce.has(track.id)&&!state.lyricsInstrumental){
     lyricsAIOnce.add(track.id);void transcribeOwnLyrics(track.file);
@@ -922,7 +952,11 @@ function fitCompactLyric(){
 // callback does not redo score/DOM work on frames without a line transition.
 const lyricTransportSync=new LyricTransportSync({
  audio,getSelection:()=>playbackSelection,
- onFrame:()=>syncLyrics({precise:true})
+ onFrame:()=>syncLyrics({precise:true}),
+ // High-frequency reading of audio.currentTime is for visible, timed lyrics
+ // only. Playback/extraction/audio timing is never modified by captions.
+ keepPrecise:()=>state.lyricsSynced&&state.lyrics.length>0&&
+  (displayStore.isVisible('lyrics')||karaokeStage.opened)
 });
 function syncLyrics({precise=false}={}){
  const i=lyricIndex(state.lyrics,audio.currentTime||0);
@@ -1012,9 +1046,12 @@ async function enrichSelectedTrack(track,knownDuration=0){
   // 'artist unknown' or the wrong unverified title. Metadata enrichment is
   // asynchronous, so retry whenever the exact lyric identity changes.
   const newLyrics=lyricsIdentity(track);
-  if(!lyricWorkshop.active&&
-     (oldLyrics.artist!==newLyrics.artist||oldLyrics.title!==newLyrics.title||
-      oldLyrics.duration!==newLyrics.duration))void loadAutoLyrics(track);
+  // A duration-only catalog correction must not delete an already verified
+  // synchronized lyric result while an API lookup is temporarily unavailable.
+  const creditChanged=oldLyrics.artist!==newLyrics.artist||oldLyrics.title!==newLyrics.title;
+  const durationChanged=oldLyrics.duration!==newLyrics.duration;
+  if(!lyricWorkshop.active&&(creditChanged||durationChanged&&!state.lyricsSynced))
+   void loadAutoLyrics(track);
   if(state.sheet==='search')displaySearch(state.searchResults);
  }catch(error){if(error?.name!=='AbortError')console.debug('Metadata enrichment unavailable');}
 }
