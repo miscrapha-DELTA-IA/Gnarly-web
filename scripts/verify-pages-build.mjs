@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 
 const root=resolve(import.meta.dirname,'..'),dist=join(root,'dist');
 const html=readFileSync(join(dist,'index.html'),'utf8');
-const links=[...html.matchAll(/<link\s+[^>]*rel="stylesheet"[^>]*href="\.\/([^"]+)"/g)].map(m=>m[1]);
+const links=[...html.matchAll(/<link\s+[^>]*rel="stylesheet"[^>]*href="\.\/([^"]+)"/g)].map(m=>m[1].split('?')[0].split('#')[0]);
 assert.ok(links.includes('search-hierarchy.css'),'Search launcher stylesheet must be linked');
 for(const asset of links){
  const path=join(dist,asset);
@@ -23,6 +23,6 @@ assert.match(css,/position:fixed;z-index:41/);
 const assets=JSON.parse(readFileSync(join(dist,'offline-assets.json'),'utf8'));
 assert.ok(assets.includes('/search-hierarchy.css'),'PWA offline asset manifest is missing layout stylesheet');
 const sw=readFileSync(join(dist,'sw.js'),'utf8');
-assert.match(sw,/gnarly-web-shell-20261101-audio-continuity-v23/);
+assert.match(sw,/gnarly-web-shell-20261103-visible-header-chevrons-v24/);
 assert.match(sw,/'\/search-hierarchy\.css'/);
 console.log('Cloudflare Pages dist verified: '+links.length+' stylesheets, Search layout source parity and PWA precache.');
