@@ -658,6 +658,7 @@ function updatePlayer(){
  $('#play-button').setAttribute('aria-label',preparing?'Cancelar preparação':state.playing?'Pausar':'Reproduzir');
  $('#play-button').setAttribute('aria-busy',preparing?'true':'false');
  $('#next-button').disabled=!canAdvancePlayback();
+ setNextDiscoveryBusy(!!nextDiscovery);
  if(state.audioState==='official'){
   $('#youtube-next').disabled=!canAdvancePlayback();
   $('#youtube-player-title').textContent=track?.title||'Reprodução oficial';
@@ -1502,6 +1503,14 @@ async function play(){
 function pause(){coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;playbackIntentEpoch++;playStartOperation=null;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;engine.setTransportPaused(true);audio.pause();stems.pause();pads.stopLoop();closeYouTubePlayer();state.playing=false;updatePlayer()}
 let nextDiscovery=null;
 function clearNextDiscoveryStatus(){if(nextDiscovery)reportAudioStatus('')}
+// Show only a tiny activity cue while Next looks for a verified recording.
+// Never disable the control: repeated Next presses remain intentional.
+function setNextDiscoveryBusy(busy){
+ for(const id of ['#next-button','#ipod-next-button','#youtube-next']){
+  const button=$(id);
+  if(button)button.setAttribute('aria-busy',busy?'true':'false');
+ }
+}
 async function next(){
  const startingTrack=state.current,selection=playbackSelection,revision=navigationRevision;
  let candidate=state.queue[0];
@@ -1511,6 +1520,7 @@ async function next(){
   }
   const discovery={anchor:startingTrack,selection,presses:1,run:null};
   nextDiscovery=discovery;
+  setNextDiscoveryBusy(true);
   const request=(async()=>{
    reportAudioStatus('Buscando a próxima música…');
    try{await maybeFillSmartQueue({force:true})}
@@ -1528,7 +1538,7 @@ async function next(){
    else toast('Nenhuma próxima música encontrada. A reprodução atual continua.');
   })();
   discovery.run=request;
-  try{return await request}finally{if(nextDiscovery===discovery)nextDiscovery=null}
+  try{return await request}finally{if(nextDiscovery===discovery){nextDiscovery=null;setNextDiscoveryBusy(false)}}
  }
  if(candidate)advanceToNext(candidate);
  else if(audio.ended){pause();toast('Fim da fila')}
@@ -1546,16 +1556,21 @@ function prefetchNextLyrics(){
 function previous(){
  if(!state.current)return;
  clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;
- if(audio.currentTime>3){externalSeek(0);return}
+ setNextDiscoveryBusy(false);
+ // One press must navigate to the previous recording even after 3 seconds.
  const previousTrack=playbackBackstack.pop();
  if(previousTrack){
   const forward=state.current;
   state.queue=appendUnique([forward],state.queue.filter(t=>!sameRecording(t,previousTrack)),previousTrack.id);
   selectTrack(previousTrack,true,{fromHistory:true});return;
  }
+ // When navigating the local library, also keep a way to move forward again.
  const idx=state.tracks.findIndex(x=>x.id===state.current?.id);
- if(idx>0)selectTrack(state.tracks[idx-1],true,{fromHistory:true});
- else externalSeek(0);
+ if(idx>0){
+  const previousLibraryTrack=state.tracks[idx-1],forward=state.current;
+  state.queue=appendUnique([forward],state.queue.filter(t=>!sameRecording(t,previousLibraryTrack)),previousLibraryTrack.id);
+  selectTrack(previousLibraryTrack,true,{fromHistory:true});
+ }else externalSeek(0);
 }
 function addToQueue(track,{quiet=false}={}){
  if(!track)return false;
