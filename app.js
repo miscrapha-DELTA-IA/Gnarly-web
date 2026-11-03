@@ -20,6 +20,7 @@ import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
 import {trackAudioURL,isGnarlyPagesHost,youtubeID,NATIVE_BACKEND,selectMusicResults,playbackFailureMessage} from './lib/playback-source.js';
 import {officialEmbedURL,officialWatchURL,canUseOfficial,shouldUseOfficialAfterNativeFailure} from './lib/official-playback.js';
 import {AudioDeliveryRecovery,PlaybackCooldown,resolvePlaybackCooldown,playbackLimitMessage,publicAudioMessage} from './lib/audio-delivery.js';
+import {PLAYBACK_RETRY_TEXT,renderPlaybackFeedback} from './lib/player-feedback.js';
 import {waitForPCNodeReady,waitForPCNodeCache} from './lib/pc-node-recovery.js';
 import {audioSourceCategory,recordStreamingMetric} from './lib/streaming-metrics.js';
 import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-library.js';
@@ -528,10 +529,6 @@ function prepareNativeAudio(track,attempt=0){
  }
  return true;
 }
-function showOptionalOfficialSource(){
- const choice=$('#playback-source-choice');
- if(choice)choice.hidden=!(state.current&&canUseOfficial(state.current,{offline:!!offlineAudio(state.current.id)}));
-}
 function hideOptionalOfficialSource(){const choice=$('#playback-source-choice');if(choice)choice.hidden=true;}
 function isAudioAlreadyPlaying(){
  return state.audioState==='playing'&&!state.userPaused&&!audio.paused&&
@@ -548,12 +545,10 @@ function toggleFirstPlay(){
  if(state.playing||isAwaitingInitialAudio())pause();
  else void play();
 }
-function reportAudioError(text){
- text=publicAudioMessage(text);
+// Intermediate loading and recovery details are kept out of the listening UI.
+function reportAudioError(_detail){
  coverCharge.hide();
- // A late /fast-audio failure or an exhausted retry can arrive after the
- // same HTMLAudioElement has already begun audible playback. Do not flash
- // MediaError 4 or turn a working Play button into a broken retry loop.
+ // An old failed request must not override audible playback.
  if(isAudioAlreadyPlaying()){
   coverCharge.hide();playbackStallGuard.clear();state.playbackError='';
   reportAudioStatus('');return;
@@ -563,18 +558,20 @@ function reportAudioError(text){
   playbackMetricFinalSelection=playbackSelection;
   signalPlaybackMetric('final_error',audio.error?.code||0);
  }
- state.audioState='error';state.playbackError=text;
- const status=$('#player-status');if(status){status.textContent=text;status.hidden=false;}
- const ipodStatus=$('#ipod-audio-status');if(ipodStatus)ipodStatus.textContent=text;
- showOptionalOfficialSource();
- // Keep a persistent, compact source choice instead of repeating an intrusive 429 toast.
- if(text!=='HTTP 429'&&!/limitou novas músicas/i.test(text))toast(text);
+ state.audioState='error';state.playbackError=PLAYBACK_RETRY_TEXT;
+ renderPlaybackFeedback({
+  playerStatus:$('#player-status'),ipodStatus:$('#ipod-audio-status')
+ },{error:true});
+ hideOptionalOfficialSource();
+ // No error toast or provider/cache/device details beneath the player.
  playbackStartedAt=0;
 }
-function reportAudioStatus(text){
- text=publicAudioMessage(text);
- const status=$('#player-status');if(status){status.textContent=text;status.hidden=!text;}
- const ipodStatus=$('#ipod-audio-status');if(ipodStatus)ipodStatus.textContent=text;
+function reportAudioStatus(_detail){
+ // A late progress event must not hide a terminal error.
+ if(state.audioState==='error')return;
+ renderPlaybackFeedback({
+  playerStatus:$('#player-status'),ipodStatus:$('#ipod-audio-status')
+ });
 }
 function setIPodSkin(blob){
  if(ipodSkinURL){URL.revokeObjectURL(ipodSkinURL);ipodSkinURL=null}
@@ -1721,7 +1718,7 @@ function openYouTubePlayer(track){
  reportAudioStatus('');
  $('#youtube-player-title').textContent=track.title||'Reprodução oficial';
  $('#youtube-player-link').href=watch;
- $('#youtube-native-status').textContent='Fundo e temas animados continuam ativos. Stems e efeitos exigem áudio GNARLY.';
+ $('#youtube-native-status').textContent='';$('#youtube-native-status').hidden=true;
  $('#youtube-native-retry').disabled=false;
  $('#youtube-native-retry').dataset.cacheReady='no';
  $('#youtube-native-retry').textContent='Áudio GNARLY';
@@ -1762,7 +1759,7 @@ async function tryNativeFromOfficial(){
   switchNative();
   return;
  }
- button.disabled=true;status.textContent='Verificando áudio GNARLY já disponível…';
+ button.disabled=true;status.textContent='';status.hidden=true;
  let cached=false;
  if(isGnarlyPagesHost(location.hostname)){
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),4000);
@@ -1775,12 +1772,12 @@ async function tryNativeFromOfficial(){
  if(state.current!==track||playbackSelection!==selection||state.audioState!=='official')return;
  button.disabled=false;
  if(!cached){
-  status.textContent='Faixa ainda não armazenada no GNARLY. Player oficial e fundo visual continuam disponíveis.';
+  status.textContent=PLAYBACK_RETRY_TEXT;status.hidden=false;
   return;
  }
  button.dataset.cacheReady='yes';
  button.textContent='▶ Voltar ao GNARLY';
- status.textContent='Cópia R2 disponível. Toque novamente para iniciar áudio GNARLY com efeitos e stems.';
+ status.textContent='';status.hidden=true;
 }
 function toggleFavorite(){if(!state.current){openSheet('library');return}const at=state.favorites.findIndex(x=>x.id===state.current.id);if(at>=0){state.favorites.splice(at,1);listeningMemory.record('unlike',state.current);toast('Removido dos favoritos')}else{state.favorites.push(state.current);listeningMemory.record('like',state.current);toast('Adicionado aos favoritos')}setSetting('favorites',JSON.stringify(state.favorites.filter(x=>x.source!=='local').slice(-100)));updatePlayer();if(state.sheet==='favorites')renderSheet()}
 function closeQuickPlaylist(){
