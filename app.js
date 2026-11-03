@@ -1302,7 +1302,7 @@ async function recoverNativeAudio(track,initialError=null){
    tdr.mark(selection,'pc_wait_started');
    const pcResult=await waitForPCNodeReady(track.videoId,{
     current,prepare:true,autoRetryTimeout:true,
-    onProgress:(phase,details)=>{const firstRecovery=state.audioState!=='recovering';
+    onProgress:(phase,details)=>{if(phase==='leased')tdr.mark(selection,'pc_leased');const firstRecovery=state.audioState!=='recovering';
      state.audioState='recovering';
      const ahead=Number.isInteger(details?.queueAhead)?details.queueAhead:0;
      const message=phase==='retrying'
@@ -3219,7 +3219,7 @@ audio.addEventListener('stalled',()=>{
  tdr.mark(playbackSelection,'stalled');
  playbackContinuity.transportEvent('stalled');visual.prioritizeAudio('stalled');
  updateBufferingCue();
-});audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;tdr.playing(playbackSelection,{position:audio.currentTime||0});hideOptionalOfficialSource();coverCharge.hide();engine.setTransportPaused(false);sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
+});audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;tdr.playing(playbackSelection,{position:audio.currentTime||0,route:audioSourceCategory(audio.currentSrc||audio.src)});hideOptionalOfficialSource();coverCharge.hide();engine.setTransportPaused(false);sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
   const ms=Math.round(performance.now()-playbackStartedAt);
   const origin=audio.currentSrc.startsWith('blob:')?'offline':audio.currentSrc.includes('/fast-audio/')?'fast-edge':audio.currentSrc.includes('/audius-audio/')?'audius':audio.currentSrc.includes('/jamendo-audio/')?'jamendo':'render';
   console.debug('GNARLY startup ms',ms,'origin',origin);
