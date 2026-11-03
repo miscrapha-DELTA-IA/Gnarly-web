@@ -54,6 +54,42 @@ test('a real same-recording alternative preserves original selection time and re
  assert.equal(snap.totals.selections,1);
  assert.equal(snap.recent[0].hadMediaError,true);
 });
+test('source route and catalog-ready hints are independent (edge does not imply R2 cache hit)',()=>{
+ const h=harness();
+ h.tdr.select(1,{source:'youtube',autoplay:true,readyHint:true});
+ h.advance(50);h.tdr.playCall(1);
+ h.advance(450);h.tdr.playing(1,{route:'fast_edge'});
+ h.tdr.select(2,{source:'youtube',autoplay:true,readyHint:false});
+ h.advance(50);h.tdr.playCall(2);
+ h.advance(950);h.tdr.playing(2,{route:'render'});
+ const snap=h.tdr.snapshot();
+ assert.equal(snap.byRoute.fast_edge.p50Ms,500);
+ assert.equal(snap.byRoute.render.p50Ms,1000);
+ assert.equal(snap.byCatalogHint.ready.p50Ms,500);
+ assert.equal(snap.byCatalogHint.notReady.p50Ms,1000);
+ assert.equal(snap.automaticSuccessRatePercent,100);
+ assert.equal(snap.recent[0].route,'fast_edge');
+});
+
+test('PC queue, leased extraction and R2 propagation are separate observed phases',()=>{
+ const h=harness();
+ h.tdr.select(1,{source:'youtube',autoplay:true});
+ h.tdr.playCall(1);h.tdr.mark(1,'recovery_started');
+ h.tdr.mark(1,'pc_wait_started');
+ h.advance(1700);h.tdr.mark(1,'pc_leased');
+ h.advance(3500);h.tdr.mark(1,'pc_ready');
+ h.tdr.mark(1,'pc_wait_finished');
+ h.advance(100);h.tdr.mark(1,'r2_sync_started');
+ h.advance(1800);h.tdr.mark(1,'r2_sync_finished');
+ h.advance(100);h.tdr.playing(1,{route:'fast_edge'});
+ const snap=h.tdr.snapshot();
+ assert.equal(snap.phases.pcQueueObserved.p50Ms,1700);
+ assert.equal(snap.phases.pcLeasedToReady.p50Ms,3500);
+ assert.equal(snap.phases.pcWait.p50Ms,5200);
+ assert.equal(snap.phases.r2Sync.p50Ms,1800);
+ assert.equal(snap.recent[0].recovered,true);
+});
+
 test('manual selection and user delay cannot contaminate autoplay TDR statistics',()=>{
  const h=harness();h.tdr.select(1,{autoplay:false,source:'local'});
  h.advance(15000);h.tdr.playCall(1,{source:'local'});
