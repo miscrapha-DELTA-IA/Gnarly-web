@@ -2,9 +2,9 @@
  * backend music, user metadata, or cross-origin resources.
  * Downloaded music lives in per-profile IndexedDB; SW caches the interface.
  */
-const SHELL='gnarly-web-shell-20261103-palette-gnarly-cycle-v26';
+const SHELL='gnarly-web-shell-20261103-smooth-boot-v27';
 const PREFIX='gnarly-web-shell-';
-const CORE=['/','/index.html','/app.js','/mic.html','/mic.js','/styles.css','/module-dock.css',
+const CORE=['/','/index.html','/app.js','/gnarly-ui.css','/mic.html','/mic.js','/styles.css','/module-dock.css',
  '/performance.css','/ipod-mode.css','/cover-charge.css','/karaoke-art.css','/karaoke-art-refined.css',
  '/karaoke-stage.css','/search-hierarchy.css','/manifest.webmanifest','/assets/gnarly-icon.png'];
 const ROOT_STATIC=['/logo.svg','/sw.js','/offline-assets.json'];
@@ -13,7 +13,7 @@ const staticURL=url=>{
  const p=url.pathname;
  return url.origin===self.location.origin&&(
   CORE.includes(p)||ROOT_STATIC.includes(p)||
-  (['/assets/','/lib/','/ui/'].some(prefix=>p.startsWith(prefix))&&
+  (['/assets/','/lib/','/ui/','/chunks/'].some(prefix=>p.startsWith(prefix))&&
    STATIC_EXT.some(ext=>p.endsWith(ext)))
  );
 };
@@ -24,9 +24,7 @@ self.addEventListener('install',event=>{
   // ENTIRE module graph in parallel, contending with startup and shader GPU
   // compilation, especially on the first navigation after each deployment.
   // Main modules and offline tracks are cached independently as they load.
-  const essentials=['/','/index.html','/app.js','/styles.css','/search-hierarchy.css',
-                    '/lib/audio-engine.js','/lib/audio-delivery.js','/lib/playback-continuity.js',
-                    '/lib/listening-intelligence.js','/lib/media-duration.js',
+  const essentials=['/','/index.html','/app.js','/gnarly-ui.css',
                     '/manifest.webmanifest','/logo.svg'];
   await Promise.allSettled(essentials.map(async path=>{
    const response=await fetch(path,{cache:'reload'});
