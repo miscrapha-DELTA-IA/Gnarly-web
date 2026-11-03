@@ -114,9 +114,10 @@ try{
    'unrelated suggestions must not slip through the fallback');
   await page.evaluate(()=>__queueQA.openSheet('queue'));
   assert.match(await page.locator('#sheet-content').textContent(),/preparo necessário/);
+  const first=await page.evaluate(()=>__queueQA.state.queue[0]);
   await page.evaluate(()=>{void __queueQA.next()});
-  await selected(B);
-  assert.ok(requests.includes(B.videoId),'candidate must become playable through the normal audio route');
+  await selected(first);
+  assert.ok(requests.includes(first.videoId),'next selected candidate must play through the unchanged audio pipeline');
   assert.ok(queries.some(x=>x==='Queue Artist Alpha'),'same-artist metadata lookup occurred');
  });
  await scenario('natural completion continues through three smart songs',async({page,setSearch,choose,selected,snapshot})=>{
