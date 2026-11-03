@@ -2,7 +2,7 @@
  * backend music, user metadata, or cross-origin resources.
  * Downloaded music lives in per-profile IndexedDB; SW caches the interface.
  */
-const SHELL='gnarly-web-shell-20261103-smooth-boot-v27';
+const SHELL='gnarly-web-shell-20261103-offline-next-v28';
 const PREFIX='gnarly-web-shell-';
 const CORE=['/','/index.html','/app.js','/gnarly-ui.css','/mic.html','/mic.js','/styles.css','/module-dock.css',
  '/performance.css','/ipod-mode.css','/cover-charge.css','/karaoke-art.css','/karaoke-art-refined.css',
@@ -26,6 +26,20 @@ self.addEventListener('install',event=>{
   // Main modules and offline tracks are cached independently as they load.
   const essentials=['/','/index.html','/app.js','/gnarly-ui.css',
                     '/manifest.webmanifest','/logo.svg'];
+  // The esbuild entry imports a content-hashed shared chunk. On the FIRST
+  // online visit the service worker may not yet control the page when this
+  // chunk is requested, so network-first runtime caching cannot guarantee
+  // the PWA can start offline. Always install those ENTRY chunks; keep the
+  // separate export/iPod studios deferred until an idle window.
+  try{
+   const response=await fetch('/offline-assets.json',{cache:'no-store'});
+   if(response.ok){
+    const paths=await response.json();
+    if(Array.isArray(paths))for(const path of paths)
+     if(typeof path==='string'&&/^\/chunks\/chunk-[A-Za-z0-9_-]+\.js$/.test(path))
+      essentials.push(path);
+   }
+  }catch{/* Shell still installs; network failure is not a media failure. */}
   await Promise.allSettled(essentials.map(async path=>{
    const response=await fetch(path,{cache:'reload'});
    if(response.ok&&response.type!=='opaque')await cache.put(path,response);
