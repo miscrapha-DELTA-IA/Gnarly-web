@@ -110,11 +110,27 @@ test('a terminal error and explicit retry are measured independently',()=>{
  const snap=h.tdr.snapshot();
  assert.equal(snap.totals.terminalErrors,1);
  assert.equal(snap.terminalFailures.p50Ms,1500);
+ assert.equal(snap.totals.selections,1,'a retry is not a new song selection');
  assert.equal(snap.automatic.count,0);
  assert.equal(snap.manual.p50Ms,200);
  assert.equal(snap.recent[0].kind,'manual_retry');
  assert.equal(snap.successRatePercent,50);
 });
+test('pause and resume of an already playing song never creates another TDR',()=>{
+ const h=harness();
+ h.tdr.select(12,{source:'youtube',autoplay:true});
+ h.advance(10);h.tdr.playCall(12);
+ h.advance(100);h.tdr.playing(12);
+ h.advance(5000);
+ assert.equal(h.tdr.playCall(12),false,'resume is not another initial TDR');
+ assert.equal(h.tdr.playing(12),null);
+ const snap=h.tdr.snapshot();
+ assert.equal(snap.automatic.count,1);
+ assert.equal(snap.manual.count,0);
+ assert.equal(snap.totals.selections,1);
+ assert.equal(snap.totals.successful,1);
+});
+
 test('cancel and rapid next track never create a false completed TDR',()=>{
  const h=harness();h.tdr.select(1,{source:'youtube'});
  h.advance(50);h.tdr.mark(1,'play_call');
