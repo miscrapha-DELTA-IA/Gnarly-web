@@ -6,7 +6,7 @@ const esc=s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replac
 export function renderSmartQueuePanel({queueCount=0,status='',anchor=null,busy=false,playing=false}={}){
  const ready=Boolean(anchor),count=Math.max(0,Number(queueCount)||0);
  const activity=busy?'Buscando próximas músicas…':
-  status&&(/Sem novas|Não há|Falha|indisponível|preservada/i.test(status))?status:'';
+  status&&(count===0||/preparo|preparad|Sem novas|Não há|Nenhuma|Falha|limitado|indisponível|preservada/i.test(status))?status:'';
  return `<section class="smart-queue-panel native-queue" aria-label="Fila inteligente automática">
    <div class="native-queue-top"><div>
     <strong class="native-queue-name">A seguir <span class="native-queue-number">${count}</span></strong>
