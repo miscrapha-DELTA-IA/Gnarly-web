@@ -53,7 +53,8 @@ export function renderTdrPanel(report){
   phase(routeLabels[key]||'Outra rota',v)).join('');
  const latest=recent.map(s=>'<div class="tdr-attempt">'+
   '<span>'+(s.kind==='automatic'?'Automática':s.kind==='manual_retry'?'Nova tentativa':'Manual')+
-  (s.recovered?' · recuperação':'')+(s.hadMediaError?' · erro inicial':'')+'</span>'+
+  (s.recovered?' · recuperação':'')+(s.hadMediaError?' · erro inicial':'')+
+  (s.lateRecovered?' · iniciou após aviso de erro':'')+'</span>'+
   '<strong>'+formatTdrDuration(s.tdrMs)+'</strong></div>').join('');
  return '<section class="tdr-panel" id="tdr-dashboard" aria-label="Tempo de Reprodução">'+
   '<p class="section-note">TDR = tempo entre selecionar a música e o primeiro evento de reprodução do navegador. A medição não altera o áudio nem o processamento do Guardian.</p>'+
@@ -63,6 +64,8 @@ export function renderTdrPanel(report){
   stat('TENTATIVAS BEM-SUCEDIDAS',report?.automaticSuccessRatePercent===null?'—':
    String(report.automaticSuccessRatePercent).replace('.',',')+'%','Exclui cancelamentos e novas seleções')+
   stat('AMOSTRAS AUTOMÁTICAS',String(automatic.count||0),'Concluídas · sessão atual, máximo de 96')+
+  ((totals.terminalReclassified||0)?stat('REPRODUÇÃO APÓS ERRO',
+   String(totals.terminalReclassified),'Alerta terminal revisado após evento playing'):'')+
   (failed.count?stat('FALHAS · TEMPO ATÉ ERRO',
    formatTdrDuration(failed.p50Ms),'Mediana separada · '+failed.count+' falha(s)'):'')+
   '</div>'+
@@ -93,6 +96,7 @@ export function renderTdrPanel(report){
   '<p class="section-note">Selecionadas: '+(totals.selections||0)+
   ' · Concluídas: '+(totals.successful||0)+
   ' · Erros finais: '+(totals.terminalErrors||0)+
+  ' · Alertas corrigidos por reprodução tardia: '+(totals.terminalReclassified||0)+
   ' · Canceladas: '+(totals.userCancels||0)+'</p>'+
   '<div class="button-row">'+
   '<button type="button" class="action-button" data-command="tdr-refresh">Atualizar métricas</button>'+

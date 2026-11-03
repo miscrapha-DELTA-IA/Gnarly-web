@@ -177,6 +177,86 @@ test('terminal timeline stores only sanitized phases, not recording identities o
  assert.equal(h.tdr.snapshot().lastFailure.source,'unknown');
  assert.equal(h.tdr.snapshot().lastFailure.route,'unknown');
 });
+test('native playing after a false terminal report corrects the same automatic selection',()=>{
+ const h=harness();
+ h.tdr.select(42,{source:'youtube',autoplay:true});
+ h.advance(10);h.tdr.playCall(42);
+ h.advance(20000);h.tdr.mark(42,'media_error');h.tdr.mark(42,'recovery_started');
+ h.advance(70000);h.tdr.mark(42,'pc_wait_started');
+ h.advance(31009);h.tdr.finish(42,'terminal_error',h.clock(),{route:'fast_edge',errorCode:4});
+ let report=h.tdr.snapshot();
+ assert.equal(report.totals.terminalErrors,1);
+ assert.equal(report.totals.successful,0);
+ assert.equal(report.terminalFailures.p50Ms,121019);
+ assert.equal(report.successRatePercent,0);
+ h.advance(2100);
+ const started=h.tdr.playing(42,{at:h.clock(),route:'render',position:0});
+ assert.equal(started.tdrMs,123119);
+ assert.equal(started.lateRecovered,true);
+ assert.equal(started.terminalWarningMs,121019);
+ report=h.tdr.snapshot();
+ assert.equal(report.totals.terminalReclassified,1);
+ assert.equal(report.totals.terminalErrors,0);
+ assert.equal(report.totals.automaticTerminalErrors,0);
+ assert.equal(report.terminalFailures.count,0);
+ assert.equal(report.lastFailure,null);
+ assert.equal(report.totals.successful,1);
+ assert.equal(report.totals.selections,1);
+ assert.equal(report.automatic.count,1);
+ assert.equal(report.automatic.p50Ms,123119);
+ assert.equal(report.automaticSuccessRatePercent,100);
+ assert.equal(report.recovered.count,1);
+ assert.equal(report.recent[0].lateRecovered,true);
+ assert.equal(report.byRoute.render.count,1);
+ assert.equal(h.tdr.playing(42,{at:h.clock()+300}),null,'the same event may not count twice');
+ assert.equal(h.tdr.snapshot().totals.successful,1);
+});
+test('explicit Play after terminal is a separate manual retry, not late auto-recovery',()=>{
+ const h=harness();
+ h.tdr.select(10,{source:'youtube',autoplay:true});
+ h.advance(2000);h.tdr.playCall(10);
+ h.advance(20000);h.tdr.finish(10,'terminal_error',h.clock());
+ h.advance(1000);h.tdr.playCall(10,{source:'youtube'});
+ h.advance(900);const result=h.tdr.playing(10,{route:'fast_edge'});
+ assert.equal(result.kind,'manual_retry');
+ assert.equal(result.lateRecovered,false);
+ const report=h.tdr.snapshot();
+ assert.equal(report.automatic.count,0);
+ assert.equal(report.manual.count,1);
+ assert.equal(report.terminalFailures.count,1);
+ assert.equal(report.totals.terminalReclassified,0);
+ assert.equal(report.totals.terminalErrors,1);
+ assert.equal(report.totals.successful,1);
+});
+test('an obsolete track cannot turn its old terminal failure into a success',()=>{
+ const h=harness();
+ h.tdr.select(1,{autoplay:true});
+ h.advance(2000);h.tdr.finish(1,'terminal_error',h.clock());
+ h.advance(10);h.tdr.select(2,{autoplay:true});
+ h.advance(30);
+ assert.equal(h.tdr.playing(1),null);
+ let report=h.tdr.snapshot();
+ assert.equal(report.terminalFailures.count,1);
+ assert.equal(report.totals.terminalReclassified,0);
+ assert.equal(report.totals.successful,0);
+ h.tdr.playCall(2);h.advance(50);h.tdr.playing(2);
+ report=h.tdr.snapshot();
+ assert.equal(report.automatic.count,1);
+ assert.equal(report.terminalFailures.count,1);
+ assert.equal(report.totals.terminalErrors,1);
+});
+test('late playback reconciliation uses only categories and never preserves song identifiers',()=>{
+ const h=harness();
+ h.tdr.select(55,{source:'private-song-title',autoplay:true});
+ h.advance(121019);h.tdr.finish(55,'terminal_error',h.clock(),{
+  route:'private-url-and-id',errorCode:4
+ });
+ h.advance(1000);h.tdr.playing(55,{route:'fast_edge'});
+ const data=JSON.stringify(h.tdr.snapshot());
+ assert.doesNotMatch(data,/private-song-title|private-url-and-id|videoId|trackId|songTitle/);
+ assert.equal(h.tdr.snapshot().recent[0].source,'unknown');
+ assert.equal(h.tdr.snapshot().recent[0].route,'fast_edge');
+});
 test('pause and resume of an already playing song never creates another TDR',()=>{
  const h=harness();
  h.tdr.select(12,{source:'youtube',autoplay:true});
