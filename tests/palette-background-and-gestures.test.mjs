@@ -65,7 +65,7 @@ test('GNARLY 2 references influence later phases but keep free color evolution a
 });
 test('theme selection resumes visual after album-cover background, never discards user photo',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
- const begin=app.indexOf('function selectVisualTheme(next)'),end=app.indexOf('function configureGnarly2Lock(',begin);
+ const begin=app.indexOf('function selectVisualTheme(next,{quickCycle=false}={})'),end=app.indexOf('function configureGnarly2Lock(',begin);
  assert.ok(begin>=0&&end>begin);
  const selector=app.slice(begin,end);
  assert.match(selector,/if\(state\.backgroundMode==='cover'\)/);
