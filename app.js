@@ -196,10 +196,20 @@ const offlinePending=new Set();
 let offlineLoaded=false,offlineStatus='Preparando biblioteca offline…';
 const isOffline=id=>offlineURLs.has(id);
 const offlineAudio=id=>offlineURLs.get(id)||null;
+function canPlayWithoutNetwork(track){
+ if(!track?.id)return false;
+ if(isOffline(track.id))return true;
+ // Imported local files can remain playable in the current session even
+ // when IndexedDB persistence is unavailable or not yet finished. They use
+ // an existing same-origin Blob URL; never accept a remote URL as offline.
+ if(track.source!=='local'||typeof track.url!=='string')return false;
+ try{const url=new URL(track.url);return url.protocol==='blob:'&&url.origin===location.origin}
+ catch{return false}
+}
 function offlineNextTracks(){
  return offlineSuccessors({
   current:state.current,queue:state.queue,library:state.tracks,
-  recent:playbackBackstack,available:isOffline,max:7
+  recent:playbackBackstack,available:(_id,track)=>canPlayWithoutNetwork(track),max:7
  });
 }
 function seedOfflineQueue(){
@@ -209,7 +219,7 @@ function seedOfflineQueue(){
   !state.queue.some(existing=>sameRecording(existing,track))),'offline');
  state.queue=appendUnique(state.queue,added,state.current.id);
  if(state.queue.length!==count){
-  smartStatus='Offline · '+state.queue.filter(t=>isOffline(t.id)).length+
+  smartStatus='Offline · '+state.queue.filter(canPlayWithoutNetwork).length+
    ' músicas salvas disponíveis na fila.';
   prepareUpcomingAudio();prefetchNextLyrics();updatePlayer();
   if(state.sheet==='queue')renderSheet();
@@ -1708,7 +1718,7 @@ async function next(){
  // Keep unsaved manual requests pending for when connectivity returns.
  if(startingTrack&&(!navigator.onLine||startingTrack.source==='local')){
   seedOfflineQueue();
-  const playable=state.queue.find(track=>isOffline(track.id));
+  const playable=state.queue.find(canPlayWithoutNetwork);
   if(playable){advanceToNext(playable);return}
   if(audio.ended){pause();toast('Fim das músicas salvas neste dispositivo.')}
   else toast('Não há outra música salva offline. Baixe ou importe mais faixas.');
