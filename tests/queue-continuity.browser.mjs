@@ -133,6 +133,17 @@ try{
   // A short 12s fixture would naturally advance before any 10s stable fallback.
   setAudioLength(45);
   await choose(A);
+  // Explicit first-party prepare fixture. Network route interception for
+  // speculative POST can vary by headless proxy; asserting the exact
+  // arguments here isolates scheduling from transport acceptance.
+  await page.evaluate(()=>{
+   globalThis.__precacheCalls=[];
+   __queueQA.queueAudioWarmup.fetcher=async(url,options)=>{
+    __precacheCalls.push({url,method:options.method});
+    return new Response('{"state":"pending"}',{status:202,
+     headers:{'Content-Type':'application/json'}});
+   };
+  });
   await page.evaluate(track=>__queueQA.addToQueue(track,{quiet:true}),B);
   await page.evaluate(()=>{__queueQA.state.current.duration=45});
   // Seek creates synthetic waiting events that can leave the decoder in a
@@ -140,7 +151,9 @@ try{
   // automatic timeupdate and timer both have a stable source.
   await page.waitForFunction(()=>__queueQA.state.queue[0]?._gnarlyPrewarmRequested===true,
    null,{timeout:16000});
-  assert.ok(prepares.includes(B.videoId),'next exact ID pre-cache job accepted');
+  const posted=await page.evaluate(()=>__precacheCalls);
+  assert.ok(posted.some(call=>call.method==='POST'&&call.url.endsWith('/fast-prepare/'+B.videoId)),
+   'next exact ID requested with POST on the first-party R2/PC route: '+JSON.stringify(posted));
   assert.ok(!requests.includes(B.videoId),'preparation must not start a competing browser media GET');
  });
  await scenario('empty smart queue retains Next on player, iPod and MediaSession',async({page,gate,setSearch,choose,snapshot})=>{
