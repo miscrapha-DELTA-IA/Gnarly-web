@@ -106,3 +106,18 @@ test('karaoke sheet only changes the active line; never rebuilds the full modal 
  assert.match(app,/data-lyric-index="\$\{i\}"/);
  assert.match(app,/window\.gnarlyVisualDiagnostics=\(\)=>visual\.diagnostics\(\)/);
 });
+
+test('theme/experience/reaction menus retain DOM and scroll for simple selection changes',()=>{
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ const begin=app.indexOf('function refreshVisualSheetSelection()');
+ const end=app.indexOf('function renderSheet()',begin);
+ assert.ok(begin>=0&&end>begin);
+ const code=app.slice(begin,end);
+ assert.match(code,/content\.querySelectorAll\(options\)/);
+ assert.match(code,/item\.classList\.toggle\('active',selected\)/);
+ assert.match(code,/status\.textContent=/);
+ assert.match(code,/studio\|\|state\.theme==='GNARLY 2'/);
+ assert.match(code,/previousButton!==!!resolved\.override/);
+ assert.doesNotMatch(code,/\.innerHTML=|replaceChildren\(|\.scrollTo\(/);
+ assert.match(app,/if\(state\.sheet&&!refreshVisualSheetSelection\(\)\)renderSheet\(\)/);
+});
