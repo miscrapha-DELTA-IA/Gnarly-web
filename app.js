@@ -586,7 +586,9 @@ function reportAudioError(_detail){
   playbackMetricFinalSelection=playbackSelection;
   signalPlaybackMetric('final_error',audio.error?.code||0);
  }
- tdr.finish(playbackSelection,'terminal_error');
+ tdr.finish(playbackSelection,'terminal_error',performance.now(),{
+  route:audioSourceCategory(audio.currentSrc||audio.src),errorCode:audio.error?.code||0
+ });
  refreshTdrPanel();
  state.audioState='error';state.playbackError=PLAYBACK_RETRY_TEXT;
  renderPlaybackFeedback({
