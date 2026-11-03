@@ -29,7 +29,7 @@ import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-
 import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from './lib/queue-audio-warmup.js';
 import {quickPlaylistMarkup} from './ui/quick-playlist.js';
 import {createMediaSessionController,configureBrowserAudioSession} from './lib/media-session-controller.js';
-import {appendUnique,commitPlaying,moveTrack,removeTrack,shuffleUpcoming,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
+import {appendUnique,commitPlaying,moveTrack,removeTrack,shuffleUpcoming,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup,offlineSuccessors} from './lib/smart-queue.js';
 import {ListeningMemory,MEMORY_KEY,recommendTracks,retainManualQueue,markAutoTracks,sameRecording,discoverySuggestions,mixTasteArtists} from './lib/listening-intelligence.js';
 import {renderSmartQueuePanel} from './ui/smart-queue-panel.js';
 import {CLASSIC_THEMES,MATERIAL_THEMES,GNARLY_MODES,NATIVE_COLOR_THEMES,CREATIVE_COLOR_THEMES,EXPERIENCES,REACTIONS,ROLE_EXPLANATION,resolveVisual,restoredThemeAfterGnarly} from './lib/visual-selection.js';
@@ -151,6 +151,26 @@ const offlinePending=new Set();
 let offlineLoaded=false,offlineStatus='Preparando biblioteca offline…';
 const isOffline=id=>offlineURLs.has(id);
 const offlineAudio=id=>offlineURLs.get(id)||null;
+function offlineNextTracks(){
+ return offlineSuccessors({
+  current:state.current,queue:state.queue,library:state.tracks,
+  recent:playbackBackstack,available:isOffline,max:7
+ });
+}
+function seedOfflineQueue(){
+ if(!state.current||(!offlineLoaded&&!offlineURLs.size))return 0;
+ const candidates=offlineNextTracks(),count=state.queue.length;
+ const added=markAutoTracks(candidates.filter(track=>
+  !state.queue.some(existing=>sameRecording(existing,track))),'offline');
+ state.queue=appendUnique(state.queue,added,state.current.id);
+ if(state.queue.length!==count){
+  smartStatus='Offline · '+state.queue.filter(t=>isOffline(t.id)).length+
+   ' músicas salvas disponíveis na fila.';
+  prepareUpcomingAudio();prefetchNextLyrics();updatePlayer();
+  if(state.sheet==='queue')renderSheet();
+ }
+ return candidates.length;
+}
 let recoveryOperation=null,independentRecoveryController=null;
 // The first requested Play owns the source until audio starts or the attempt ends.
 // Subsequent clicks while loading join it rather than creating competing play().
@@ -1631,6 +1651,16 @@ function setNextDiscoveryBusy(busy){
 }
 async function next(){
  const startingTrack=state.current,selection=playbackSelection,revision=navigationRevision;
+ // A cached/offline recording must never wait on an online catalogue lookup.
+ // Keep unsaved manual requests pending for when connectivity returns.
+ if(startingTrack&&(!navigator.onLine||startingTrack.source==='local')){
+  seedOfflineQueue();
+  const playable=state.queue.find(track=>isOffline(track.id));
+  if(playable){advanceToNext(playable);return}
+  if(audio.ended){pause();toast('Fim das músicas salvas neste dispositivo.')}
+  else toast('Não há outra música salva offline. Baixe ou importe mais faixas.');
+  return;
+ }
  let candidate=state.queue[0];
  if(!candidate&&smartMode!=='off'&&startingTrack){
   if(nextDiscovery&&nextDiscovery.anchor===startingTrack&&nextDiscovery.selection===selection){
@@ -1727,6 +1757,8 @@ async function restoreOfflineLibrary(){
    registerOfflineURL(record.track,record.blob);
   }
   offlineLoaded=true;offlineStatus=offlineStatusText();
+  if(state.current&&(!navigator.onLine||state.current.source==='local'))
+   seedOfflineQueue();
  }catch(error){
   offlineLoaded=true;offlineStatus='Armazenamento offline indisponível neste navegador';
   console.warn('GNARLY offline storage:',error?.message);
@@ -2197,7 +2229,12 @@ function scheduleSmartRetry(anchor,mode){
 }
 async function maybeFillSmartQueue({force=false}={}){
  const mode=smartMode,anchor=state.current;
- if(mode==='off'||!anchor||(!force&&state.queue.length>=2))return;
+ if(!anchor)return;
+ // Native offline playback must never enter the R2/Audius/YT discovery path.
+ if(!navigator.onLine||anchor.source==='local'){
+  seedOfflineQueue();return;
+ }
+ if(mode==='off'||(!force&&state.queue.length>=2))return;
  const query=mode==='playlist'?'':radioQuery(mode,anchor);
  // Share the exact in-flight recommendation request, including explicit Next.
  // A previous track's request never blocks the newly selected anchor.
@@ -3286,7 +3323,8 @@ function completeCurrentRecording({ghost=false}={}){
  lyricTransportSync.stop();coverCharge.hide();playbackStallGuard.clear();
  if(lastRecordedSelection===completed)listeningMemory.record('finish',state.current);
  karaokeStage.scorer.finish();karaokeStage.updateScore();
- if(state.queue.length||smartMode!=='off'){
+ if(!navigator.onLine||state.current.source==='local')seedOfflineQueue();
+ if(state.queue.length||smartMode!=='off'||offlineNextTracks().length){
   void next().then(()=>{
    // Sparse smart radios may not have any verified successor. They should
    // stop at the real end instead of displaying a permanent Pause button.
@@ -3422,8 +3460,17 @@ if('serviceWorker' in navigator){
    .catch(error=>console.debug('GNARLY offline shell unavailable:',error?.message));
  },{once:true});
 }
-window.addEventListener('online',()=>{if(state.sheet==='library')renderSheet()});
-window.addEventListener('offline',()=>{if(state.sheet==='library')renderSheet()});
+window.addEventListener('online',()=>{
+ if(state.sheet==='library'||state.sheet==='queue')renderSheet();
+ if(state.current&&!state.userPaused&&smartMode!=='off'&&state.queue.length<2)
+  void maybeFillSmartQueue({force:true});
+});
+window.addEventListener('offline',()=>{
+ queueAudioWarmup.cancel();cancelSelectedWarmup();invalidateSmartFill();
+ if(state.current)seedOfflineQueue();
+ updatePlayer();
+ if(state.sheet==='library'||state.sheet==='queue')renderSheet();
+});
 
 // Direct backend playback has no separate invite login or YouTube modal on Play.
 
