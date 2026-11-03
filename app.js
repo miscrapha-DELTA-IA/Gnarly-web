@@ -1657,7 +1657,12 @@ async function next(){
  else toast('Fila vazia. Adicione outra música para avançar.');
 }
 function advanceToNext(track){
- if(state.current&&audio.currentTime>=4&&!audio.ended&&audio.currentTime<Math.min(36,(audio.duration||240)*.3))
+ // An intentional Next immediately after audible start is meaningful
+ // feedback too. Previous >=4s guard silently discarded quick skips.
+ // Never penalize a recording that has not reached native playing.
+ const position=Number(audio.currentTime)||0;
+ if(state.current&&lastRecordedSelection===playbackSelection&&!state.userPaused&&
+    !audio.ended&&position>=0&&position<Math.min(45,(audio.duration||240)*.35))
   listeningMemory.record('skip',state.current);
  selectTrack(track,true,{fromQueue:true});
 }
@@ -2853,7 +2858,12 @@ function handlePanelClick(e){const target=e.target.closest('button,[data-lyric-t
   if(action==='download'){void downloadOfflineTrack(track);return}
   if(action==='offline-remove'){void deleteOfflineTrack(track);return}
   if(context==='queue'&&['remove','up','down'].includes(action)){
-   if(action==='remove'){state.queue=removeTrack(state.queue,track.id);}
+   if(action==='remove'){
+    // Removing a suggested song is negative taste feedback; removing an
+    // explicitly queued song is only queue management.
+    if(track._gnarlyAutoMode)listeningMemory.record('skip',track);
+    state.queue=removeTrack(state.queue,track.id);
+   }
    else state.queue=moveTrack(state.queue,track.id,action==='up'?-1:1);
    queueAudioWarmup.cancel();prepareUpcomingAudio();updatePlayer();renderSheet();return;
   }
