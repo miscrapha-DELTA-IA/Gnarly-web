@@ -70,7 +70,7 @@ test('eye has an animated, reduced-motion-friendly downward hint without changin
  const html=src('index.html'),css=src('styles.css'),app=src('app.js'),gestures=src('lib/responsive-shell.js');
  assert.match(html,/id="search-toggle"[^>]*>.*class="eye-gesture-arrow" viewBox="0 0 24 24"/);
  assert.match(html,/eye-gesture-arrow"[^>]+aria-hidden="true"/);
- assert.match(html,/href="#i-chevron"/);
+ assert.match(html,/class="eye-gesture-arrow"[^>]*><path d="m5 9 7 7 7-7" \/><\/svg>/);
  assert.match(css,/topbar #search-toggle \.eye-gesture-arrow/);
  assert.match(css,/pointer-events:none/);
  assert.match(css,/prefers-reduced-motion:reduce/);
@@ -100,4 +100,24 @@ test('the three draggable header shortcuts share the eye chevron without changin
  assert.match(css,/prefers-reduced-motion:reduce/);
  for(const id of ids)assert.match(app,new RegExp("bindQuickCreative\\(\\$\\('#"+id+"'\\)"));
  assert.doesNotMatch(css,/\.eye-gesture-arrow\{[^}]*pointer-events:auto/);
+});
+
+test('header arrows are conspicuous, self-contained vectors and bypass stale CSS caches',()=>{
+ const html=src('index.html'),css=src('styles.css'),sw=src('sw.js');
+ assert.match(html,/href="\.\/styles\.css\?v=header-gestures-20261103-v2"/);
+ assert.match(sw,/gnarly-web-shell-20261103-visible-header-chevrons-v24/);
+ const ids=['search-toggle','theme-button','experience-button','lyric-style-button'];
+ for(const id of ids){
+  const content=html.match(new RegExp('id="'+id+'"[^>]*>(.*?)<\\/button>'))?.[1]||'';
+  assert.match(content,/class="eye-gesture-arrow"[^>]*width="16" height="16"/,id+' needs 16px chevron');
+  assert.match(content,/<path d="m5 9 7 7 7-7" \/>/,id+' uses inline SVG path');
+  assert.doesNotMatch(content,/<use href="#i-chevron"/,id+' must not depend on an SVG sprite');
+ }
+ const block=css.slice(css.indexOf('/* Clearly visible gesture chevrons'),css.indexOf('/* Menu polish: native controls'));
+ assert.match(block,/bottom:-7px/);
+ assert.match(block,/stroke-width:3/);
+ assert.match(block,/opacity:1/);
+ assert.match(block,/overflow:visible/);
+ assert.match(block,/pointer-events:none/);
+ assert.match(block,/prefers-reduced-motion:reduce/);
 });
