@@ -2237,21 +2237,32 @@ async function maybeFillSmartQueue({force=false}={}){
    listeningMemory.refresh();
    const related=mode==='mix'?mixTasteArtists(anchor,listeningMemory,{max:1})[0]:null;
    const added=[];
-   const publish=candidates=>{
+   const publish=(candidates,{preparing=false}={})=>{
     if(!current())return;
     listeningMemory.refresh();
-    const verified=readyQueueCandidates(candidates,{offline:isOffline});
-    if(!verified.length)return;
-    const choices=recommendTracks({mode,anchor,candidates:verified,verifiedSources:true,
+    // Catalog metadata authorizes suggestions, not immediate playback.
+    // Native audio remains gated by the existing first-party pipeline.
+    const eligible=preparing?(candidates||[]).filter(track=>
+      track?.source==='youtube'&&/^[A-Za-z0-9_-]{11}$/.test(track.videoId||'')&&
+      track.id==='youtube:'+track.videoId&&!!track.title&&
+      !isGenericArtist(track.artist)&&!unrequestedVersion(track,query)):
+      readyQueueCandidates(candidates,{offline:isOffline});
+    if(!eligible.length)return;
+    const choices=recommendTracks({mode,anchor,candidates:eligible,verifiedSources:!preparing,
      existing:state.queue,recent:playbackBackstack.slice(-30),history:state.history,memory:listeningMemory,max:Math.max(0,7-added.length),revision});
-    const newTracks=markAutoTracks(choices,mode),count=state.queue.length;
+    const newTracks=markAutoTracks(choices,mode).map(track=>({
+     ...track,
+     _gnarlyPreparationRequired:track.source==='youtube'&&track.playbackAvailability!=='r2'&&!isOffline(track.id)
+    })),count=state.queue.length;
     state.queue=appendUnique(state.queue,newTracks,anchor.id);
     if(state.queue.length===count)return;
     added.push(...newTracks);recommendationsByMode.set(mode,added);
     listeningMemory.expose(choices,mode);prepareUpcomingAudio();prefetchNextLyrics();
     lastSmartSeed=seed;smartRetryAt=0;smartRetryCount=0;
-    smartStatus=mode==='mix'?'Mix atualizado para '+anchor.artist+' · '+added.length+' sugestões verificadas.':
-     'Modo '+mode+' · '+added.length+' sugestões verificadas.';
+    smartStatus=preparing?
+     'Mix de '+anchor.artist+' · '+added.length+' músicas selecionadas. O áudio será preparado quando necessário.':
+     mode==='mix'?'Mix atualizado para '+anchor.artist+' · '+added.length+' sugestões prontas.':
+     'Modo '+mode+' · '+added.length+' sugestões prontas.';
     smartFillPending=false;updatePlayer();if(state.sheet==='queue')renderSheet();ready();
    };
    // Known complete recordings are immediately usable. A slow optional taste
@@ -2274,8 +2285,24 @@ async function maybeFillSmartQueue({force=false}={}){
     :Promise.resolve();
    await Promise.all([primary,affinity]);
    if(!current())return;
+   if(!added.length&&['mix','artist','album'].includes(mode)&&!playbackCooldown.active()){
+    // Requiring a *pre-existing* R2 cache made Mix permanently empty for
+    // new recordings. Fall back to exact Music metadata without pretending
+    // that these candidates have already been encoded or cached.
+    smartStatus='Buscando outras gravações de '+anchor.artist+' para continuar o Mix…';
+    if(state.sheet==='queue')renderSheet();
+    const local=[...state.searchResults,...state.history,...state.favorites];
+    let discovered=[];
+    try{discovered=await searchNativeBackend(query,{limit:20,signal:controller.signal})}
+    catch(error){if(error?.name==='AbortError')return}
+    if(!current())return;
+    publish([...local,...discovered],{preparing:true});
+   }
+   if(!current())return;
    if(!added.length){
-    smartStatus='Sem novas faixas verificadas para '+mode+'. Sua fila foi preservada.';
+    smartStatus=playbackCooldown.active()?
+     'O catálogo está limitado no momento. A fila manual continua disponível.':
+     'Nenhuma outra gravação do artista foi encontrada agora. Tente Atualizar ou escolha outra faixa.';
     scheduleSmartRetry(anchor,mode);updatePlayer();
    }
   }catch(error){
@@ -2299,7 +2326,9 @@ function renderQueuePanel(){
   const fallback=safe(track.artwork||icon);
   const attrs=' data-context="queue" data-index="'+i+'"';
   const offline=isOffline(track.id)?' <span class="native-queue-offline">✓ Offline</span>':'';
-  const origin=track._gnarlyAutoMode?' · Mix · sugestão':' · Adicionada por você';
+  const origin=track._gnarlyAutoMode?
+    (track._gnarlyPreparationRequired?' · Mix · preparo necessário':' · Mix · pronta'):
+    ' · Adicionada por você';
   return '<div class="native-queue-row" role="listitem">'+
    '<button type="button" class="native-queue-track" data-action="play"'+attrs+
    ' aria-label="Tocar '+title+'">'+
@@ -2312,7 +2341,9 @@ function renderQueuePanel(){
  const list=state.queue.length?
   '<div class="native-queue-list" role="list" aria-label="Próximas músicas">'+rows+'</div>':
   '<div class="native-queue-empty">'+
-   (state.current?'O Mix selecionará as próximas músicas automaticamente.':'Suas próximas músicas aparecem aqui.')+'</div>';
+   (state.current?(smartFillPending?'Buscando sugestões para esta música…':
+    'Ainda não há outra gravação disponível; use Atualizar para tentar novamente.'):
+    'Suas próximas músicas aparecem aqui.')+'</div>';
  return controls+list;
 }
 function renderGnarly2Controls(){
