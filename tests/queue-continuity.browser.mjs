@@ -87,7 +87,11 @@ async function scenario(name,run){
   await run({page,gate,queries,requests,prepares,choose,selected,snapshot,setSearch:fn=>search=fn,setAudioGate:fn=>audioGate=fn,setAudioLength:seconds=>scenarioMedia=tone(seconds)});
   assert.deepEqual(errors,[],'no uncaught browser errors');
   results.push({name,passed:true,queries,requests,snapshot:await snapshot(),timings:await page.evaluate(()=>__queueTimings.transitions)});
- }catch(error){results.push({name,passed:false,error:error.message,queries,requests,errors})}
+ }catch(error){results.push({name,passed:false,error:error.message,queries,requests,prepares,errors,
+  audio:await page.evaluate(()=>({time:globalThis.__queueQA?.audio?.currentTime,
+   readyState:globalThis.__queueQA?.audio?.readyState,
+   state:globalThis.__queueQA?.state?.audioState,
+   queue:globalThis.__queueQA?.state?.queue?.map(x=>({id:x.id,warmed:x._gnarlyPrewarmRequested}))})).catch(()=>null)})}
  finally{for(const value of gates)value.resolve();await context.close()}
  console.log(JSON.stringify(results.at(-1)));
 }
@@ -122,14 +126,12 @@ try{
   setAudioLength(45);
   await choose(A);
   await page.evaluate(track=>__queueQA.addToQueue(track,{quiet:true}),B);
-  await page.evaluate(()=>{__queueQA.state.current.duration=45;__queueQA.audio.currentTime=10.5});
-  await page.waitForFunction(()=>__queueQA.audio.currentTime>=10&&
-   !__queueQA.audio.paused&&__queueQA.audio.readyState>=3&&
-   __queueQA.state.audioState==='playing',null,{timeout:6000});
-  // The browser normally calls this from timeupdate and the new timed
-  // backup. Invoke the same scheduler once to verify its guarded POST path.
-  await page.evaluate(()=>__queueQA.prepareUpcomingAudio());
-  await page.waitForFunction(()=>__queueQA.state.queue[0]?._gnarlyPrewarmRequested===true,null,{timeout:6000});
+  await page.evaluate(()=>{__queueQA.state.current.duration=45});
+  // Seek creates synthetic waiting events that can leave the decoder in a
+  // buffering state. Let the real 45s PCM clock run, as users do, so the
+  // automatic timeupdate and timer both have a stable source.
+  await page.waitForFunction(()=>__queueQA.state.queue[0]?._gnarlyPrewarmRequested===true,
+   null,{timeout:16000});
   assert.ok(prepares.includes(B.videoId),'next exact ID pre-cache job accepted');
   assert.ok(!requests.includes(B.videoId),'preparation must not start a competing browser media GET');
  });
