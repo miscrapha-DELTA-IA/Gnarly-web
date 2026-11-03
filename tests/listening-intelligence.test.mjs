@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {ListeningMemory,MEMORY_KEY,songFingerprint,sameRecording,recentlyHeardRecording,recommendTracks,retainManualQueue,markAutoTracks,discoverySuggestions} from '../lib/listening-intelligence.js';
+import {ListeningMemory,MEMORY_KEY,songFingerprint,sameRecording,recentlyHeardRecording,recommendTracks,mixTasteArtists,retainManualQueue,markAutoTracks,discoverySuggestions} from '../lib/listening-intelligence.js';
 const t=(id,artist='AURORA',album='All My Demons',title='Track '+id)=>({
  id:'youtube:'+id,videoId:id,source:'youtube',artist,album,title,duration:210,artwork:'https://example.com/art.png'});
 const anchor=t('AAAAAAAAAAA'),a=t('BBBBBBBBBBB'),b=t('CCCCCCCCCCC','AURORA','Infections Of A Different Kind'),c=t('DDDDDDDDDDD','AURORA','All My Demons'),d=t('EEEEEEEEEEE','Florence','Ceremonials'),e=t('FFFFFFFFFFF','Florence','How Big'),f=t('GGGGGGGGGGG','Other','Other');
@@ -65,6 +65,59 @@ test('consumed session recordings and provider aliases do not immediately refill
  const pending=[a,b];
  recommendTracks({mode:'mix',anchor,candidates:[a,b,c],existing:pending,recent:[a,b]});
  assert.deepEqual(pending,[a,b]);
+});
+test('one old manually heard song must never take over an unrelated Mix',()=>{
+ const now=Date.now(),mem=new ListeningMemory(storage());
+ mem.record('play',d,now-12*86400000); // old one-off from another artist
+ assert.deepEqual(mixTasteArtists(anchor,mem,{now}),[]);
+ const candidates=[a,b,c,d,e,f];
+ const mix=recommendTracks({mode:'mix',anchor,candidates,memory:mem,now,max:7});
+ assert.ok(mix.length>0);
+ assert.ok(mix.every(t=>t.artist==='AURORA'),'anchor performer remains the entire mix without strong taste evidence');
+ assert.ok(!mix.some(t=>t.id===d.id),'one-off artist cannot be recycled as a favorite');
+});
+test('explicit favorites diversify no more than two tracks and never replace current-artist anchor',()=>{
+ const now=Date.now(),mem=new ListeningMemory(storage());
+ mem.record('like',d,now-1000);
+ mem.record('play',f,now-500); // different artist: weak signal only
+ assert.deepEqual(mixTasteArtists(anchor,mem,{now}),['florence']);
+ const mix=recommendTracks({mode:'mix',anchor,candidates:[d,e,f,a,b,c],
+  memory:mem,now,max:7});
+ assert.ok(mix.length>=3);
+ assert.equal(mix[0].artist,'AURORA','first automatic song must follow current artist');
+ assert.ok(mix.some(x=>x.artist==='Florence'),'a real favorite can diversify the mix');
+ assert.ok(mix.filter(x=>x.artist!=='AURORA').length<=2,'bounded cross-artist variety');
+ assert.ok(!mix.some(x=>x.artist==='Other'));
+ assert.deepEqual(recommendTracks({mode:'mix',anchor,candidates:[d,e,f],memory:mem,now}),[],
+  'without any verified recording by the current artist, do not fill from unrelated recommendations');
+});
+test('strong taste evidence expires, and repeated skips suppress only automatic radio',()=>{
+ const now=Date.now(),mem=new ListeningMemory(storage());
+ mem.record('like',d,now-35*86400000);
+ assert.deepEqual(mixTasteArtists(anchor,mem,{now}),[],'stale preference does not hijack current listening');
+ mem.record('skip',a,now-5*86400000);
+ assert.equal(recentlyHeardRecording(a,mem,{now}),true,'skipped recording should not reappear five days later');
+ assert.ok(!recommendTracks({mode:'mix',anchor,candidates:[a,b,c],memory:mem,now}).some(x=>x.id===a.id));
+ assert.equal(recentlyHeardRecording(a,mem,{now:now+15*86400000}),false,
+  'skip rejection is not permanent');
+ const queue=[a];assert.equal(retainManualQueue(queue)[0],a,'manual queue remains untouched');
+});
+test('new selection discards stale auto-tail without deleting pinned/manual entries',async()=>{
+ const oldRadio=markAutoTracks([d,e],'mix'),manual=[a,b];
+ const existing=[oldRadio[0],manual[0],oldRadio[1],manual[1]];
+ const rebased=retainManualQueue(existing);
+ assert.deepEqual(rebased,[a,b]);
+ assert.deepEqual(existing,[oldRadio[0],a,oldRadio[1],b],'pure pruning does not mutate prior queue');
+ const {readFileSync}=await import('node:fs');
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ const begin=app.indexOf('function selectTrack('),end=app.indexOf('// During an upstream cooldown',begin);
+ assert.ok(begin>0&&end>begin);
+ const selection=app.slice(begin,end);
+ assert.match(selection,/state\.queue=retainManualQueue\(state\.queue\)/,
+  'stale auto recommendations must be removed on every track selection');
+ assert.match(selection,/if\(fromQueue\)/,'queue transition still consumes the exact chosen recording');
+ assert.match(app,/const forward=\{\.\.\.state\.current\};delete forward\._gnarlyAutoMode/,
+  'back navigation should preserve intentional forward navigation even from an auto track');
 });
 test('Omnibox empty discovery is independent from active queue and does not repeat rows',()=>{
  const mem=new ListeningMemory(storage());mem.record('like',d);
