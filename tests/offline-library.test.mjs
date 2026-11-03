@@ -129,6 +129,6 @@ test('offline queue opt-in is explicit and does not auto-download by default',()
  assert.match(app,/cachedNativeAvailable\(next\)/,
   'only verified ready edge audio can be saved speculatively');
  assert.match(app,/downloadOfflineTrack\(next,\{quiet:true,signal:controller.signal\}\)/);
- assert.match(app,/if\(!navigator.onLine\|\|startingTrack.source==='local'\)/);
+ assert.match(app,/if\(startingTrack&&\(!navigator.onLine\|\|startingTrack.source==='local'\)\)/);
  assert.match(app,/if\(state.playing&&!audio.paused\)\{prepareUpcomingAudio\(\);maybeAutoSaveNext\(\);\}/);
 });
