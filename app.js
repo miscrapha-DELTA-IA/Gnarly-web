@@ -23,6 +23,7 @@ import {AudioDeliveryRecovery,PlaybackCooldown,resolvePlaybackCooldown,playbackL
 import {PLAYBACK_RETRY_TEXT,renderPlaybackFeedback} from './lib/player-feedback.js';
 import {waitForPCNodeReady,waitForPCNodeCache} from './lib/pc-node-recovery.js';
 import {audioSourceCategory,recordStreamingMetric} from './lib/streaming-metrics.js';
+import {TdrMonitor,tdrSourceForTrack} from './lib/tdr-metrics.js';
 import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-library.js';
 import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from './lib/queue-audio-warmup.js';
 import {quickPlaylistMarkup} from './ui/quick-playlist.js';
@@ -110,6 +111,7 @@ function primeSelectedRecording(track,selection){
  // non-blocking prepare after the initial native media gesture.
  // Never change the media source, identity or current playback promise.
  if(state.current!==track||playbackSelection!==selection||state.userPaused)return;
+ tdr.mark(selection,'prewarm_requested');
  void selectedAudioWarmup.start(track).catch(()=>{});
 }
 const queueAudioWarmup=new QueueAudioWarmup({
@@ -214,6 +216,10 @@ const playbackBackstack=[]; // Session-only previous track, like iOS queue navig
 const recommendationsByMode=new Map();
 const audioWarmup=new AudioConnectionWarmup((url,options)=>fetch(url,options));
 let playbackStartedAt=0;
+const tdr=new TdrMonitor();
+// TDR is session-local and read-only. Legacy /v1/playback-metric remains
+// unchanged; the public player never displays internal startup diagnostics.
+window.gnarlyTDRDiagnostics=()=>tdr.snapshot();
 let playbackMetricErrorSelection=-1,playbackMetricFinalSelection=-1;
 function signalPlaybackMetric(event,code=0){
  if(!state.current||!playbackStartedAt||state.userPaused)return;
@@ -561,6 +567,7 @@ function reportAudioError(_detail){
   playbackMetricFinalSelection=playbackSelection;
   signalPlaybackMetric('final_error',audio.error?.code||0);
  }
+ tdr.finish(playbackSelection,'terminal_error');
  state.audioState='error';state.playbackError=PLAYBACK_RETRY_TEXT;
  renderPlaybackFeedback({
   playerStatus:$('#player-status'),ipodStatus:$('#ipod-audio-status')
@@ -1083,13 +1090,17 @@ async function enrichSelectedTrack(track,knownDuration=0){
   if(state.sheet==='search')displaySearch(state.searchResults);
  }catch(error){if(error?.name!=='AbortError')console.debug('Metadata enrichment unavailable');}
 }
-function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false}={}){
+function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false,tdrHandoff=false}={}){
  if(!track)return;
+ const selectedAt=performance.now();
  if(!fromHistory&&state.current?.id&&state.current.id!==track.id){
   playbackBackstack.push(state.current);
   if(playbackBackstack.length>30)playbackBackstack.shift();
  }
  playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();playbackIntentEpoch++;playStartOperation=null;playbackContinuity.select(playbackSelection);
+ tdr.select(playbackSelection,{at:selectedAt,autoplay,
+  source:tdrSourceForTrack(track,{offline:!!offlineAudio(track.id)}),
+  readyHint:track.playbackAvailability==='r2',handoff:tdrHandoff});
  playbackStartedAt=0;
  playbackStallGuard.clear();lyricTransportSync.stop();
  independentRecoveryController?.abort();independentRecoveryController=null;
@@ -1242,7 +1253,7 @@ async function recoverIndependentAudio(track,isCurrent,verifiedAlternative=null)
  if(controller.signal.aborted||!isCurrent()||!alternative)return false;
  // selectTrack refreshes artwork, lyric identity, Web Audio source and queue
  // consistently, rather than disguising an Audius stream as YouTube audio.
- selectTrack(alternative,false);
+ selectTrack(alternative,false,{tdrHandoff:true});
  const chosen=state.current,selection=playbackSelection;
  if(!chosen||chosen!==alternative||!audio.hasAttribute('src'))return false;
  state.audioState='loading';reportAudioStatus('Conectando à mesma gravação em '+(chosen.source==='jamendo'?'Jamendo':'Audius')+'…');
@@ -1271,6 +1282,7 @@ async function recoverNativeAudio(track,initialError=null){
  if(!track||track.source!=='youtube'||state.current!==track||state.userPaused||isAudioAlreadyPlaying())return false;
  coverCharge.show('recovering');
  if(recoveryOperation)return recoveryOperation;
+ tdr.mark(selection,'recovery_started');
  // A 429 followed by a verified-source search needs its own bounded
  // recovery window; the initial buffering deadline may nearly be exhausted.
  // This recovery is already bounded by PC job polling (205s) and retry
@@ -1287,9 +1299,10 @@ async function recoverNativeAudio(track,initialError=null){
   // switch to an unrelated origin, or call Play again while it is preparing.
   // Wait only for a real, existing job; never poll indefinitely.
   if(!isOffline(track.id)){
+   tdr.mark(selection,'pc_wait_started');
    const pcResult=await waitForPCNodeReady(track.videoId,{
     current,prepare:true,autoRetryTimeout:true,
-    onProgress:(phase,details)=>{const firstRecovery=state.audioState!=='recovering';
+    onProgress:(phase,details)=>{if(phase==='leased')tdr.mark(selection,'pc_leased');const firstRecovery=state.audioState!=='recovering';
      state.audioState='recovering';
      const ahead=Number.isInteger(details?.queueAhead)?details.queueAhead:0;
      const message=phase==='retrying'
@@ -1303,7 +1316,9 @@ async function recoverNativeAudio(track,initialError=null){
      reportAudioStatus(message);if(firstRecovery)updatePlayer();}
    });
    if(!current())return false;
+   tdr.mark(selection,'pc_wait_finished');
    if(pcResult==='ready'){
+    tdr.mark(selection,'pc_ready');
     if(await resumeCompletedPCNode(track,current))return true;
     if(!current())return false;
     // The PC marks its upload ready before the asynchronous R2 promotion
@@ -1311,11 +1326,13 @@ async function recoverNativeAudio(track,initialError=null){
     // is NOT a terminal media failure: keep the first Play intent alive.
     // Poll ONLY the existing exact-ID R2 cache, without starting yt-dlp,
     // a second PC job, or an unrelated recording.
+    tdr.mark(selection,'r2_sync_started');
     const cacheResult=await waitForPCNodeCache({
      current,probe:()=>resumeCachedNative(track,current),
      onProgress:()=>{state.audioState='recovering';
       reportAudioStatus('Gravação entregue pelo PC · sincronizando cache para reprodução…');}
     });
+    tdr.mark(selection,'r2_sync_finished');
     if(cacheResult==='ready'||isAudioAlreadyPlaying())return true;
     if(!current())return false;
    }
@@ -1464,6 +1481,7 @@ async function play(){
  const stillSelected=()=>state.current===track&&playbackSelection===selection&&!state.userPaused&&
   playbackIntentEpoch===epoch;
  try{
+ tdr.mark(selection,'play_intent');
  // Time from the FIRST user Play, not the latest repeated click while the
  // same recording is still being prepared.
  if(!playbackStartedAt)playbackStartedAt=performance.now();
@@ -1503,6 +1521,7 @@ async function play(){
    reportAudioStatus(isOffline(track.id)?'Abrindo música offline…':'Preparando áudio…');
   }
  }
+ tdr.mark(selection,'source_attached');
  hideOptionalOfficialSource();
  // Both remote and offline tracks. Only audible readiness stops this cue.
  if(audio.paused||audio.readyState<3){coverCharge.show('loading');watchPlayback(track,selection);}
@@ -1516,6 +1535,7 @@ async function play(){
   // decoding; do not reroute audio after it becomes audible.
   if(engine.nativeTransport&&audioEffectsRequested())void autoEnableStudioEffects();
   engine.restoreSpeed();
+  tdr.playCall(selection,{source:tdrSourceForTrack(track,{offline:!!offlineAudio(track.id)})});
   const start=audio.play(),unlock=resumePlayerAudio();
   // Non-blocking first-tap prewarm. A fast R2 hit still starts immediately;
   // the PC node can start a cache miss before the first 503 reaches HTMLMedia.
@@ -1565,7 +1585,7 @@ async function play(){
   resolvePending();
  }
 }
-function pause(){coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;playbackIntentEpoch++;playStartOperation=null;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;engine.setTransportPaused(true);audio.pause();stems.pause();pads.stopLoop();closeYouTubePlayer();state.playing=false;updatePlayer()}
+function pause(){tdr.finish(playbackSelection,'user_cancel');coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;playbackIntentEpoch++;playStartOperation=null;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;engine.setTransportPaused(true);audio.pause();stems.pause();pads.stopLoop();closeYouTubePlayer();state.playing=false;updatePlayer()}
 let nextDiscovery=null;
 function clearNextDiscoveryStatus(){if(nextDiscovery)reportAudioStatus('')}
 // Show only a tiny activity cue while Next looks for a verified recording.
@@ -3113,6 +3133,7 @@ async function runSearch(raw,{live=false}={}){
  else void fetchLiveSearch(page);
 }
 audio.addEventListener('play',()=>{if(state.userPaused){audio.pause();return}if(!state.current||audio.paused||audio.ended)return;updatePlayer()});audio.addEventListener('pause',()=>{lyricTransportSync.stop();engine.setTransportPaused(true);stems.pause();pads.stopLoop();playbackContinuity.resetClock();state.playing=false;if(state.userPaused||!['loading','recovering'].includes(state.audioState))coverCharge.hide();updatePlayer()});audio.addEventListener('timeupdate',()=>{
+ tdr.confirmProgress(playbackSelection,audio.currentTime||0);
  if(state.current)playbackContinuity.sample({
   position:audio.currentTime,timeMs:performance.now(),rate:audio.playbackRate,
   paused:audio.paused,seeking:audio.seeking,readyState:audio.readyState,
@@ -3188,15 +3209,17 @@ function updateBufferingCue(){
  watchPlayback(state.current,playbackSelection,rebuffer?'rebuffer':'startup');
 }
 audio.addEventListener('waiting',()=>{
+ tdr.mark(playbackSelection,'waiting');
  playbackContinuity.transportEvent('waiting');visual.prioritizeAudio('waiting');
  updateBufferingCue();
  if(state.current&&!state.userPaused&&!audio.paused&&!audio.ended)
   reportAudioStatus(state.audioState==='loading'?'Preparando áudio…':'Estabilizando sinal de áudio…');
 });
 audio.addEventListener('stalled',()=>{
+ tdr.mark(playbackSelection,'stalled');
  playbackContinuity.transportEvent('stalled');visual.prioritizeAudio('stalled');
  updateBufferingCue();
-});audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;hideOptionalOfficialSource();coverCharge.hide();engine.setTransportPaused(false);sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
+});audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;tdr.playing(playbackSelection,{position:audio.currentTime||0,route:audioSourceCategory(audio.currentSrc||audio.src)});hideOptionalOfficialSource();coverCharge.hide();engine.setTransportPaused(false);sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
   const ms=Math.round(performance.now()-playbackStartedAt);
   const origin=audio.currentSrc.startsWith('blob:')?'offline':audio.currentSrc.includes('/fast-audio/')?'fast-edge':audio.currentSrc.includes('/audius-audio/')?'audius':audio.currentSrc.includes('/jamendo-audio/')?'jamendo':'render';
   console.debug('GNARLY startup ms',ms,'origin',origin);
@@ -3204,6 +3227,7 @@ audio.addEventListener('stalled',()=>{
     audioDelivery.attempt>0?'recovered_audio':'first_audio');
   playbackStartedAt=0;
  }prepareUpcomingAudio();void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!audio.error||!state.current||state.userPaused||state.audioState==='official'||isAudioAlreadyPlaying())return;
+ tdr.mark(playbackSelection,'media_error');
  // Browser MediaError 4 often means the first /fast-audio request got a
  // temporary 503 while the Windows node is still extracting. Record the
  // incident, but DO NOT show a final error or restart a working recovery.
