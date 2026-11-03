@@ -37,3 +37,25 @@ test('Next looks up an eligible smart queue candidate without stopping the curre
  assert.match(app,/nexttrack:\(\)=>\{void next\(\)\}/);
  assert.match(app,/e\.key==='MediaTrackNext'\)void next\(\)/);
 });
+
+test('Previous navigates in one tap and preserves a forward successor',()=>{
+ const block=app.slice(app.indexOf('function previous(){'),app.indexOf('function addToQueue('));
+ assert.doesNotMatch(block,/audio\.currentTime\s*>\s*3/);
+ assert.match(block,/playbackBackstack\.pop\(\)/);
+ assert.match(block,/state\.queue=appendUnique\(\[forward\]/);
+ assert.match(block,/selectTrack\(previousTrack,true,\{fromHistory:true\}\)/);
+ assert.match(block,/selectTrack\(previousLibraryTrack,true,\{fromHistory:true\}\)/);
+ assert.match(block,/else externalSeek\(0\)/);
+});
+
+test('Next remains clickable and indicates pending smart discovery',()=>{
+ const block=app.slice(app.indexOf('function setNextDiscoveryBusy('),app.indexOf('function advanceToNext('));
+ assert.match(block,/setNextDiscoveryBusy\(true\)/);
+ assert.match(block,/setNextDiscoveryBusy\(false\)/);
+ assert.match(block,/nextDiscovery\.presses=Math\.min\(7,nextDiscovery\.presses\+1\)/);
+ assert.match(block,/await maybeFillSmartQueue\(\{force:true\}\)/);
+ assert.doesNotMatch(block,/audio\.src\s*=|prepareNativeAudio\(|trackAudioURL\(/);
+ const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
+ assert.match(css,/#ipod-next-button,#youtube-next/);
+ assert.match(css,/prefers-reduced-motion:reduce/);
+});
