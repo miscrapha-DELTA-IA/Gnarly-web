@@ -11,7 +11,7 @@ const options=(items,value)=>items.map(([id,label])=>`<option value="${id}" ${id
 export class ShareStudio{
  constructor({snapshot,onOpen=()=>{},onClose=()=>{}}){
   Object.assign(this,{snapshot,onOpen,onClose});this.generation=0;this.urls=[];
-  const css=document.createElement('link');css.rel='stylesheet';css.href=new URL('./share-studio.css',import.meta.url).href;document.head.append(css);
+  const css=document.createElement('link');css.rel='stylesheet';css.href=new URL('/ui/share-studio.css',location.origin).href;document.head.append(css);
   this.dialog=document.createElement('dialog');this.dialog.className='share-studio';this.dialog.setAttribute('aria-labelledby','share-studio-title');document.body.append(this.dialog);
   this.dialog.addEventListener('keydown',e=>e.stopPropagation());
   document.addEventListener('visibilitychange',()=>{if(document.hidden&&this.busy)this.abort?.abort()});
