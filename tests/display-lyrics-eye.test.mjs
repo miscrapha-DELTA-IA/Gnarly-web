@@ -77,3 +77,27 @@ test('eye has an animated, reduced-motion-friendly downward hint without changin
  assert.match(app,/attachEyeGestures\(\$\('#search-toggle'\)/);
  assert.match(gestures,/swipeVertical\?\.\(dy>0\?'down':'up'\)/);
 });
+
+test('the three draggable header shortcuts share the eye chevron without changing behavior',()=>{
+ const html=src('index.html'),css=src('styles.css'),app=src('app.js');
+ const ids=['theme-button','experience-button','lyric-style-button'];
+ const eye=html.match(/id="search-toggle"[^>]*>(.*?)<\/button>/)?.[1];
+ assert.ok(eye,'existing Exibição button remains');
+ const arrow=eye.match(/<svg class="eye-gesture-arrow"[^>]*>.*?<\/svg>/)?.[0];
+ assert.ok(arrow,'reuse the exact eye arrow');
+ for(const id of ids){
+  const contents=html.match(new RegExp('id="'+id+'"[^>]*>(.*?)<\\/button>'))?.[1];
+  assert.ok(contents,'header button remains: '+id);
+  assert.ok(contents.includes(arrow),'identical decorative chevron on '+id);
+  assert.match(contents,/aria-hidden="true" focusable="false"/);
+ }
+ for(const id of ['background-button','music-toggle-button','share-button']){
+  const contents=html.match(new RegExp('id="'+id+'"[^>]*>(.*?)<\\/button>'))?.[1];
+  assert.ok(contents&&!contents.includes('eye-gesture-arrow'),'no misleading hint on '+id);
+ }
+ assert.match(css,/:is\(#theme-button,#experience-button,#lyric-style-button\) \.eye-gesture-arrow/);
+ assert.match(css,/pointer-events:none/);
+ assert.match(css,/prefers-reduced-motion:reduce/);
+ for(const id of ids)assert.match(app,new RegExp("bindQuickCreative\\(\\$\\('#"+id+"'\\)"));
+ assert.doesNotMatch(css,/\.eye-gesture-arrow\{[^}]*pointer-events:auto/);
+});
