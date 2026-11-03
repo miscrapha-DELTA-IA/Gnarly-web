@@ -30,7 +30,7 @@ import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from './lib/queue-audio
 import {quickPlaylistMarkup} from './ui/quick-playlist.js';
 import {createMediaSessionController,configureBrowserAudioSession} from './lib/media-session-controller.js';
 import {appendUnique,commitPlaying,moveTrack,removeTrack,shuffleUpcoming,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
-import {ListeningMemory,MEMORY_KEY,recommendTracks,retainManualQueue,markAutoTracks,sameRecording,discoverySuggestions} from './lib/listening-intelligence.js';
+import {ListeningMemory,MEMORY_KEY,recommendTracks,retainManualQueue,markAutoTracks,sameRecording,discoverySuggestions,mixTasteArtists} from './lib/listening-intelligence.js';
 import {renderSmartQueuePanel} from './ui/smart-queue-panel.js';
 import {CLASSIC_THEMES,MATERIAL_THEMES,GNARLY_MODES,NATIVE_COLOR_THEMES,CREATIVE_COLOR_THEMES,EXPERIENCES,REACTIONS,ROLE_EXPLANATION,resolveVisual,restoredThemeAfterGnarly} from './lib/visual-selection.js';
 import {StemMixer,STEM_KINDS,STEM_LABELS,STEM_PRESETS} from './lib/stem-mixer.js';
@@ -1139,6 +1139,11 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false,tdrH
  // Selecting a pending song through Search/History must not leave the same
  // recording in the upcoming tail and replay it on the very next transition.
  state.queue=state.queue.filter(item=>!sameRecording(item,track));
+ // Automatic recommendations belong to the previous listening context.
+ // Even a pending auto tail must not survive a newly selected recording:
+ // retain only intentional queue entries, exactly in their chosen order.
+ // New auto suggestions are generated from this recording on 'playing'.
+ state.queue=retainManualQueue(state.queue);
  if(isGenericArtist(track.artist))track.artist=displayArtist(track);
  lyricWorkshop.clear();
  audioDelivery.select(track);recoveryOperation=null;state.userPaused=false;
@@ -1667,14 +1672,15 @@ function previous(){
  // One press must navigate to the previous recording even after 3 seconds.
  const previousTrack=playbackBackstack.pop();
  if(previousTrack){
-  const forward=state.current;
+  const forward={...state.current};delete forward._gnarlyAutoMode;
   state.queue=appendUnique([forward],state.queue.filter(t=>!sameRecording(t,previousTrack)),previousTrack.id);
   selectTrack(previousTrack,true,{fromHistory:true});return;
  }
  // When navigating the local library, also keep a way to move forward again.
  const idx=state.tracks.findIndex(x=>x.id===state.current?.id);
  if(idx>0){
-  const previousLibraryTrack=state.tracks[idx-1],forward=state.current;
+  const previousLibraryTrack=state.tracks[idx-1],forward={...state.current};
+  delete forward._gnarlyAutoMode;
   state.queue=appendUnique([forward],state.queue.filter(t=>!sameRecording(t,previousLibraryTrack)),previousLibraryTrack.id);
   selectTrack(previousLibraryTrack,true,{fromHistory:true});
  }else externalSeek(0);
@@ -2214,7 +2220,8 @@ async function maybeFillSmartQueue({force=false}={}){
     updatePlayer();prefetchNextLyrics();return;
    }
    const cached=readyQueueCandidates([...state.searchResults,...state.history,...state.favorites,...state.queue,...state.tracks],{offline:isOffline});
-   const related=mode==='mix'?listeningMemory.affinityArtists(anchor.artist,1)[0]:null;
+   listeningMemory.refresh();
+   const related=mode==='mix'?mixTasteArtists(anchor,listeningMemory,{max:1})[0]:null;
    const added=[];
    const publish=candidates=>{
     if(!current())return;
@@ -2229,7 +2236,8 @@ async function maybeFillSmartQueue({force=false}={}){
     added.push(...newTracks);recommendationsByMode.set(mode,added);
     listeningMemory.expose(choices,mode);prepareUpcomingAudio();prefetchNextLyrics();
     lastSmartSeed=seed;smartRetryAt=0;smartRetryCount=0;
-    smartStatus='Modo '+mode+' · '+added.length+' sugestões distintas, ajustadas ao seu histórico.';
+    smartStatus=mode==='mix'?'Mix atualizado para '+anchor.artist+' · '+added.length+' sugestões verificadas.':
+     'Modo '+mode+' · '+added.length+' sugestões verificadas.';
     smartFillPending=false;updatePlayer();if(state.sheet==='queue')renderSheet();ready();
    };
    // Known complete recordings are immediately usable. A slow optional taste
@@ -2277,11 +2285,12 @@ function renderQueuePanel(){
   const fallback=safe(track.artwork||icon);
   const attrs=' data-context="queue" data-index="'+i+'"';
   const offline=isOffline(track.id)?' <span class="native-queue-offline">✓ Offline</span>':'';
+  const origin=track._gnarlyAutoMode?' · Mix · sugestão':' · Adicionada por você';
   return '<div class="native-queue-row" role="listitem">'+
    '<button type="button" class="native-queue-track" data-action="play"'+attrs+
    ' aria-label="Tocar '+title+'">'+
    '<img src="'+art+'" data-original-art="'+fallback+'" data-art-context="queue" data-art-index="'+i+'" alt="" loading="lazy" decoding="async"/>'+
-   '<span class="native-queue-track-info"><strong>'+title+'</strong><small>'+artist+offline+'</small></span>'+
+   '<span class="native-queue-track-info"><strong>'+title+'</strong><small>'+artist+offline+origin+'</small></span>'+
    '<span class="native-queue-index" aria-hidden="true">'+(i+1)+'</span></button>'+
    '<button type="button" class="native-queue-remove" data-action="remove"'+attrs+
    ' aria-label="Remover '+title+' da fila" title="Remover da fila">×</button></div>';
