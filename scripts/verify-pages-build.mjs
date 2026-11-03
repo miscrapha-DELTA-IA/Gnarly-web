@@ -41,7 +41,7 @@ assert.ok(assets.includes('/gnarly-ui.css'),'PWA must precache the combined styl
 for(const chunk of chunks)assert.ok(assets.includes('/chunks/'+chunk),
  'PWA must precache lazy JS chunk '+chunk);
 const sw=readFileSync(join(dist,'sw.js'),'utf8');
-assert.match(sw,/gnarly-web-shell-20261103-smooth-boot-v27/);
+assert.match(sw,/gnarly-web-shell-20261103-offline-next-v28/);
 assert.match(sw,/'\/gnarly-ui\.css'/);
 assert.match(sw,/'\/chunks\/'/);
 assert.ok(existsSync(join(dist,'ui/tdr-panel.js')),'Pages output is missing TDR dashboard module');
