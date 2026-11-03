@@ -809,30 +809,41 @@ body{position:relative;min-height:100dvh;background:#05090a}
 #search-sentinel{height:1px;pointer-events:none}
 #search-state[hidden]{display:none!important}
 
-/* Downward gesture hints for Exibição, Tema, Experiência and Aa.
-   Reuse the existing eye chevron without enlarging the touch targets. */
+/* Clearly visible gesture chevrons on ALL four draggable header shortcuts.
+   The 10px sprite-based hint was difficult to perceive on both screen sizes.
+   A self-contained vector path now renders crisply below the circular controls. */
 .app-shell .topbar #search-toggle,
-.app-shell .topbar :is(#theme-button,#experience-button,#lyric-style-button){position:relative}
+.app-shell .topbar :is(#theme-button,#experience-button,#lyric-style-button){
+ position:relative;overflow:visible;
+}
 .app-shell .topbar #search-toggle .eye-gesture-arrow,
 .app-shell .topbar :is(#theme-button,#experience-button,#lyric-style-button) .eye-gesture-arrow{
- position:absolute;left:50%;bottom:3px;width:10px;height:10px;max-width:10px;max-height:10px;
+ display:block;position:absolute;z-index:2;left:50%;bottom:-7px;
+ width:16px;height:16px;min-width:16px;min-height:16px;max-width:16px;max-height:16px;
  transform:translateX(-50%);
- fill:none;stroke:var(--acid,#46ff12);stroke-width:2;
+ fill:none;stroke:var(--acid,#46ff12);stroke-width:3;
  stroke-linecap:round;stroke-linejoin:round;
- opacity:.9;pointer-events:none;
- transition:transform .18s ease,opacity .18s ease;
+ opacity:1;pointer-events:none;
+ filter:drop-shadow(0 0 3px rgba(70,255,18,.55));
+ transition:transform .18s ease;
 }
 .app-shell .topbar #search-toggle:hover .eye-gesture-arrow,
 .app-shell .topbar #search-toggle:focus-visible .eye-gesture-arrow,
 .app-shell .topbar :is(#theme-button,#experience-button,#lyric-style-button):hover .eye-gesture-arrow,
 .app-shell .topbar :is(#theme-button,#experience-button,#lyric-style-button):focus-visible .eye-gesture-arrow{
- transform:translate(-50%,1px);opacity:1;
+ transform:translate(-50%,1px);
 }
 @media(prefers-reduced-motion:reduce){
  .app-shell .topbar #search-toggle .eye-gesture-arrow,
- .app-shell .topbar :is(#theme-button,#experience-button,#lyric-style-button) .eye-gesture-arrow{transition:none!important}
+ .app-shell .topbar :is(#theme-button,#experience-button,#lyric-style-button) .eye-gesture-arrow{
+  transition:none!important;
+ }
+ .app-shell .topbar #search-toggle:hover .eye-gesture-arrow,
+ .app-shell .topbar #search-toggle:focus-visible .eye-gesture-arrow,
  .app-shell .topbar :is(#theme-button,#experience-button,#lyric-style-button):hover .eye-gesture-arrow,
- .app-shell .topbar :is(#theme-button,#experience-button,#lyric-style-button):focus-visible .eye-gesture-arrow{transform:translateX(-50%)}
+ .app-shell .topbar :is(#theme-button,#experience-button,#lyric-style-button):focus-visible .eye-gesture-arrow{
+  transform:translateX(-50%);
+ }
 }
 
 /* Menu polish: native controls, restrained icons and one consistent state model. */
