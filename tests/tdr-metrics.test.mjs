@@ -116,6 +116,67 @@ test('a terminal error and explicit retry are measured independently',()=>{
  assert.equal(snap.recent[0].kind,'manual_retry');
  assert.equal(snap.successRatePercent,50);
 });
+test('terminal failure preserves PC Node and R2 timeline even without any successful playback',()=>{
+ const h=harness();
+ h.tdr.select(1,{source:'youtube',autoplay:true});
+ h.advance(10);h.tdr.playCall(1);
+ h.advance(19990);h.tdr.mark(1,'media_error');h.tdr.mark(1,'recovery_started');
+ h.advance(200);h.tdr.mark(1,'pc_wait_started');
+ h.advance(1700);h.tdr.mark(1,'pc_leased');
+ h.advance(43000);h.tdr.mark(1,'pc_wait_finished');h.tdr.mark(1,'pc_ready');
+ h.advance(7500);h.tdr.mark(1,'r2_sync_started');
+ h.advance(22000);h.tdr.mark(1,'r2_sync_finished');
+ h.advance(26000);h.tdr.finish(1,'terminal_error',h.clock(),{route:'fast_edge',errorCode:4});
+ const snapshot=h.tdr.snapshot(),failure=snapshot.lastFailure;
+ assert.equal(snapshot.automatic.count,0,'failed first plays must not inflate successful TDR');
+ assert.equal(snapshot.terminalFailures.count,1);
+ assert.equal(snapshot.failurePhases.pcWait.p50Ms,44700);
+ assert.equal(snapshot.failurePhases.r2Sync.p50Ms,22000);
+ assert.equal(failure.elapsedMs,120400);
+ assert.equal(failure.timeToRecoveryMs,20000);
+ assert.equal(failure.timeToPcWaitMs,20200);
+ assert.equal(failure.timeToPcReadyMs,64900);
+ assert.equal(failure.timeToR2SyncMs,72400);
+ assert.equal(failure.pcQueueObservedMs,1700);
+ assert.equal(failure.pcLeasedToReadyMs,43000);
+ assert.equal(failure.pcWaitComplete,true);
+ assert.equal(failure.r2SyncComplete,true);
+ assert.equal(failure.hadMediaError,true);
+ assert.equal(failure.lastObservedStage,'r2_sync');
+ assert.equal(failure.errorCode,4);
+ assert.equal(failure.route,'fast_edge');
+ assert.equal(snapshot.totals.automaticTerminalErrors,1);
+});
+test('in-flight PC/R2 waits are marked partial and do not invent a completed cache hit',()=>{
+ const h=harness();
+ h.tdr.select(5,{source:'youtube'});
+ h.advance(5);h.tdr.playCall(5);
+ h.advance(300);h.tdr.mark(5,'recovery_started');
+ h.advance(100);h.tdr.mark(5,'pc_wait_started');
+ h.advance(5000);h.tdr.finish(5,'terminal_error',h.clock(),{route:'evil-route',errorCode:999});
+ const failed=h.tdr.snapshot().lastFailure;
+ assert.equal(failed.lastObservedStage,'pc_wait');
+ assert.equal(failed.pcWaitComplete,false);
+ assert.equal(failed.pcWaitMs,5000);
+ assert.equal(failed.r2SyncMs,null);
+ assert.equal(failed.timeToPcReadyMs,null);
+ assert.equal(failed.errorCode,0);
+ assert.equal(failed.route,'unknown');
+ assert.equal(h.tdr.snapshot().failurePhases.pcWait.p50Ms,5000);
+});
+test('terminal timeline stores only sanitized phases, not recording identities or raw errors',()=>{
+ const h=harness(),secret='PRIVATE_SONG_ID_abcxyz';
+ h.tdr.select(7,{source:secret});
+ h.tdr.mark(7,'media_error');
+ h.advance(121019);
+ h.tdr.finish(7,'terminal_error',h.clock(),{
+  route:secret,errorCode:'leaked-something'
+ });
+ const snapshot=JSON.stringify(h.tdr.snapshot());
+ assert.doesNotMatch(snapshot,/PRIVATE_SONG_ID_abcxyz|leaked-something|url|videoId|title/i);
+ assert.equal(h.tdr.snapshot().lastFailure.source,'unknown');
+ assert.equal(h.tdr.snapshot().lastFailure.route,'unknown');
+});
 test('pause and resume of an already playing song never creates another TDR',()=>{
  const h=harness();
  h.tdr.select(12,{source:'youtube',autoplay:true});
