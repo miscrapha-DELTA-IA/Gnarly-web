@@ -27,6 +27,27 @@ test('TDR panel displays P50/P95, manual copy and rolling elapsed progress',()=>
  assert.equal(formatTdrDuration(325),'325 ms');
  assert.equal(formatTdrDuration(2125),'2,13 s');
 });
+test('failed exclusive song is prominently visible beside successful-only TDR',()=>{
+ let now=0;const tdr=new TdrMonitor({now:()=>now});
+ tdr.select(1,{autoplay:true,source:'youtube'});now=772;tdr.playCall(1);tdr.playing(1);
+ tdr.select(2,{autoplay:true,source:'youtube'});
+ now=1000;tdr.playCall(2);
+ now=21000;tdr.mark(2,'media_error');tdr.mark(2,'recovery_started');
+ now=22000;tdr.mark(2,'pc_wait_started');
+ now=70000;tdr.mark(2,'pc_wait_finished');tdr.mark(2,'pc_ready');
+ now=90000;tdr.mark(2,'r2_sync_started');
+ now=122019;tdr.finish(2,'terminal_error');
+ const html=renderTdrPanel(tdr.snapshot());
+ assert.match(html,/TDR MEDIANO/);
+ assert.match(html,/772 ms/);
+ assert.match(html,/FALHAS · TEMPO ATÉ ERRO/);
+ assert.match(html,/121,2 s/);
+ assert.match(html,/ÚLTIMA FALHA · LINHA DO TEMPO/);
+ assert.match(html,/PC Node pronto/);
+ assert.match(html,/Espera cache R2/);
+ assert.match(html,/tempo parcial até o erro/);
+ assert.match(html,/não identifica automaticamente a causa/);
+});
 test('TDR is reachable through More and Exibição, refresh timer is cancelled on close',()=>{
  const app=source('app.js'),display=source('ui/display-panel.js'),css=source('styles.css');
  assert.match(app,/case 'tdr':content\.innerHTML=renderTdrPanel\(tdr\.snapshot\(\)\);break/);

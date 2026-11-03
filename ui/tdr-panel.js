@@ -22,6 +22,22 @@ export function renderTdrPanel(report){
  const automatic=report?.automatic||{},totals=report?.totals||{},inProgress=report?.inProgress;
  const recent=Array.isArray(report?.recent)?report.recent.slice(-6).reverse():[];
  const phases=report?.phases||{},routes=report?.byRoute||{};
+ const failure=report?.lastFailure||null,failed=report?.terminalFailures||{};
+ const failurePhases=report?.failurePhases||{};
+ const stageNames={selected:'Faixa selecionada',source_attached:'Fonte atribuída',
+  play_requested:'Reprodução solicitada',recovery:'Recuperação iniciada',
+  pc_wait:'Aguardando PC Node',pc_processing:'PC Node processando',
+  pc_ready:'PC Node pronto',r2_sync:'Verificando cache R2'};
+ const observedStage=failure?stageNames[failure.lastObservedStage]||'Etapa não identificada':null;
+ const failureTimeline=failure?[
+  ['Primeiro erro de mídia',failure.timeToFirstMediaErrorMs],
+  ['Início da recuperação',failure.timeToRecoveryMs],
+  ['Espera pelo PC Node iniciada',failure.timeToPcWaitMs],
+  ['PC Node pronto',failure.timeToPcReadyMs],
+  ['Espera pelo cache R2 iniciada',failure.timeToR2SyncMs]
+ ].filter(([,elapsed])=>finiteMs(elapsed)).map(([label,elapsed])=>
+  '<div class="tdr-attempt"><span>'+label+'</span><strong>+'+
+   formatTdrDuration(elapsed)+'</strong></div>').join(''):'';
  const phaseRows=[
   phase('Seleção → Play',phases.selectionToPlay),
   phase('Play → reproduzindo',phases.playToPlaying),
@@ -46,12 +62,26 @@ export function renderTdrPanel(report){
   stat('TDR P95',formatTdrDuration(automatic.p95Ms),'95% das amostras concluídas')+
   stat('TENTATIVAS BEM-SUCEDIDAS',report?.automaticSuccessRatePercent===null?'—':
    String(report.automaticSuccessRatePercent).replace('.',',')+'%','Exclui cancelamentos e novas seleções')+
-  stat('AMOSTRAS AUTOMÁTICAS',String(automatic.count||0),'Sessão atual, máximo de 96')+
+  stat('AMOSTRAS AUTOMÁTICAS',String(automatic.count||0),'Concluídas · sessão atual, máximo de 96')+
+  (failed.count?stat('FALHAS · TEMPO ATÉ ERRO',
+   formatTdrDuration(failed.p50Ms),'Mediana separada · '+failed.count+' falha(s)'):'')+
   '</div>'+
   (inProgress?'<div class="tdr-current" role="status"><span>Preparando áudio · '+
    (inProgress.phase==='recovering'?'Recuperação':inProgress.phase==='connecting'?'Conectando':'Selecionada')+
    '</span><strong id="tdr-live-elapsed">'+formatTdrDuration(inProgress.elapsedMs)+'</strong></div>':
    '<p class="section-note">Nenhuma seleção pendente no momento.</p>')+
+  (failure?'<div class="section-head">ÚLTIMA FALHA · LINHA DO TEMPO</div>'+
+   '<p class="section-note">Sem reprodução após '+formatTdrDuration(failure.elapsedMs)+
+   '. Última etapa observada: <strong>'+observedStage+
+   '</strong>. Isso não identifica automaticamente a causa da falha.</p>'+
+   (failureTimeline?'<div class="tdr-breakdown">'+failureTimeline+'</div>':'')+
+   (finiteMs(failure.pcWaitMs)?'<p class="section-note">Espera PC Node: '+
+    formatTdrDuration(failure.pcWaitMs)+(failure.pcWaitComplete?'':' (tempo parcial até o erro)')+'</p>':'')+
+   (finiteMs(failure.r2SyncMs)?'<p class="section-note">Espera cache R2: '+
+    formatTdrDuration(failure.r2SyncMs)+(failure.r2SyncComplete?'':' (tempo parcial até o erro)')+'</p>':'')+
+   (failure.errorCode?'<p class="section-note">Código de mídia observado: '+
+    failure.errorCode+'</p>':'')+
+   '<p class="section-note">Estes registros só são capturados após a atualização do TDR; não recuperam fases de falhas anteriores.</p>':'')+
   '<div class="section-head">TEMPOS POR ETAPA · MEDIANA</div>'+
   (phaseRows?'<div class="tdr-breakdown">'+phaseRows+'</div>':
    '<p class="section-note">Reproduza algumas músicas para identificar as etapas mais lentas.</p>')+
