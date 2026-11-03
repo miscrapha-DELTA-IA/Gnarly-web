@@ -4,6 +4,8 @@ import {readFileSync} from 'node:fs';
 import {OFFLINE_MAX_BYTES,offlineProfile,validAudioFile,cleanOfflineTrack,
  createOfflineLibrary,fetchFullAudio} from '../lib/offline-library.js';
 
+import {offlineSuccessors} from '../lib/smart-queue.js';
+import {renderSmartQueuePanel} from '../ui/smart-queue-panel.js';
 const track={id:'youtube:aaaaaaaaaaa',source:'youtube',videoId:'aaaaaaaaaaa',
  title:'Minha música',artist:'Artista',album:'Álbum',duration:192,artwork:'https://example.test/cover.jpg'};
 function memoryIDB(){
@@ -98,4 +100,35 @@ test('offline shell caches static resources but refuses remote audio, APIs, and 
  assert.match(app,/const offlineLibrary=createOfflineLibrary\(\)/);
  assert.match(app,/data-action="download"/);
  assert.match(app,/case 'library':content.innerHTML=/);
+});
+
+test('offline next uses device-saved blobs, ordered and never cycles session history',()=>{
+ const make=(id,artist='Solo')=>({id:'youtube:'+id.repeat(11),videoId:id.repeat(11),
+  source:'youtube',title:id,artist,album:'Album'});
+ const A=make('A'),B=make('B'),C=make('C'),D=make('D','Other'),E=make('E');
+ const offline=new Set([A.id,B.id,C.id,D.id]);
+ const options={current:A,library:[A,B,C,D,E],available:id=>offline.has(id)};
+ assert.deepEqual(offlineSuccessors(options).map(x=>x.id),[B.id,C.id,D.id]);
+ assert.deepEqual(offlineSuccessors({...options,queue:[D,E,B]}).map(x=>x.id),
+  [D.id,B.id,C.id],'explicit queued files have priority; online-only E is not promoted');
+ assert.deepEqual(offlineSuccessors({...options,recent:[B,C,D]}),[],
+  'do not silently replay a recent song or loop forever');
+ assert.deepEqual(offlineSuccessors({...options,available:()=>false}),[]);
+});
+test('offline queue opt-in is explicit and does not auto-download by default',()=>{
+ const html=renderSmartQueuePanel({queueCount:2,playing:true,online:true});
+ assert.match(html,/data-auto-offline-save="1"/);
+ assert.doesNotMatch(html,/<input[^>]+checked/);
+ const enabled=renderSmartQueuePanel({offlineAutoSave:true,
+  offlineSaveStatus:'Próxima música salva offline',online:false});
+ assert.match(enabled,/checked/);
+ assert.match(enabled,/disabled/);
+ assert.match(enabled,/Próxima música salva offline/);
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ assert.match(app,/function maybeAutoSaveNext\(/);
+ assert.match(app,/cachedNativeAvailable\(next\)/,
+  'only verified ready edge audio can be saved speculatively');
+ assert.match(app,/downloadOfflineTrack\(next,\{quiet:true,signal:controller.signal\}\)/);
+ assert.match(app,/if\(!navigator.onLine\|\|startingTrack.source==='local'\)/);
+ assert.match(app,/if\(state.playing&&!audio.paused\)\{prepareUpcomingAudio\(\);maybeAutoSaveNext\(\);\}/);
 });
