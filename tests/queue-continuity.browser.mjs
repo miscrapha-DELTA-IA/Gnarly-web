@@ -33,7 +33,7 @@ async function scenario(name,run){
  if(process.env.QUEUE_SCENARIO&&!name.includes(process.env.QUEUE_SCENARIO))return;
  const context=await browser.newContext({viewport:{width:1100,height:1000},serviceWorkers:'block'});
  const queries=[],requests=[],prepares=[],errors=[],gates=[];
- let search=()=>[],audioGate=null;
+ let search=()=>[],audioGate=null,scenarioMedia=media;
  const gate=()=>{const value=deferred();gates.push(value);return value};
  await context.addInitScript(()=>{
   const session=navigator.mediaSession;if(!session)return;
@@ -47,9 +47,9 @@ async function scenario(name,run){
     const id=u.pathname.startsWith('/fast-audio/')?u.pathname.split('/').at(-1):new URL(u.searchParams.get('url')).searchParams.get('v');
     requests.push(id);if(audioGate)await audioGate(id);
     const range=/^bytes=(\d+)-(\d*)$/.exec(route.request().headers().range||'');
-    const start=range?Number(range[1]):0,end=range&&range[2]?Math.min(media.length-1,Number(range[2])):media.length-1;
-    const body=media.subarray(start,end+1),headers={'Content-Length':String(body.length),'Accept-Ranges':'bytes','Access-Control-Allow-Origin':'*'};
-    if(range)headers['Content-Range']=`bytes ${start}-${end}/${media.length}`;
+    const start=range?Number(range[1]):0,end=range&&range[2]?Math.min(scenarioMedia.length-1,Number(range[2])):scenarioMedia.length-1;
+    const body=scenarioMedia.subarray(start,end+1),headers={'Content-Length':String(body.length),'Accept-Ranges':'bytes','Access-Control-Allow-Origin':'*'};
+    if(range)headers['Content-Range']=`bytes ${start}-${end}/${scenarioMedia.length}`;
     return await route.fulfill({status:range?206:200,contentType:'audio/wav',body,headers});
    }
    if(u.pathname==='/api/omnibox'||u.pathname==='/api/r2-available'){
@@ -84,7 +84,7 @@ async function scenario(name,run){
   const selected=track=>page.waitForFunction(id=>__queueQA.state.current?.id===id&&!__queueQA.audio.paused&&__queueQA.audio.readyState>=2&&__queueQA.audio.currentTime>0&&__queueQA.state.audioState==='playing',track.id,{timeout:8000});
   const choose=async track=>{await page.evaluate(track=>__queueQA.selectTrack(track),track);await selected(track)};
   const snapshot=()=>page.evaluate(()=>({current:__queueQA.state.current?.id,queue:__queueQA.state.queue.map(t=>t.id),paused:__queueQA.audio.paused,playing:__queueQA.state.playing,time:__queueQA.audio.currentTime,duration:__queueQA.audio.duration,src:__queueQA.audio.currentSrc,error:__queueQA.state.playbackError,status:document.querySelector('#player-status').textContent,state:__queueQA.state.audioState,mode:__queueQA.mode,pending:__queueQA.pending,nextDisabled:document.querySelector('#next-button').disabled,ipodNextDisabled:document.querySelector('#ipod-next-button').disabled,mediaNext:typeof mediaActions.nexttrack}));
-  await run({page,gate,queries,requests,prepares,choose,selected,snapshot,setSearch:fn=>search=fn,setAudioGate:fn=>audioGate=fn});
+  await run({page,gate,queries,requests,prepares,choose,selected,snapshot,setSearch:fn=>search=fn,setAudioGate:fn=>audioGate=fn,setAudioLength:seconds=>scenarioMedia=tone(seconds)});
   assert.deepEqual(errors,[],'no uncaught browser errors');
   results.push({name,passed:true,queries,requests,snapshot:await snapshot(),timings:await page.evaluate(()=>__queueTimings.transitions)});
  }catch(error){results.push({name,passed:false,error:error.message,queries,requests,errors})}
@@ -116,11 +116,14 @@ try{
   await page.waitForFunction(()=>__queueQA.state.userPaused||__queueQA.audio.paused,{timeout:3500});
   assert.deepEqual((await snapshot()).queue,[],'offline cycle must stop after the last saved track');
  });
- await scenario('pre-cache enqueues next exact recording after stable playback without downloading active audio twice',async({page,choose,prepares,requests})=>{
+ await scenario('pre-cache enqueues next exact recording after stable playback without downloading active audio twice',async({page,choose,prepares,requests,setAudioLength})=>{
+  // A 45s fixture prevents the track from ending while observing the warmup.
+  // A short 12s fixture would naturally advance before any 10s stable fallback.
+  setAudioLength(45);
   await choose(A);
   await page.evaluate(track=>__queueQA.addToQueue(track,{quiet:true}),B);
-  await page.evaluate(()=>{__queueQA.audio.currentTime=5});
-  await page.waitForFunction(()=>__queueQA.state.queue[0]?._gnarlyPrewarmRequested===true,{timeout:6000});
+  await page.evaluate(()=>{__queueQA.state.current.duration=45;__queueQA.audio.currentTime=10.5});
+  await page.waitForFunction(()=>__queueQA.state.queue[0]?._gnarlyPrewarmRequested===true,null,{timeout:6000});
   assert.ok(prepares.includes(B.videoId),'next exact ID pre-cache job accepted');
   assert.ok(!requests.includes(B.videoId),'preparation must not start a competing browser media GET');
  });
