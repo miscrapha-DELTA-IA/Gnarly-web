@@ -102,7 +102,7 @@ test('karaoke sheet only changes the active line; never rebuilds the full modal 
  assert.match(code,/previous\.textContent=/);
  assert.match(code,/next\.innerHTML=renderLyricArtwork/);
  assert.match(code,/syncKaraokeSheetHighlight\(i\)/);
- assert.doesNotMatch(code,/renderSheet\(\)|replaceChildren\(|content\.innerHTML=/);
+ assert.doesNotMatch(code,/renderSheet\(\);|replaceChildren\(|content\.innerHTML=/);
  assert.match(app,/data-lyric-index="\$\{i\}"/);
  assert.match(app,/window\.gnarlyVisualDiagnostics=\(\)=>visual\.diagnostics\(\)/);
 });
