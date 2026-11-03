@@ -123,10 +123,14 @@ const queueAudioWarmup=new QueueAudioWarmup({
   playbackCooldown.remember({code:'upstream_rate_limited',retryAfter:seconds});
  }
 });
-/** Avoid competing with the active song's first buffer. Once at least eight
- * seconds are available, prepare precisely ONE next song in the background.
- * The backend keeps accepted work alive even if the browser changes tracks.
+/** Warm the next first-party audio file while the current recording
+ * remains audible. POST /fast-prepare is a bounded server-side cache job:
+ * it is not an IndexedDB download and it never marks the track "offline".
+ * Avoid competing with startup buffering. Progressive M4A does not always
+ * expose useful buffered ranges, so confirmed stable playback is the backup.
  */
+const requestedPrecache=new Set(),inflightPrecache=new Set();
+function resetQueuePrecache(){requestedPrecache.clear();inflightPrecache.clear()}
 function bufferedAudioAhead(element){
  const time=Number(element.currentTime)||0;
  try{for(let i=0;i<element.buffered.length;i++)
@@ -136,11 +140,37 @@ function bufferedAudioAhead(element){
  return 0;
 }
 function prepareUpcomingAudio(){
- const next=state.queue[0];
- if(!next||next.source!=='youtube'||isOffline(next.id)||audio.paused||state.userPaused||playbackCooldown.active()||bufferedAudioAhead(audio)<8)return;
- if(canWarmImmediately({current:state.current,next,online:navigator.onLine,
-  saveData:navigator.connection?.saveData,effectiveType:navigator.connection?.effectiveType
- }))void queueAudioWarmup.start(next);
+ if(!state.current||audio.paused||audio.ended||state.userPaused||
+  !navigator.onLine||playbackCooldown.active()||
+  ['loading','recovering','buffering','error'].includes(state.audioState))return;
+ const elapsed=Number(audio.currentTime)||0,buffer=bufferedAudioAhead(audio);
+ // Never compete with the selected track's initial decoding / first Play.
+ const stable=audio.readyState>=3&&
+  (elapsed>=4&&buffer>=4||elapsed>=10);
+ if(!stable)return;
+ const candidates=state.queue.filter(t=>t.source==='youtube'&&
+  !isOffline(t.id)&&t.id!==state.current.id);
+ const first=candidates[0],second=candidates[1];
+ // The next song gets first claim on the single speculative job slot. A
+ // second candidate is optional and only after the first was accepted and
+ // enough of the current song remains to avoid pressure on the next Play.
+ const remainder=(activeTimeline().duration||Infinity)-elapsed;
+ const next=first&&!requestedPrecache.has(first.id)?first:
+  first&&requestedPrecache.has(first.id)&&second&&elapsed>=32&&
+  buffer>=8&&remainder>60&&!requestedPrecache.has(second.id)?second:null;
+ if(!next||inflightPrecache.has(next.id)||
+  !canWarmImmediately({current:state.current,next,online:navigator.onLine,
+   saveData:navigator.connection?.saveData,effectiveType:navigator.connection?.effectiveType
+  }))return;
+ inflightPrecache.add(next.id);
+ const selection=playbackSelection;
+ void queueAudioWarmup.start(next).then(accepted=>{
+  if(!accepted||selection!==playbackSelection||!state.queue.some(t=>t.id===next.id))return;
+  requestedPrecache.add(next.id);
+  const saved=state.queue.find(t=>t.id===next.id);
+  if(saved)saved._gnarlyPrewarmRequested=true;
+  if(state.sheet==='queue')renderSheet();
+ }).catch(()=>{}).finally(()=>inflightPrecache.delete(next.id));
 }
 
 const offlineLibrary=createOfflineLibrary();
@@ -1148,7 +1178,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false,tdrH
  independentRecoveryController?.abort();independentRecoveryController=null;
  sourceRouter.cancel();
  hideOptionalOfficialSource();
- queueAudioWarmup.reset();cancelSelectedWarmup();selectedWarmupId='';closeQuickPlaylist();
+ queueAudioWarmup.reset();resetQueuePrecache();cancelSelectedWarmup();selectedWarmupId='';closeQuickPlaylist();
  // Commit queue navigation at selection time. The old 'playing' callback
  // left the next item at queue[0] while buffering, so rapid Next taps
  // selected the same object and aborted its first play() promise.
@@ -1638,7 +1668,7 @@ async function play(){
   resolvePending();
  }
 }
-function pause(){tdr.finish(playbackSelection,'user_cancel');refreshTdrPanel();coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;playbackIntentEpoch++;playStartOperation=null;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;engine.setTransportPaused(true);audio.pause();stems.pause();pads.stopLoop();closeYouTubePlayer();state.playing=false;updatePlayer()}
+function pause(){tdr.finish(playbackSelection,'user_cancel');refreshTdrPanel();coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;playbackIntentEpoch++;playStartOperation=null;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();resetQueuePrecache();audioDelivery.cancel();recoveryOperation=null;engine.setTransportPaused(true);audio.pause();stems.pause();pads.stopLoop();closeYouTubePlayer();state.playing=false;updatePlayer()}
 let nextDiscovery=null;
 function clearNextDiscoveryStatus(){if(nextDiscovery)reportAudioStatus('')}
 // Show only a tiny activity cue while Next looks for a verified recording.
@@ -2363,7 +2393,9 @@ function renderQueuePanel(){
   const fallback=safe(track.artwork||icon);
   const attrs=' data-context="queue" data-index="'+i+'"';
   const offline=isOffline(track.id)?' <span class="native-queue-offline">✓ Offline</span>':'';
-  const origin=track._gnarlyAutoMode?
+  const origin=track._gnarlyAutoMode==='offline'?' · Offline · salva':
+   track._gnarlyPrewarmRequested?' · Pré-cache solicitado':
+   track._gnarlyAutoMode?
     (track._gnarlyPreparationRequired?' · Mix · preparo necessário':' · Mix · pronta'):
     ' · Adicionada por você';
   return '<div class="native-queue-row" role="listitem">'+
@@ -3287,14 +3319,9 @@ audio.addEventListener('play',()=>{if(state.userPaused){audio.pause();return}if(
   recovering:!!recoveryOperation})){
   completeCurrentRecording({ghost:true});return;
  }
- // Warm one upcoming recording in the last 75 seconds, never full playlists.
- const nextTrack=state.queue[0];
- if(state.playing&&!audio.paused&&nextTrack?.source==='youtube'&&!isOffline(nextTrack?.id)&&canWarmNext({
-  current:state.current,next:nextTrack,
-  remaining:(activeTimeline().duration||Infinity)-(audio.currentTime||0),
-  online:navigator.onLine,saveData:navigator.connection?.saveData,
-  effectiveType:navigator.connection?.effectiveType
- }))void queueAudioWarmup.start(nextTrack);
+ // A single guarded scheduler handles early and late pre-cache, including
+ // streams whose buffered ranges remain empty until decoding is complete.
+ if(state.playing&&!audio.paused)prepareUpcomingAudio();
 });audio.addEventListener('progress',prepareUpcomingAudio);
 audio.addEventListener('durationchange',updateProgress);
 audio.addEventListener('loadedmetadata',()=>{
