@@ -26,11 +26,15 @@ test('verified sources come before incomplete previews and unavailable YouTube I
  assert.equal(playbackPriority(uncached),4);
  assert.equal(playbackPriority(audius),2);
 });
-test('Smart Mix accepts only verified whole tracks, never arbitrary YouTube listings',()=>{
+test('Smart Mix prefers verified full tracks and labels strictly matched metadata as preparation-needed',()=>{
  assert.deepEqual(readyQueueCandidates([uncached,preview,audius,cached,local]),[local,cached,audius]);
  const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(source,/const cached=readyQueueCandidates\(/);
- assert.match(source,/const verified=readyQueueCandidates\(candidates/);
+ assert.match(source,/readyQueueCandidates\(candidates/);
+ assert.match(source,/if\(!added\.length&&\['mix','artist','album'\]\.includes\(mode\)/);
+ assert.match(source,/searchNativeBackend\(query,\{limit:20,signal:controller\.signal\}\)/);
+ assert.match(source,/_gnarlyPreparationRequired:track\.source==='youtube'/);
+ assert.match(source,/\?' · Mix · preparo necessário'/);
  assert.match(source,/searchReadyAudio\(query,\{limit:24,signal:controller\.signal\}\)/);
  assert.match(source,/searchAudius\(query,\{limit:20,signal:controller\.signal\}\)/);
  assert.doesNotMatch(source,/const primary=searchNativeBackend\(query,\{signal:controller\.signal\}\)/);

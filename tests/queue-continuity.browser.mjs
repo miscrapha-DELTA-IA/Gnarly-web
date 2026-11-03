@@ -57,7 +57,7 @@ async function scenario(name,run){
     // search metadata. Fixture canonical audio already resolves through
     // /fast-audio and models pre-confirmed edge R2 availability.
     const query=u.searchParams.get('term')||'';queries.push(query);
-    const value=await search(query,queries.length);
+    const value=await search(query,queries.length,u.pathname);
     const payload=u.pathname==='/api/r2-available'?
      {status:'ok',results:value}:{results:value};
     return await route.fulfill({contentType:'application/json',body:JSON.stringify(payload)});
@@ -93,6 +93,32 @@ try{
   await page.evaluate(()=>__queueQA.setSmartMode('mix'));await choose(A);
   const current=await snapshot();assert.equal(current.queue.length,0);
   assert.equal(current.nextDisabled,false);assert.equal(current.ipodNextDisabled,false);assert.equal(current.mediaNext,'function');
+ });
+ await scenario('cold Mix fills with artist-matched preparing tracks when R2 and Audius have nothing',async({page,setSearch,choose,selected,snapshot,queries,requests})=>{
+  const coldB={...B,playbackAvailability:'unknown'},coldC={...C,playbackAvailability:'unknown'};
+  const unrelated={...D,artist:'Random Artist',playbackAvailability:'unknown'};
+  setSearch((query,_number,pathname)=>pathname==='/api/omnibox'?
+   [unrelated,coldB,coldC]:[]);
+  await page.evaluate(()=>__queueQA.setSmartMode('mix'));
+  await choose(A);
+  await page.waitForFunction(()=>__queueQA.state.queue.length===2,null,{timeout:9000});
+  const result=await page.evaluate(()=>({
+   queue:__queueQA.state.queue.map(x=>({id:x.id,artist:x.artist,preparation:x._gnarlyPreparationRequired})),
+   text:document.querySelector('#sheet-content')?.textContent||'',
+   status:__queueQA.status
+  }));
+  assert.deepEqual(result.queue.map(x=>x.id).sort(),[B.id,C.id].sort());
+  assert.ok(result.queue.every(x=>x.preparation===true),
+   'metadata-only songs must be labeled as preparation required');
+  assert.ok(!result.queue.some(x=>x.artist==='Random Artist'),
+   'unrelated suggestions must not slip through the fallback');
+  await page.evaluate(()=>__queueQA.openSheet('queue'));
+  assert.match(await page.locator('#sheet-content').textContent(),/preparo necessário/);
+  const first=await page.evaluate(()=>__queueQA.state.queue[0]);
+  await page.evaluate(()=>{void __queueQA.next()});
+  await selected(first);
+  assert.ok(requests.includes(first.videoId),'next selected candidate must play through the unchanged audio pipeline');
+  assert.ok(queries.some(x=>x==='Queue Artist Alpha'),'same-artist metadata lookup occurred');
  });
  await scenario('natural completion continues through three smart songs',async({page,setSearch,choose,selected,snapshot})=>{
   setSearch(()=>[A,B,C]);await page.evaluate(()=>__queueQA.setSmartMode('mix'));await choose(A);
