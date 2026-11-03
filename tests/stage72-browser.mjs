@@ -5,6 +5,27 @@ const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,
 const errs=[],warnings=[];page.on('pageerror',x=>errs.push(x.message));page.on('console',x=>{if(x.type()==='warning'||x.type()==='error')warnings.push(x.text())});
 await page.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
 await page.waitForSelector('#omnibox-toggle');
+// Capture the production boot network BEFORE any test helpers import extra
+// source modules for synthetic typography/GPU checks below.
+const startup=await page.evaluate(()=>{
+ const origin=location.origin;
+ const resources=performance.getEntriesByType('resource').filter(x=>{
+  try{return new URL(x.name).origin===origin}catch{return false}
+ });
+ const paths=resources.map(x=>new URL(x.name).pathname);
+ const navigation=performance.getEntriesByType('navigation')[0];
+ return {css:paths.filter(x=>x.endsWith('.css')),js:paths.filter(x=>x.endsWith('.js')),
+  interactiveMs:Math.round(navigation?.domInteractive||0),
+  domReadyMs:Math.round(navigation?.domContentLoadedEventEnd||0),
+  loadMs:Math.round(navigation?.loadEventEnd||0)};
+});
+assert.deepEqual(startup.css,['/gnarly-ui.css'],
+ 'GNARLY must start with one consolidated stylesheet instead of nine blockers');
+assert.ok(startup.js.includes('/app.js'),'Production entrypoint must be loaded');
+assert.ok(startup.js.length<=2&&startup.js.every(x=>
+ x==='/app.js'||/^\/chunks\/chunk-[A-Z0-9]+\.js$/.test(x)),
+ 'Only minified core and one shared chunk may load before interactions: '+JSON.stringify(startup));
+console.log('GNARLY cold-page startup topology',JSON.stringify(startup));
 
 // The compact lyrics HUD must never translate the player when a new line
 // renders. iOS lyric typography must wrap, not ellipsize/clamp the stanza.

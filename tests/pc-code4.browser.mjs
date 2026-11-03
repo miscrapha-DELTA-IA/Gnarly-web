@@ -57,7 +57,10 @@ try{
     headers:{'Access-Control-Allow-Origin':'*'}});
   try{
    const name=p==='/'?'index.html':p.slice(1),ext=path.extname(name);
-   let body=await readFile(path.join(root,'dist',name));
+   // This fixture appends lexical instrumentation to the UNMINIFIED source.
+   // Production bundles intentionally minify private symbols; the separate
+   // Stage72 browser suite validates that exact bundled entrypoint.
+   let body=await readFile(path.join(root,name==='app.js'?'':'dist',name));
    if(name==='app.js')
     body=Buffer.from(body.toString()+
      '\nglobalThis.__pcRecoveryQA={audio,state,selectTrack,visual};audio.muted=true;'+
