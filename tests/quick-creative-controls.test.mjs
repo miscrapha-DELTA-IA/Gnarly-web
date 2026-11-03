@@ -114,7 +114,7 @@ test('quick theme, experience and Aa changes are silent without silencing import
   ["bindQuickCreative($('#lyric-style-button')","$('#background-button').addEventListener"]
  ])assert.doesNotMatch(section(start,end),/\btoast\s*\(/);
  // Manual palette and GNARLY 2 visual refinements are silent too.
- assert.doesNotMatch(section('function selectVisualTheme(next)','function configureGnarly2Lock'),/\btoast\s*\(/);
+ assert.doesNotMatch(section('function selectVisualTheme(next,{quickCycle=false}={})','function configureGnarly2Lock'),/\btoast\s*\(/);
  assert.doesNotMatch(section('function configureGnarly2Lock(id)','const QUICK_LYRIC_STYLES'),/\btoast\s*\(/);
  assert.doesNotMatch(section('if(target.dataset.materialLayer)','if(target.dataset.stemPreset)'),/\btoast\s*\(/);
  // Playback failures are visible only as a single inline retry message; other tool errors still toast.
