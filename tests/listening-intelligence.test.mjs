@@ -88,8 +88,9 @@ test('explicit favorites diversify no more than two tracks and never replace cur
  assert.ok(mix.some(x=>x.artist==='Florence'),'a real favorite can diversify the mix');
  assert.ok(mix.filter(x=>x.artist!=='AURORA').length<=2,'bounded cross-artist variety');
  assert.ok(!mix.some(x=>x.artist==='Other'));
- assert.deepEqual(recommendTracks({mode:'mix',anchor,candidates:[d,e,f],memory:mem,now}),[],
-  'without any verified recording by the current artist, do not fill from unrelated recommendations');
+ const safeFallback=recommendTracks({mode:'mix',anchor,candidates:[d,e,f],memory:mem,now});
+ assert.equal(safeFallback.length,1,'only one explicitly liked-artist fallback while current artist has no ready tracks');
+ assert.equal(safeFallback[0].artist,'Florence','a recognized favorite can keep Next responsive without an unrelated mix');
 });
 test('strong taste evidence expires, and repeated skips suppress only automatic radio',()=>{
  const now=Date.now(),mem=new ListeningMemory(storage());
