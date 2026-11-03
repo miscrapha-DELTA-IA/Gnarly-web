@@ -118,6 +118,12 @@ test('new selection discards stale auto-tail without deleting pinned/manual entr
  assert.match(selection,/if\(fromQueue\)/,'queue transition still consumes the exact chosen recording');
  assert.match(app,/const forward=\{\.\.\.state\.current\};delete forward\._gnarlyAutoMode/,
   'back navigation should preserve intentional forward navigation even from an auto track');
+ assert.match(app,/lastRecordedSelection===playbackSelection[\s\S]*?listeningMemory\.record\('skip',state\.current\)/,
+  'quick intentional Next after audible start must teach the local taste model');
+ assert.match(app,/if\(track\._gnarlyAutoMode\)listeningMemory\.record\('skip',track\)/,
+  'removing an unwanted automatic suggestion teaches the local taste model');
+ assert.match(app,/const manualTrack=\{\.\.\.track\};delete manualTrack\._gnarlyAutoMode/,
+  'manually adding a prior automatic suggestion pins it against subsequent context changes');
 });
 test('Omnibox empty discovery is independent from active queue and does not repeat rows',()=>{
  const mem=new ListeningMemory(storage());mem.record('like',d);
