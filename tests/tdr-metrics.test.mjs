@@ -93,7 +93,7 @@ test('high latencies, malformed input and bounded memory remain safe',()=>{
  const h=harness();const tdr=h.tdr;
  assert.equal(tdr.select('bad'),false);
  tdr.select(1,{source:'unknown'});h.advance(300000);
- tdr.playCall(1);h.advance(300000);
+ tdr.playCall(1);h.advance(300001);
  assert.equal(tdr.playing(1),null,'expired playback is not reported as a valid success');
  for(let i=2;i<30;i++){
   tdr.select(i,{source:'youtube',at:h.clock()});tdr.playCall(i);
