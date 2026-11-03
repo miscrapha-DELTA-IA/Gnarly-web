@@ -94,8 +94,10 @@ test('quick theme, experience and Aa changes are silent without silencing import
  assert.doesNotMatch(section('function selectVisualTheme(next)','function configureGnarly2Lock'),/\btoast\s*\(/);
  assert.doesNotMatch(section('function configureGnarly2Lock(id)','const QUICK_LYRIC_STYLES'),/\btoast\s*\(/);
  assert.doesNotMatch(section('if(target.dataset.materialLayer)','if(target.dataset.stemPreset)'),/\btoast\s*\(/);
- // Audio and server errors are intentionally still shown.
- assert.match(app,/function reportAudioError\(text\)[\s\S]*?toast\(text\)/);
+ // Playback failures are visible only as a single inline retry message; other tool errors still toast.
+ const feedback=section('function reportAudioError(','function setIPodSkin(');
+ assert.match(feedback,/renderPlaybackFeedback\(/);
+ assert.doesNotMatch(feedback,/\btoast\s*\(/);
  assert.match(app,/toast\('Não foi possível aplicar baixo\/reverb:/);
 });
 
