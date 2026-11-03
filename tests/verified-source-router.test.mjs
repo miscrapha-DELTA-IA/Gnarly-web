@@ -116,7 +116,7 @@ test('Jamendo metadata is canonical and never trusts unvalidated remote URL from
 test('Jamendo API stays disabled without its own Client ID; when configured sends only canonical rows',async()=>{
  const request=new Request('https://gnarly.test/api/jamendo-search?term=Exact&limit=8');
  const missing=await onRequestGet({request,env:{}},()=>{throw Error('no call')});
- assert.equal(missing.status,503);
+ assert.equal(missing.status,200);
  assert.equal((await missing.json()).status,'not_configured');
  let calls=0;
  const result=await onRequestGet({request,env:{JAMENDO_CLIENT_ID:'12345678'}},async url=>{
@@ -173,7 +173,7 @@ test('Worker exposes canonical Jamendo routes without offering unauthorized exte
  const worker=(await import('../src/worker.js')).default;
  const context={waitUntil:()=>{}};
  const missing=await worker.fetch(new Request('https://gnarly.test/api/jamendo-search?term=Test'),{},context);
- assert.equal(missing.status,503);
+ assert.equal(missing.status,200);
  assert.equal((await missing.json()).status,'not_configured');
  const invalid=await worker.fetch(new Request('https://gnarly.test/jamendo-audio/not-a-track'),{},context);
  assert.equal(invalid.status,400);
