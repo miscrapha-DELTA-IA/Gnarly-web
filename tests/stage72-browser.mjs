@@ -974,13 +974,13 @@ await ipodPage.close();
 // First-install PWA acceptance: the hashed bundle shared chunk must be in
 // the mandatory install cache before this device ever navigates offline.
 // A regular first online page load happens before SW control is established.
-const offlineContext=await browser.newContext({serviceWorkers:'allow',
+const firstInstallContext=await browser.newContext({serviceWorkers:'allow',
  viewport:{width:390,height:844},isMobile:true,hasTouch:true});
-const offlinePage=await offlineContext.newPage();
+const firstInstallPage=await firstInstallContext.newPage();
 try{
- await offlinePage.goto('http://127.0.0.1:8765/',{waitUntil:'load'});
- await offlinePage.evaluate(()=>navigator.serviceWorker.ready);
- await offlinePage.waitForFunction(async()=>{
+ await firstInstallPage.goto('http://127.0.0.1:8765/',{waitUntil:'load'});
+ await firstInstallPage.evaluate(()=>navigator.serviceWorker.ready);
+ await firstInstallPage.waitForFunction(async()=>{
   const names=(await caches.keys()).filter(x=>x.startsWith('gnarly-web-shell-'));
   if(!names.length)return false;
   const cache=await caches.open(names.at(-1));
@@ -990,16 +990,16 @@ try{
   return !!response&&shared.length>0&&
    (await Promise.all(shared.map(p=>cache.match(p)))).every(Boolean);
  },null,{timeout:15000});
- await offlinePage.waitForFunction(()=>!!navigator.serviceWorker.controller,null,{timeout:10000});
- await offlineContext.setOffline(true);
- await offlinePage.reload({waitUntil:'domcontentloaded',timeout:15000});
- await offlinePage.locator('#omnibox-toggle').waitFor({timeout:10000});
- assert.equal(await offlinePage.locator('#play-button').count(),1,
+ await firstInstallPage.waitForFunction(()=>!!navigator.serviceWorker.controller,null,{timeout:10000});
+ await firstInstallContext.setOffline(true);
+ await firstInstallPage.reload({waitUntil:'domcontentloaded',timeout:15000});
+ await firstInstallPage.locator('#omnibox-toggle').waitFor({timeout:10000});
+ assert.equal(await firstInstallPage.locator('#play-button').count(),1,
   'first installed PWA must reload the complete player without a network');
  console.log('GNARLY first-install offline shell and shared boot chunk validated.');
 }finally{
- await offlineContext.setOffline(false);
- await offlineContext.close();
+ await firstInstallContext.setOffline(false);
+ await firstInstallContext.close();
 }
 
 await browser.close();
