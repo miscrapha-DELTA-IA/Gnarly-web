@@ -143,12 +143,14 @@ test('no rate-limited upstream response body or prompt leaks into public error m
  assert.equal(publicAudioMessage('Código de mídia 4'),'Código de mídia 4');
  assert.equal(playbackLimitMessage({code:'ready'}),null);
 });
-test('all player-facing error surfaces sanitize raw 429 before DOM output',async()=>{
+test('player playback errors are generic, while non-player toasts still sanitize raw 429',async()=>{
  const {readFileSync}=await import('node:fs');
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(app,/function toast\(message\)\{const el=\$\('#toast'\);el\.textContent=publicAudioMessage\(message\)/);
- assert.match(app,/function reportAudioError\(text\)\{\s*text=publicAudioMessage\(text\)/);
- assert.match(app,/function reportAudioStatus\(text\)\{\s*text=publicAudioMessage\(text\)/);
+ assert.match(app,/function reportAudioError\(_detail\)\{\s*coverCharge\.hide\(\)/);
+ assert.match(app,/function reportAudioStatus\(_detail\)[\s\S]*?renderPlaybackFeedback\(/);
+ assert.match(app,/state\.audioState='error';state\.playbackError=PLAYBACK_RETRY_TEXT/);
+ assert.doesNotMatch(app.slice(app.indexOf('function reportAudioError('),app.indexOf('function setIPodSkin(')),/toast\(/);
  assert.doesNotMatch(app,/textContent=error\.message/);
 });
 
