@@ -1689,7 +1689,10 @@ function addToQueue(track,{quiet=false}={}){
  if(!track)return false;
  const auto=state.queue.find(q=>q._gnarlyAutoMode&&sameRecording(q,track));
  if(auto){delete auto._gnarlyAutoMode;if(!quiet)toast('Fixada manualmente na fila: '+track.title);updatePlayer();return true}
- const before=state.queue.length;state.queue=appendUnique(state.queue,[track],state.current?.id);if(before===state.queue.length){if(!quiet)toast('Esta música já está na fila ou tocando.');return false}updatePlayer();prefetchNextLyrics();prepareUpcomingAudio();if(state.sheet==='queue')renderSheet();if(!quiet)toast('Adicionado à fila: '+track.title);return true}
+ // A user tapping (+) explicitly pins this song, even if the source
+ // object originally came from an automatically suggested Mix tail.
+ const manualTrack={...track};delete manualTrack._gnarlyAutoMode;
+ const before=state.queue.length;state.queue=appendUnique(state.queue,[manualTrack],state.current?.id);if(before===state.queue.length){if(!quiet)toast('Esta música já está na fila ou tocando.');return false}updatePlayer();prefetchNextLyrics();prepareUpcomingAudio();if(state.sheet==='queue')renderSheet();if(!quiet)toast('Adicionado à fila: '+track.title);return true}
 const offlineStatusText=()=>{
  const count=offlineURLs.size;
  return (offlineLoaded?'✓ ':'')+count+' música'+(count===1?'':'s')+' guardada'+(count===1?'':'s')+' neste dispositivo';
