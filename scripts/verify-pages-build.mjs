@@ -1,7 +1,7 @@
 // Fail CI if the live Cloudflare Pages bundle is missing a stylesheet referenced
 // by index.html. Previously unit and browser tests served the REPOSITORY root,
 // while production Pages deployed dist/ WITHOUT search-hierarchy.css.
-import {readFileSync,existsSync} from 'node:fs';
+import {readFileSync,existsSync,readdirSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 import assert from 'node:assert/strict';
 
