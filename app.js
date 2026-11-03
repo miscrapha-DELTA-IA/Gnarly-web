@@ -30,7 +30,7 @@ import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from './lib/queue-audio
 import {quickPlaylistMarkup} from './ui/quick-playlist.js';
 import {createMediaSessionController,configureBrowserAudioSession} from './lib/media-session-controller.js';
 import {appendUnique,commitPlaying,moveTrack,removeTrack,shuffleUpcoming,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
-import {ListeningMemory,MEMORY_KEY,recommendTracks,retainManualQueue,markAutoTracks,sameRecording,discoverySuggestions} from './lib/listening-intelligence.js';
+import {ListeningMemory,MEMORY_KEY,recommendTracks,retainManualQueue,markAutoTracks,sameRecording,discoverySuggestions,mixTasteArtists} from './lib/listening-intelligence.js';
 import {renderSmartQueuePanel} from './ui/smart-queue-panel.js';
 import {CLASSIC_THEMES,MATERIAL_THEMES,GNARLY_MODES,NATIVE_COLOR_THEMES,CREATIVE_COLOR_THEMES,EXPERIENCES,REACTIONS,ROLE_EXPLANATION,resolveVisual,restoredThemeAfterGnarly} from './lib/visual-selection.js';
 import {StemMixer,STEM_KINDS,STEM_LABELS,STEM_PRESETS} from './lib/stem-mixer.js';
@@ -1139,6 +1139,17 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false,tdrH
  // Selecting a pending song through Search/History must not leave the same
  // recording in the upcoming tail and replay it on the very next transition.
  state.queue=state.queue.filter(item=>!sameRecording(item,track));
+ // Automatic recommendations must follow the new artist. Preserve a
+ // still-coherent same-artist tail during native queue navigation, including
+ // repeated Next presses while discovery resolves. A direct selection or
+ // cross-artist transition discards ONLY stale auto suggestions, preserving
+ // manually pinned songs in their exact order.
+ const previousCredit=state.current&&!isGenericArtist(state.current.artist)?
+  normalKey(state.current.artist):'';
+ const selectedCredit=!isGenericArtist(track.artist)?normalKey(track.artist):'';
+ const sameArtistContinuation=fromQueue&&!!previousCredit&&
+  previousCredit===selectedCredit;
+ if(!sameArtistContinuation)state.queue=retainManualQueue(state.queue);
  if(isGenericArtist(track.artist))track.artist=displayArtist(track);
  lyricWorkshop.clear();
  audioDelivery.select(track);recoveryOperation=null;state.userPaused=false;
@@ -1652,7 +1663,12 @@ async function next(){
  else toast('Fila vazia. Adicione outra música para avançar.');
 }
 function advanceToNext(track){
- if(state.current&&audio.currentTime>=4&&!audio.ended&&audio.currentTime<Math.min(36,(audio.duration||240)*.3))
+ // An intentional Next immediately after audible start is meaningful
+ // feedback too. Previous >=4s guard silently discarded quick skips.
+ // Never penalize a recording that has not reached native playing.
+ const position=Number(audio.currentTime)||0;
+ if(state.current&&lastRecordedSelection===playbackSelection&&!state.userPaused&&
+    !audio.ended&&position>=0&&position<Math.min(45,(audio.duration||240)*.35))
   listeningMemory.record('skip',state.current);
  selectTrack(track,true,{fromQueue:true});
 }
@@ -1667,14 +1683,15 @@ function previous(){
  // One press must navigate to the previous recording even after 3 seconds.
  const previousTrack=playbackBackstack.pop();
  if(previousTrack){
-  const forward=state.current;
+  const forward={...state.current};delete forward._gnarlyAutoMode;
   state.queue=appendUnique([forward],state.queue.filter(t=>!sameRecording(t,previousTrack)),previousTrack.id);
   selectTrack(previousTrack,true,{fromHistory:true});return;
  }
  // When navigating the local library, also keep a way to move forward again.
  const idx=state.tracks.findIndex(x=>x.id===state.current?.id);
  if(idx>0){
-  const previousLibraryTrack=state.tracks[idx-1],forward=state.current;
+  const previousLibraryTrack=state.tracks[idx-1],forward={...state.current};
+  delete forward._gnarlyAutoMode;
   state.queue=appendUnique([forward],state.queue.filter(t=>!sameRecording(t,previousLibraryTrack)),previousLibraryTrack.id);
   selectTrack(previousLibraryTrack,true,{fromHistory:true});
  }else externalSeek(0);
@@ -1683,7 +1700,10 @@ function addToQueue(track,{quiet=false}={}){
  if(!track)return false;
  const auto=state.queue.find(q=>q._gnarlyAutoMode&&sameRecording(q,track));
  if(auto){delete auto._gnarlyAutoMode;if(!quiet)toast('Fixada manualmente na fila: '+track.title);updatePlayer();return true}
- const before=state.queue.length;state.queue=appendUnique(state.queue,[track],state.current?.id);if(before===state.queue.length){if(!quiet)toast('Esta música já está na fila ou tocando.');return false}updatePlayer();prefetchNextLyrics();prepareUpcomingAudio();if(state.sheet==='queue')renderSheet();if(!quiet)toast('Adicionado à fila: '+track.title);return true}
+ // A user tapping (+) explicitly pins this song, even if the source
+ // object originally came from an automatically suggested Mix tail.
+ const manualTrack={...track};delete manualTrack._gnarlyAutoMode;
+ const before=state.queue.length;state.queue=appendUnique(state.queue,[manualTrack],state.current?.id);if(before===state.queue.length){if(!quiet)toast('Esta música já está na fila ou tocando.');return false}updatePlayer();prefetchNextLyrics();prepareUpcomingAudio();if(state.sheet==='queue')renderSheet();if(!quiet)toast('Adicionado à fila: '+track.title);return true}
 const offlineStatusText=()=>{
  const count=offlineURLs.size;
  return (offlineLoaded?'✓ ':'')+count+' música'+(count===1?'':'s')+' guardada'+(count===1?'':'s')+' neste dispositivo';
@@ -2214,7 +2234,8 @@ async function maybeFillSmartQueue({force=false}={}){
     updatePlayer();prefetchNextLyrics();return;
    }
    const cached=readyQueueCandidates([...state.searchResults,...state.history,...state.favorites,...state.queue,...state.tracks],{offline:isOffline});
-   const related=mode==='mix'?listeningMemory.affinityArtists(anchor.artist,1)[0]:null;
+   listeningMemory.refresh();
+   const related=mode==='mix'?mixTasteArtists(anchor,listeningMemory,{max:1})[0]:null;
    const added=[];
    const publish=candidates=>{
     if(!current())return;
@@ -2229,7 +2250,8 @@ async function maybeFillSmartQueue({force=false}={}){
     added.push(...newTracks);recommendationsByMode.set(mode,added);
     listeningMemory.expose(choices,mode);prepareUpcomingAudio();prefetchNextLyrics();
     lastSmartSeed=seed;smartRetryAt=0;smartRetryCount=0;
-    smartStatus='Modo '+mode+' · '+added.length+' sugestões distintas, ajustadas ao seu histórico.';
+    smartStatus=mode==='mix'?'Mix atualizado para '+anchor.artist+' · '+added.length+' sugestões verificadas.':
+     'Modo '+mode+' · '+added.length+' sugestões verificadas.';
     smartFillPending=false;updatePlayer();if(state.sheet==='queue')renderSheet();ready();
    };
    // Known complete recordings are immediately usable. A slow optional taste
@@ -2277,11 +2299,12 @@ function renderQueuePanel(){
   const fallback=safe(track.artwork||icon);
   const attrs=' data-context="queue" data-index="'+i+'"';
   const offline=isOffline(track.id)?' <span class="native-queue-offline">✓ Offline</span>':'';
+  const origin=track._gnarlyAutoMode?' · Mix · sugestão':' · Adicionada por você';
   return '<div class="native-queue-row" role="listitem">'+
    '<button type="button" class="native-queue-track" data-action="play"'+attrs+
    ' aria-label="Tocar '+title+'">'+
    '<img src="'+art+'" data-original-art="'+fallback+'" data-art-context="queue" data-art-index="'+i+'" alt="" loading="lazy" decoding="async"/>'+
-   '<span class="native-queue-track-info"><strong>'+title+'</strong><small>'+artist+offline+'</small></span>'+
+   '<span class="native-queue-track-info"><strong>'+title+'</strong><small>'+artist+offline+origin+'</small></span>'+
    '<span class="native-queue-index" aria-hidden="true">'+(i+1)+'</span></button>'+
    '<button type="button" class="native-queue-remove" data-action="remove"'+attrs+
    ' aria-label="Remover '+title+' da fila" title="Remover da fila">×</button></div>';
@@ -2841,7 +2864,12 @@ function handlePanelClick(e){const target=e.target.closest('button,[data-lyric-t
   if(action==='download'){void downloadOfflineTrack(track);return}
   if(action==='offline-remove'){void deleteOfflineTrack(track);return}
   if(context==='queue'&&['remove','up','down'].includes(action)){
-   if(action==='remove'){state.queue=removeTrack(state.queue,track.id);}
+   if(action==='remove'){
+    // Removing a suggested song is negative taste feedback; removing an
+    // explicitly queued song is only queue management.
+    if(track._gnarlyAutoMode)listeningMemory.record('skip',track);
+    state.queue=removeTrack(state.queue,track.id);
+   }
    else state.queue=moveTrack(state.queue,track.id,action==='up'?-1:1);
    queueAudioWarmup.cancel();prepareUpcomingAudio();updatePlayer();renderSheet();return;
   }
