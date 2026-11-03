@@ -1034,3 +1034,24 @@ body{position:relative;min-height:100dvh;background:#05090a}
 }
 @keyframes gnarly-navigation-pulse{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
 @media(prefers-reduced-motion:reduce){.app-shell :is(#next-button,#ipod-next-button,#youtube-next)[aria-busy="true"]::after{animation:none;opacity:.9}}
+
+
+/* TDR: lightweight, accessible session performance dashboard, not part of the
+   audio/rendering pipeline. Uses existing panel glass and typography. */
+.tdr-panel{display:grid;gap:12px;padding-bottom:16px;color:inherit}
+.tdr-panel>.section-note{margin:2px 0;line-height:1.5}
+.tdr-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.tdr-stat{display:flex;flex-direction:column;justify-content:center;gap:5px;min-width:0;padding:14px 12px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.14);border-radius:15px}
+.tdr-stat-label{font-size:.72rem;font-weight:700;letter-spacing:.065em;opacity:.74}
+.tdr-stat strong{font-size:clamp(1.4rem,3.6vw,2rem);font-weight:750;letter-spacing:-.035em;font-variant-numeric:tabular-nums;line-height:1.1}
+.tdr-stat small{font-size:.74rem;line-height:1.35;opacity:.72}
+.tdr-current,.tdr-phase,.tdr-attempt{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 12px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.035)}
+.tdr-current{background:rgba(255,255,255,.07)}
+.tdr-current strong,.tdr-phase strong,.tdr-attempt strong{white-space:nowrap;font-variant-numeric:tabular-nums}
+.tdr-breakdown,.tdr-attempts{display:grid;gap:5px}
+.tdr-phase{display:grid;grid-template-columns:minmax(0,1fr) auto;row-gap:1px}
+.tdr-phase span{min-width:0}
+.tdr-phase small{grid-column:1 / -1;font-size:.75rem;opacity:.7}
+.tdr-panel .button-row{display:flex;flex-wrap:wrap;gap:8px}
+.tdr-panel .button-row>button{min-height:40px}
+@media(max-width:380px){.tdr-stat{padding:12px 9px}.tdr-stat strong{font-size:1.35rem}.tdr-current,.tdr-phase,.tdr-attempt{padding:10px 9px}}
