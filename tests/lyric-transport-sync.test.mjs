@@ -115,3 +115,9 @@ test('late LRCLIB results and one retry never alter the audio extraction pipelin
  const metadata=app.slice(app.indexOf('const newLyrics=lyricsIdentity(track)'),app.indexOf("if(state.sheet==='search')displaySearch",app.indexOf('const newLyrics=lyricsIdentity(track)')));
  assert.match(metadata,/durationChanged&&!state\.lyricsSynced/,'metadata duration alone must not blank LRC');
 });
+
+test('restoring a cached LRC mid-track reactivates precision immediately',()=>{
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ const body=app.slice(app.indexOf('async function loadAutoLyrics(track){'),app.indexOf('let lyricsAIController='));
+ assert.match(body,/state\.lyricsStatus=immediate\?\.status[\s\S]*?syncLyrics\(\);[\s\S]*?if\(state\.lyricsSynced&&!audio\.paused&&!audio\.ended&&!document\.hidden\)\s*lyricTransportSync\.start\(\);[\s\S]*?if\(manual\|\|immediate\?\.synced\)return/);
+});
