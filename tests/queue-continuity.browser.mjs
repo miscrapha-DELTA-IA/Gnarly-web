@@ -117,7 +117,7 @@ try{
  });
  await scenario('Previous preserves the interrupted song for the following Next',async({page,choose,selected,snapshot})=>{
   await choose(A);await page.evaluate(({B,C})=>{__queueQA.addToQueue(B,{quiet:true});__queueQA.addToQueue(C,{quiet:true});void __queueQA.next()},{B,C});await selected(B);
-  await page.evaluate(()=>{__queueQA.audio.currentTime=.1;__queueQA.previous()});await selected(A);
+  await page.evaluate(()=>{__queueQA.audio.currentTime=5;__queueQA.previous()});await selected(A);
   assert.deepEqual((await snapshot()).queue,[B.id,C.id]);
   await page.evaluate(()=>{void __queueQA.next()});await selected(B);assert.deepEqual((await snapshot()).queue,[C.id]);
  });
@@ -203,6 +203,14 @@ try{
   assert.deepEqual((await snapshot()).queue,[B.id,C.id,D.id]);
   await page.evaluate(()=>mediaActions.nexttrack({}));await selected(B);assert.deepEqual((await snapshot()).queue,[C.id,D.id]);assert.equal(await page.evaluate(()=>__queueQA.state.sheet),'karaoke');
   await page.evaluate(()=>{__queueQA.closeSheet();__queueQA.applyPlayerSurfaceMode('ipod')});await page.locator('#ipod-next-button').click({force:true});await selected(C);assert.deepEqual((await snapshot()).queue,[D.id]);
+  // External controls must navigate to the previous recording in one tap,
+  // even after the current song has passed the old three-second threshold.
+  await page.evaluate(()=>{__queueQA.audio.currentTime=5;mediaActions.previoustrack({})});
+  await selected(B);
+  assert.deepEqual((await snapshot()).queue,[C.id,D.id]);
+  await page.evaluate(()=>mediaActions.nexttrack({}));
+  await selected(C);
+  assert.deepEqual((await snapshot()).queue,[D.id]);
  });
  await scenario('six native transitions provide local click/end latency samples',async({page,choose,selected,snapshot})=>{
   await choose(A);await page.evaluate(tracks=>{for(const track of tracks)__queueQA.addToQueue(track,{quiet:true})},[B,C,D,E,F,G]);
