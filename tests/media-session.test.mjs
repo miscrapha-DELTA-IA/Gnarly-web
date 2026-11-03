@@ -134,3 +134,28 @@ test('headphone transport does not change the existing native playback source wh
  assert.match(app,/previoustrack:\(\)=>\{if\(state\.current\)previous\(\)\}/);
  assert.doesNotMatch(app,/visibilitychange[^\n]*pause\(\)/);
 });
+
+test('MediaSession retries Next registration after a transient browser rejection',()=>{
+ const registered=new Map(),events=[];
+ let first=true,registrations=0;
+ const session={setActionHandler(name,handler){
+  if(name==='nexttrack'&&handler){registrations++;if(first){first=false;throw Error('MediaSession initializing')}}
+  registered.set(name,handler);
+ },set playbackState(value){this.state=value}};
+ const controller=createMediaSessionController({
+  audio:{paused:false,currentTime:0,duration:120,playbackRate:1},
+  session,actions:{nexttrack:()=>events.push('next')}
+ });
+ controller.sync({track:song,canNext:true,playing:true});
+ assert.notEqual(typeof registered.get('nexttrack'),'function');
+ controller.sync({track:song,canNext:true,playing:true});
+ assert.equal(registrations,2);
+ registered.get('nexttrack')();
+ assert.deepEqual(events,['next']);
+ controller.sync({track:song,canNext:false,playing:true});
+ assert.equal(registered.get('nexttrack'),null);
+ controller.sync({track:song,canNext:true,playing:true});
+ registered.get('nexttrack')();
+ assert.deepEqual(events,['next','next']);
+ controller.destroy();
+});
