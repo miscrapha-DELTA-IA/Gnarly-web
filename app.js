@@ -1139,11 +1139,17 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false,tdrH
  // Selecting a pending song through Search/History must not leave the same
  // recording in the upcoming tail and replay it on the very next transition.
  state.queue=state.queue.filter(item=>!sameRecording(item,track));
- // Automatic recommendations belong to the previous listening context.
- // Even a pending auto tail must not survive a newly selected recording:
- // retain only intentional queue entries, exactly in their chosen order.
- // New auto suggestions are generated from this recording on 'playing'.
- state.queue=retainManualQueue(state.queue);
+ // Automatic recommendations must follow the new artist. Preserve a
+ // still-coherent same-artist tail during native queue navigation, including
+ // repeated Next presses while discovery resolves. A direct selection or
+ // cross-artist transition discards ONLY stale auto suggestions, preserving
+ // manually pinned songs in their exact order.
+ const previousCredit=state.current&&!isGenericArtist(state.current.artist)?
+  normalKey(state.current.artist):'';
+ const selectedCredit=!isGenericArtist(track.artist)?normalKey(track.artist):'';
+ const sameArtistContinuation=fromQueue&&!!previousCredit&&
+  previousCredit===selectedCredit;
+ if(!sameArtistContinuation)state.queue=retainManualQueue(state.queue);
  if(isGenericArtist(track.artist))track.artist=displayArtist(track);
  lyricWorkshop.clear();
  audioDelivery.select(track);recoveryOperation=null;state.userPaused=false;
