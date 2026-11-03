@@ -15,7 +15,7 @@ test('initial Play remains synchronous; speculative preparation is never awaited
  assert.ok(play.indexOf('primeSelectedRecording(track,selection);') <
   play.indexOf('await Promise.all([unlock,start])'));
  assert.doesNotMatch(play,/await primeSelectedRecording/);
- assert.match(app,/queueAudioWarmup\.reset\(\);cancelSelectedWarmup\(\)/);
+ assert.match(app,/queueAudioWarmup\.reset\(\);resetQueuePrecache\(\);cancelAutoSaveNext\(\);[\s\S]*?cancelSelectedWarmup\(\)/);
  assert.match(app,/function pause\(\)\{(?:tdr\.finish\([^;]+\);)?(?:refreshTdrPanel\(\);)?coverCharge\.hide\(\);clearNextDiscoveryStatus\(\);navigationRevision\+\+;nextDiscovery=null;invalidateSmartFill\(\);cancelSelectedWarmup\(\)/);
 });
 test('first tap directly prewarms one exact recording without a redundant GET status gate',()=>{

@@ -32,8 +32,8 @@ function deferred(){let resolve;const promise=new Promise(r=>resolve=r);return {
 async function scenario(name,run){
  if(process.env.QUEUE_SCENARIO&&!name.includes(process.env.QUEUE_SCENARIO))return;
  const context=await browser.newContext({viewport:{width:1100,height:1000},serviceWorkers:'block'});
- const queries=[],requests=[],errors=[],gates=[];
- let search=()=>[],audioGate=null;
+ const queries=[],requests=[],prepares=[],errors=[],gates=[];
+ let search=()=>[],audioGate=null,scenarioMedia=media;
  const gate=()=>{const value=deferred();gates.push(value);return value};
  await context.addInitScript(()=>{
   const session=navigator.mediaSession;if(!session)return;
@@ -47,9 +47,9 @@ async function scenario(name,run){
     const id=u.pathname.startsWith('/fast-audio/')?u.pathname.split('/').at(-1):new URL(u.searchParams.get('url')).searchParams.get('v');
     requests.push(id);if(audioGate)await audioGate(id);
     const range=/^bytes=(\d+)-(\d*)$/.exec(route.request().headers().range||'');
-    const start=range?Number(range[1]):0,end=range&&range[2]?Math.min(media.length-1,Number(range[2])):media.length-1;
-    const body=media.subarray(start,end+1),headers={'Content-Length':String(body.length),'Accept-Ranges':'bytes','Access-Control-Allow-Origin':'*'};
-    if(range)headers['Content-Range']=`bytes ${start}-${end}/${media.length}`;
+    const start=range?Number(range[1]):0,end=range&&range[2]?Math.min(scenarioMedia.length-1,Number(range[2])):scenarioMedia.length-1;
+    const body=scenarioMedia.subarray(start,end+1),headers={'Content-Length':String(body.length),'Accept-Ranges':'bytes','Access-Control-Allow-Origin':'*'};
+    if(range)headers['Content-Range']=`bytes ${start}-${end}/${scenarioMedia.length}`;
     return await route.fulfill({status:range?206:200,contentType:'audio/wav',body,headers});
    }
    if(u.pathname==='/api/omnibox'||u.pathname==='/api/r2-available'){
@@ -62,11 +62,15 @@ async function scenario(name,run){
      {status:'ok',results:value}:{results:value};
     return await route.fulfill({contentType:'application/json',body:JSON.stringify(payload)});
    }
-   if(u.origin!==base||u.pathname.startsWith('/api/')||u.pathname.startsWith('/fast-prepare/'))
+   if(u.pathname.startsWith('/fast-prepare/')){
+    prepares.push(u.pathname.split('/').at(-1));
+    return await route.fulfill({status:202,contentType:'application/json',body:'{"state":"pending"}'});
+   }
+   if(u.origin!==base||u.pathname.startsWith('/api/'))
     return await route.fulfill({contentType:'application/json',body:'{"results":[],"lines":[],"plainLines":[]}'});
    const file=u.pathname==='/'?'index.html':u.pathname.slice(1),ext=path.extname(file);
    let body=await source(file);
-   if(file==='app.js')body=Buffer.from(body+`\nglobalThis.__queueQA={audio,state,selectTrack,next,previous,pause,play,maybeFillSmartQueue,setSmartMode,addToQueue,openSheet,closeSheet,handleCommand,updatePlayer,applyPlayerSurfaceMode,engine,externalSeek,listeningMemory,predict:candidates=>recommendTracks({mode:smartMode,anchor:state.current,candidates,existing:state.queue,history:state.history,memory:listeningMemory,max:7,revision:smartRevision}),get mode(){return smartMode},get pending(){return smartFillPending},get status(){return smartStatus}};globalThis.__queueTimings={actions:[],transitions:[]};const markQueueAction=trigger=>__queueTimings.actions.push({trigger,from:state.current?.id,at:performance.now()});document.querySelector('#next-button').addEventListener('click',()=>markQueueAction('next-click'),true);audio.addEventListener('ended',()=>markQueueAction('ended'),true);audio.addEventListener('playing',()=>{const action=__queueTimings.actions.at(-1);if(action&&!action.done&&action.from!==state.current?.id){action.done=true;__queueTimings.transitions.push({trigger:action.trigger,from:action.from,to:state.current?.id,ms:performance.now()-action.at})}},true);visual.stopLoop();visual.setPaused=()=>{};audio.muted=true;setSmartMode('off');`);
+   if(file==='app.js')body=Buffer.from(body+`\nglobalThis.__queueQA={audio,state,registerOfflineURL,offlineNextTracks,seedOfflineQueue,prepareUpcomingAudio,queueAudioWarmup,playbackCooldown,bufferedAudioAhead,canWarmImmediately,selectTrack,next,previous,pause,play,maybeFillSmartQueue,setSmartMode,addToQueue,openSheet,closeSheet,handleCommand,updatePlayer,applyPlayerSurfaceMode,engine,externalSeek,listeningMemory,predict:candidates=>recommendTracks({mode:smartMode,anchor:state.current,candidates,existing:state.queue,history:state.history,memory:listeningMemory,max:7,revision:smartRevision}),get mode(){return smartMode},get pending(){return smartFillPending},get status(){return smartStatus}};globalThis.__queueTimings={actions:[],transitions:[]};const markQueueAction=trigger=>__queueTimings.actions.push({trigger,from:state.current?.id,at:performance.now()});document.querySelector('#next-button').addEventListener('click',()=>markQueueAction('next-click'),true);audio.addEventListener('ended',()=>markQueueAction('ended'),true);audio.addEventListener('playing',()=>{const action=__queueTimings.actions.at(-1);if(action&&!action.done&&action.from!==state.current?.id){action.done=true;__queueTimings.transitions.push({trigger:action.trigger,from:action.from,to:state.current?.id,ms:performance.now()-action.at})}},true);visual.stopLoop();visual.setPaused=()=>{};audio.muted=true;setSmartMode('off');`);
    return await route.fulfill({contentType:({'.js':'text/javascript','.css':'text/css','.html':'text/html','.png':'image/png','.svg':'image/svg+xml','.json':'application/json'})[ext]||'application/octet-stream',body});
   }catch(error){
    // A canceled old source/query is expected during rapid native navigation.
@@ -80,14 +84,78 @@ async function scenario(name,run){
   const selected=track=>page.waitForFunction(id=>__queueQA.state.current?.id===id&&!__queueQA.audio.paused&&__queueQA.audio.readyState>=2&&__queueQA.audio.currentTime>0&&__queueQA.state.audioState==='playing',track.id,{timeout:8000});
   const choose=async track=>{await page.evaluate(track=>__queueQA.selectTrack(track),track);await selected(track)};
   const snapshot=()=>page.evaluate(()=>({current:__queueQA.state.current?.id,queue:__queueQA.state.queue.map(t=>t.id),paused:__queueQA.audio.paused,playing:__queueQA.state.playing,time:__queueQA.audio.currentTime,duration:__queueQA.audio.duration,src:__queueQA.audio.currentSrc,error:__queueQA.state.playbackError,status:document.querySelector('#player-status').textContent,state:__queueQA.state.audioState,mode:__queueQA.mode,pending:__queueQA.pending,nextDisabled:document.querySelector('#next-button').disabled,ipodNextDisabled:document.querySelector('#ipod-next-button').disabled,mediaNext:typeof mediaActions.nexttrack}));
-  await run({page,gate,queries,requests,choose,selected,snapshot,setSearch:fn=>search=fn,setAudioGate:fn=>audioGate=fn});
+  await run({page,gate,queries,requests,prepares,choose,selected,snapshot,setSearch:fn=>search=fn,setAudioGate:fn=>audioGate=fn,setAudioLength:seconds=>scenarioMedia=tone(seconds)});
   assert.deepEqual(errors,[],'no uncaught browser errors');
   results.push({name,passed:true,queries,requests,snapshot:await snapshot(),timings:await page.evaluate(()=>__queueTimings.transitions)});
- }catch(error){results.push({name,passed:false,error:error.message,queries,requests,errors})}
+ }catch(error){results.push({name,passed:false,error:error.message,queries,requests,prepares,errors,
+  audio:await page.evaluate(()=>({time:globalThis.__queueQA?.audio?.currentTime,
+   readyState:globalThis.__queueQA?.audio?.readyState,
+   state:globalThis.__queueQA?.state?.audioState,
+   playing:globalThis.__queueQA?.state?.playing,paused:globalThis.__queueQA?.audio?.paused,
+   ended:globalThis.__queueQA?.audio?.ended,
+   userPaused:globalThis.__queueQA?.state?.userPaused,online:navigator.onLine,
+   saveData:navigator.connection?.saveData,buffer:globalThis.__queueQA?.bufferedAudioAhead?.(globalThis.__queueQA?.audio),
+   cooldown:globalThis.__queueQA?.playbackCooldown?.active?.(),
+   warmLast:globalThis.__queueQA?.queueAudioWarmup?.last,
+   warmPending:globalThis.__queueQA?.queueAudioWarmup?.pending?.id,
+   warmAttemptAt:globalThis.__queueQA?.queueAudioWarmup?.lastAttemptAt,
+   queue:globalThis.__queueQA?.state?.queue?.map(x=>({id:x.id,warmed:x._gnarlyPrewarmRequested,eligible:globalThis.__queueQA?.canWarmImmediately?.({current:globalThis.__queueQA?.state.current,next:x,online:navigator.onLine,saveData:navigator.connection?.saveData,effectiveType:navigator.connection?.effectiveType})}))})).catch(()=>null)})}
  finally{for(const value of gates)value.resolve();await context.close()}
  console.log(JSON.stringify(results.at(-1)));
 }
 try{
+ await scenario('offline saved songs advance on Next and native ended without network or repeats',async({page,selected,snapshot,requests,queries})=>{
+  const encoded=media.toString('base64');
+  await page.evaluate(({tracks,encoded})=>{
+   const raw=atob(encoded),bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));
+   const blob=new Blob([bytes],{type:'audio/wav'});
+   for(const track of tracks)__queueQA.registerOfflineURL(track,blob);
+   Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>false});
+   __queueQA.selectTrack(tracks[0],true);
+  },{tracks:[A,B,C],encoded});
+  await selected(A);
+  await page.waitForFunction(()=>__queueQA.state.queue.length===2);
+  assert.deepEqual((await snapshot()).queue,[B.id,C.id]);
+  await page.evaluate(()=>__queueQA.next());
+  await selected(B);
+  assert.deepEqual((await snapshot()).queue,[C.id]);
+  await page.evaluate(()=>{__queueQA.audio.currentTime=__queueQA.audio.duration-.06});
+  await selected(C);
+  assert.deepEqual((await snapshot()).queue,[]);
+  assert.deepEqual(requests,[],'offline saved tracks cannot create network media requests');
+  assert.deepEqual(queries,[],'offline saved tracks cannot request online Music catalogues');
+  await page.evaluate(()=>{__queueQA.audio.currentTime=__queueQA.audio.duration-.06});
+  await page.waitForFunction(()=>__queueQA.state.userPaused||__queueQA.audio.paused,{timeout:3500});
+  assert.deepEqual((await snapshot()).queue,[],'offline cycle must stop after the last saved track');
+ });
+ await scenario('pre-cache enqueues next exact recording after stable playback without downloading active audio twice',async({page,choose,prepares,requests,setAudioLength})=>{
+  // A 45s fixture prevents the track from ending while observing the warmup.
+  // A short 12s fixture would naturally advance before any 10s stable fallback.
+  setAudioLength(45);
+  await choose(A);
+  // Explicit first-party prepare fixture. Network route interception for
+  // speculative POST can vary by headless proxy; asserting the exact
+  // arguments here isolates scheduling from transport acceptance.
+  await page.evaluate(()=>{
+   globalThis.__precacheCalls=[];
+   __queueQA.queueAudioWarmup.fetcher=async(url,options)=>{
+    __precacheCalls.push({url,method:options.method});
+    return new Response('{"state":"pending"}',{status:202,
+     headers:{'Content-Type':'application/json'}});
+   };
+  });
+  await page.evaluate(track=>__queueQA.addToQueue(track,{quiet:true}),B);
+  await page.evaluate(()=>{__queueQA.state.current.duration=45});
+  // Seek creates synthetic waiting events that can leave the decoder in a
+  // buffering state. Let the real 45s PCM clock run, as users do, so the
+  // automatic timeupdate and timer both have a stable source.
+  await page.waitForFunction(()=>__queueQA.state.queue[0]?._gnarlyPrewarmRequested===true,
+   null,{timeout:16000});
+  const posted=await page.evaluate(()=>__precacheCalls);
+  assert.ok(posted.some(call=>call.method==='POST'&&call.url.endsWith('/fast-prepare/'+B.videoId)),
+   'next exact ID requested with POST on the first-party R2/PC route: '+JSON.stringify(posted));
+  assert.ok(!requests.includes(B.videoId),'preparation must not start a competing browser media GET');
+ });
  await scenario('empty smart queue retains Next on player, iPod and MediaSession',async({page,gate,setSearch,choose,snapshot})=>{
   const hold=gate();setSearch(async()=>{await hold.promise;return [B,C]});
   await page.evaluate(()=>__queueQA.setSmartMode('mix'));await choose(A);

@@ -971,4 +971,35 @@ assert.equal(await ipodPage.locator('#cover-button').isVisible(),true);
 assert.deepEqual(ipodErrors,[],'iPod mode must not introduce JavaScript exceptions');
 await ipodPage.close();
 
+// First-install PWA acceptance: the hashed bundle shared chunk must be in
+// the mandatory install cache before this device ever navigates offline.
+// A regular first online page load happens before SW control is established.
+const firstInstallContext=await browser.newContext({serviceWorkers:'allow',
+ viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+const firstInstallPage=await firstInstallContext.newPage();
+try{
+ await firstInstallPage.goto('http://127.0.0.1:8765/',{waitUntil:'load'});
+ await firstInstallPage.evaluate(()=>navigator.serviceWorker.ready);
+ await firstInstallPage.waitForFunction(async()=>{
+  const names=(await caches.keys()).filter(x=>x.startsWith('gnarly-web-shell-'));
+  if(!names.length)return false;
+  const cache=await caches.open(names.at(-1));
+  const response=await cache.match('/app.js');
+  const assets=await fetch('/offline-assets.json').then(r=>r.json()).catch(()=>[]);
+  const shared=assets.filter(path=>/^\/chunks\/chunk-[A-Za-z0-9_-]+\.js$/.test(path));
+  return !!response&&shared.length>0&&
+   (await Promise.all(shared.map(p=>cache.match(p)))).every(Boolean);
+ },null,{timeout:15000});
+ await firstInstallPage.waitForFunction(()=>!!navigator.serviceWorker.controller,null,{timeout:10000});
+ await firstInstallContext.setOffline(true);
+ await firstInstallPage.reload({waitUntil:'domcontentloaded',timeout:15000});
+ await firstInstallPage.locator('#omnibox-toggle').waitFor({timeout:10000});
+ assert.equal(await firstInstallPage.locator('#play-button').count(),1,
+  'first installed PWA must reload the complete player without a network');
+ console.log('GNARLY first-install offline shell and shared boot chunk validated.');
+}finally{
+ await firstInstallContext.setOffline(false);
+ await firstInstallContext.close();
+}
+
 await browser.close();

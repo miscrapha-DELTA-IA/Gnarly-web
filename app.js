@@ -29,7 +29,7 @@ import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-
 import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from './lib/queue-audio-warmup.js';
 import {quickPlaylistMarkup} from './ui/quick-playlist.js';
 import {createMediaSessionController,configureBrowserAudioSession} from './lib/media-session-controller.js';
-import {appendUnique,commitPlaying,moveTrack,removeTrack,shuffleUpcoming,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
+import {appendUnique,commitPlaying,moveTrack,removeTrack,shuffleUpcoming,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup,offlineSuccessors} from './lib/smart-queue.js';
 import {ListeningMemory,MEMORY_KEY,recommendTracks,retainManualQueue,markAutoTracks,sameRecording,discoverySuggestions,mixTasteArtists} from './lib/listening-intelligence.js';
 import {renderSmartQueuePanel} from './ui/smart-queue-panel.js';
 import {CLASSIC_THEMES,MATERIAL_THEMES,GNARLY_MODES,NATIVE_COLOR_THEMES,CREATIVE_COLOR_THEMES,EXPERIENCES,REACTIONS,ROLE_EXPLANATION,resolveVisual,restoredThemeAfterGnarly} from './lib/visual-selection.js';
@@ -123,10 +123,29 @@ const queueAudioWarmup=new QueueAudioWarmup({
   playbackCooldown.remember({code:'upstream_rate_limited',retryAfter:seconds});
  }
 });
-/** Avoid competing with the active song's first buffer. Once at least eight
- * seconds are available, prepare precisely ONE next song in the background.
- * The backend keeps accepted work alive even if the browser changes tracks.
+/** Warm the next first-party audio file while the current recording
+ * remains audible. POST /fast-prepare is a bounded server-side cache job:
+ * it is not an IndexedDB download and it never marks the track "offline".
+ * Avoid competing with startup buffering. Progressive M4A does not always
+ * expose useful buffered ranges, so confirmed stable playback is the backup.
  */
+const requestedPrecache=new Set(),inflightPrecache=new Set();
+let upcomingPrecacheTimer=null;
+function resetQueuePrecache(){
+ requestedPrecache.clear();inflightPrecache.clear();
+ clearTimeout(upcomingPrecacheTimer);upcomingPrecacheTimer=null;
+}
+function scheduleUpcomingPrecache(){
+ clearTimeout(upcomingPrecacheTimer);
+ const selection=playbackSelection;
+ // Secondary trigger for native engines that do not expose buffered progress
+ // or skip timeupdate during decoded-segment transitions.
+ upcomingPrecacheTimer=setTimeout(()=>{
+  upcomingPrecacheTimer=null;
+  if(selection===playbackSelection&&!audio.paused&&!state.userPaused)
+   prepareUpcomingAudio();
+ },11000);
+}
 function bufferedAudioAhead(element){
  const time=Number(element.currentTime)||0;
  try{for(let i=0;i<element.buffered.length;i++)
@@ -136,11 +155,37 @@ function bufferedAudioAhead(element){
  return 0;
 }
 function prepareUpcomingAudio(){
- const next=state.queue[0];
- if(!next||next.source!=='youtube'||isOffline(next.id)||audio.paused||state.userPaused||playbackCooldown.active()||bufferedAudioAhead(audio)<8)return;
- if(canWarmImmediately({current:state.current,next,online:navigator.onLine,
-  saveData:navigator.connection?.saveData,effectiveType:navigator.connection?.effectiveType
- }))void queueAudioWarmup.start(next);
+ if(!state.current||audio.paused||audio.ended||state.userPaused||
+  !navigator.onLine||playbackCooldown.active()||
+  ['loading','recovering','buffering','error'].includes(state.audioState))return;
+ const elapsed=Number(audio.currentTime)||0,buffer=bufferedAudioAhead(audio);
+ // Never compete with the selected track's initial decoding / first Play.
+ const stable=audio.readyState>=3&&
+  (elapsed>=4&&buffer>=4||elapsed>=10);
+ if(!stable)return;
+ const candidates=state.queue.filter(t=>t.source==='youtube'&&
+  !isOffline(t.id)&&t.id!==state.current.id);
+ const first=candidates[0],second=candidates[1];
+ // The next song gets first claim on the single speculative job slot. A
+ // second candidate is optional and only after the first was accepted and
+ // enough of the current song remains to avoid pressure on the next Play.
+ const remainder=(activeTimeline().duration||Infinity)-elapsed;
+ const next=first&&!requestedPrecache.has(first.id)?first:
+  first&&requestedPrecache.has(first.id)&&second&&elapsed>=32&&
+  buffer>=8&&remainder>60&&!requestedPrecache.has(second.id)?second:null;
+ if(!next||inflightPrecache.has(next.id)||
+  !canWarmImmediately({current:state.current,next,online:navigator.onLine,
+   saveData:navigator.connection?.saveData,effectiveType:navigator.connection?.effectiveType
+  }))return;
+ inflightPrecache.add(next.id);
+ const selection=playbackSelection;
+ void queueAudioWarmup.start(next).then(accepted=>{
+  if(!accepted||selection!==playbackSelection||!state.queue.some(t=>t.id===next.id))return;
+  requestedPrecache.add(next.id);
+  const saved=state.queue.find(t=>t.id===next.id);
+  if(saved)saved._gnarlyPrewarmRequested=true;
+  if(state.sheet==='queue')renderSheet();
+ }).catch(()=>{}).finally(()=>inflightPrecache.delete(next.id));
 }
 
 const offlineLibrary=createOfflineLibrary();
@@ -151,6 +196,36 @@ const offlinePending=new Set();
 let offlineLoaded=false,offlineStatus='Preparando biblioteca offline…';
 const isOffline=id=>offlineURLs.has(id);
 const offlineAudio=id=>offlineURLs.get(id)||null;
+function canPlayWithoutNetwork(track){
+ if(!track?.id)return false;
+ if(isOffline(track.id))return true;
+ // Imported local files can remain playable in the current session even
+ // when IndexedDB persistence is unavailable or not yet finished. They use
+ // an existing same-origin Blob URL; never accept a remote URL as offline.
+ if(track.source!=='local'||typeof track.url!=='string')return false;
+ try{const url=new URL(track.url);return url.protocol==='blob:'&&url.origin===location.origin}
+ catch{return false}
+}
+function offlineNextTracks(){
+ return offlineSuccessors({
+  current:state.current,queue:state.queue,library:state.tracks,
+  recent:playbackBackstack,available:(_id,track)=>canPlayWithoutNetwork(track),max:7
+ });
+}
+function seedOfflineQueue(){
+ if(!state.current||(!offlineLoaded&&!offlineURLs.size))return 0;
+ const candidates=offlineNextTracks(),count=state.queue.length;
+ const added=markAutoTracks(candidates.filter(track=>
+  !state.queue.some(existing=>sameRecording(existing,track))),'offline');
+ state.queue=appendUnique(state.queue,added,state.current.id);
+ if(state.queue.length!==count){
+  smartStatus='Offline · '+state.queue.filter(canPlayWithoutNetwork).length+
+   ' músicas salvas disponíveis na fila.';
+  prepareUpcomingAudio();prefetchNextLyrics();updatePlayer();
+  if(state.sheet==='queue')renderSheet();
+ }
+ return candidates.length;
+}
 let recoveryOperation=null,independentRecoveryController=null;
 // The first requested Play owns the source until audio starts or the attempt ends.
 // Subsequent clicks while loading join it rather than creating competing play().
@@ -209,6 +284,13 @@ if(!playlistStore.names().includes(selectedPlaylist))selectedPlaylist='Meu Mix';
 // GNARLY native parity: smart recommendations run automatically; previously
 // saved manual mode no longer disables them on the simplified queue surface.
 let smartMode='mix';
+let autoSaveNextOffline=getSetting('autoSaveNextOffline','no')==='yes';
+let autoSaveNextStatus='';
+let autoSaveNextFlight=null,autoSaveNextRetryAt=0,autoSaveNextDone=false;
+function cancelAutoSaveNext(){
+ autoSaveNextFlight?.controller.abort();autoSaveNextFlight=null;
+ autoSaveNextRetryAt=0;autoSaveNextDone=false;
+}
 let smartStatus='';
 let smartFillEpoch=0,smartFillPending=false,lastSmartSeed='',smartRevision=0;
 let smartFillOperation=null,smartRetryTimer=null,smartRetryAt=0,smartRetryCount=0;
@@ -1128,7 +1210,8 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false,tdrH
  independentRecoveryController?.abort();independentRecoveryController=null;
  sourceRouter.cancel();
  hideOptionalOfficialSource();
- queueAudioWarmup.reset();cancelSelectedWarmup();selectedWarmupId='';closeQuickPlaylist();
+ queueAudioWarmup.reset();resetQueuePrecache();cancelAutoSaveNext();
+ cancelSelectedWarmup();selectedWarmupId='';closeQuickPlaylist();
  // Commit queue navigation at selection time. The old 'playing' callback
  // left the next item at queue[0] while buffering, so rapid Next taps
  // selected the same object and aborted its first play() promise.
@@ -1618,7 +1701,7 @@ async function play(){
   resolvePending();
  }
 }
-function pause(){tdr.finish(playbackSelection,'user_cancel');refreshTdrPanel();coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;playbackIntentEpoch++;playStartOperation=null;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;engine.setTransportPaused(true);audio.pause();stems.pause();pads.stopLoop();closeYouTubePlayer();state.playing=false;updatePlayer()}
+function pause(){tdr.finish(playbackSelection,'user_cancel');refreshTdrPanel();coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;playbackIntentEpoch++;playStartOperation=null;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();resetQueuePrecache();cancelAutoSaveNext();audioDelivery.cancel();recoveryOperation=null;engine.setTransportPaused(true);audio.pause();stems.pause();pads.stopLoop();closeYouTubePlayer();state.playing=false;updatePlayer()}
 let nextDiscovery=null;
 function clearNextDiscoveryStatus(){if(nextDiscovery)reportAudioStatus('')}
 // Show only a tiny activity cue while Next looks for a verified recording.
@@ -1631,6 +1714,16 @@ function setNextDiscoveryBusy(busy){
 }
 async function next(){
  const startingTrack=state.current,selection=playbackSelection,revision=navigationRevision;
+ // A cached/offline recording must never wait on an online catalogue lookup.
+ // Keep unsaved manual requests pending for when connectivity returns.
+ if(startingTrack&&(!navigator.onLine||startingTrack.source==='local')){
+  seedOfflineQueue();
+  const playable=state.queue.find(canPlayWithoutNetwork);
+  if(playable){advanceToNext(playable);return}
+  if(audio.ended){pause();toast('Fim das músicas salvas neste dispositivo.')}
+  else toast('Não há outra música salva offline. Baixe ou importe mais faixas.');
+  return;
+ }
  let candidate=state.queue[0];
  if(!candidate&&smartMode!=='off'&&startingTrack){
   if(nextDiscovery&&nextDiscovery.anchor===startingTrack&&nextDiscovery.selection===selection){
@@ -1727,35 +1820,89 @@ async function restoreOfflineLibrary(){
    registerOfflineURL(record.track,record.blob);
   }
   offlineLoaded=true;offlineStatus=offlineStatusText();
+  if(state.current&&(!navigator.onLine||state.current.source==='local'))
+   seedOfflineQueue();
  }catch(error){
   offlineLoaded=true;offlineStatus='Armazenamento offline indisponível neste navegador';
   console.warn('GNARLY offline storage:',error?.message);
  }
  if(state.sheet==='library')renderSheet();
 }
-async function downloadOfflineTrack(track){
- if(!track||track.source!=='youtube')return toast('Escolha uma faixa do catálogo GNARLY');
- if(isOffline(track.id))return toast('Esta música já está disponível offline.');
- if(offlinePending.has(track.id))return;
+async function downloadOfflineTrack(track,{quiet=false,signal}={}){
+ if(!track||track.source!=='youtube'){
+  if(!quiet)toast('Escolha uma faixa do catálogo GNARLY');return false;
+ }
+ if(isOffline(track.id)){
+  if(!quiet)toast('Esta música já está disponível offline.');return true;
+ }
+ if(offlinePending.has(track.id))return false;
  offlinePending.add(track.id);
  offlineStatus='Baixando '+track.title+'…';
- if(state.sheet==='library'||state.sheet==='search')renderSheet();
+ if(state.sheet==='library'||state.sheet==='search'||state.sheet==='queue')renderSheet();
  try{
-  // The user asked for this single track. Do not download other artists'
-  // catalogs or automatically store unrequested audio.
-  const blob=await fetchFullAudio(track);
+  // A persisted download uses a COMPLETE authenticated-independent native
+  // audio response. Automatic mode is opt-in and probes the ready edge first.
+  // Never persist partial HTTP ranges or an unverified media placeholder.
+  const blob=await fetchFullAudio(track,{signal});
+  if(signal?.aborted)throw Object.assign(Error('Operação cancelada'),{name:'AbortError'});
   await offlineLibrary.save(track,blob);
   registerOfflineURL(track,blob);
   offlineStatus=offlineStatusText();
-  toast('✓ '+track.title+' salvo. Disponível sem internet neste dispositivo.');
+  if(!quiet)toast('✓ '+track.title+' salvo. Disponível sem internet neste dispositivo.');
   void navigator.storage?.persist?.().catch(()=>false);
+  return true;
  }catch(error){
-  offlineStatus='Download não concluído';
-  toast(error?.message||'Não foi possível guardar o áudio. Verifique conexão e espaço.');
+  if(error?.name!=='AbortError'){
+   offlineStatus='Download não concluído';
+   if(!quiet)toast(error?.message||'Não foi possível guardar o áudio. Verifique conexão e espaço.');
+  }
+  return false;
  }finally{
   offlinePending.delete(track.id);
   if(state.sheet==='library'||state.sheet==='search'||state.sheet==='queue')renderSheet();
  }
+}
+/** Optional full offline download, separate from the automatic server cache.
+ * Only one future verified/R2-ready track per current recording. The checkbox
+ * is an explicit opt-in; Data Saver, offline and initial buffering veto it.
+ */
+function maybeAutoSaveNext(){
+ if(!autoSaveNextOffline||autoSaveNextDone||autoSaveNextFlight||
+  !navigator.onLine||navigator.connection?.saveData||
+  !state.current||state.userPaused||audio.paused||audio.ended||
+  state.audioState!=='playing'||audio.readyState<3||
+  (Number(audio.currentTime)||0)<12||bufferedAudioAhead(audio)<8||
+  Date.now()<autoSaveNextRetryAt)return;
+ const next=state.queue.find(track=>track?.source==='youtube'&&
+  !isOffline(track.id)&&!offlinePending.has(track.id));
+ if(!next||!isGnarlyPagesHost(location.hostname))return;
+ const selection=playbackSelection,controller=new AbortController();
+ const flight={controller,selection,id:next.id};autoSaveNextFlight=flight;
+ autoSaveNextRetryAt=Date.now()+15000;
+ void (async()=>{
+  try{
+   if(!await cachedNativeAvailable(next)||controller.signal.aborted||
+    playbackSelection!==selection||!autoSaveNextOffline)return;
+   const estimate=await navigator.storage?.estimate?.().catch(()=>null);
+   if(estimate?.quota&&estimate.quota-estimate.usage<25*1024*1024){
+    autoSaveNextStatus='Pouco espaço disponível: pré-download offline pausado.';
+    return;
+   }
+   autoSaveNextStatus='Salvando próxima música offline: '+next.title+'…';
+   if(state.sheet==='queue')renderSheet();
+   const saved=await downloadOfflineTrack(next,{quiet:true,signal:controller.signal});
+   if(!controller.signal.aborted&&playbackSelection===selection){
+    autoSaveNextDone=saved;
+    autoSaveNextStatus=saved?'✓ Próxima música salva para ouvir offline.':
+     'Não foi possível salvar a próxima música; o pré-cache de streaming continua independente.';
+   }
+  }catch{
+   autoSaveNextStatus='Pré-download indisponível; a reprodução atual permanece intacta.';
+  }finally{
+   if(autoSaveNextFlight===flight)autoSaveNextFlight=null;
+   if(state.sheet==='queue'&&!controller.signal.aborted)renderSheet();
+  }
+ })();
 }
 async function deleteOfflineTrack(track){
  if(!track||!isOffline(track.id))return;
@@ -2197,7 +2344,12 @@ function scheduleSmartRetry(anchor,mode){
 }
 async function maybeFillSmartQueue({force=false}={}){
  const mode=smartMode,anchor=state.current;
- if(mode==='off'||!anchor||(!force&&state.queue.length>=2))return;
+ if(!anchor)return;
+ // Native offline playback must never enter the R2/Audius/YT discovery path.
+ if(!navigator.onLine||anchor.source==='local'){
+  seedOfflineQueue();return;
+ }
+ if(mode==='off'||(!force&&state.queue.length>=2))return;
  const query=mode==='playlist'?'':radioQuery(mode,anchor);
  // Share the exact in-flight recommendation request, including explicit Next.
  // A previous track's request never blocks the newly selected anchor.
@@ -2318,7 +2470,8 @@ async function maybeFillSmartQueue({force=false}={}){
 function renderQueuePanel(){
  const controls=renderSmartQueuePanel({
   queueCount:state.queue.length,status:smartStatus,anchor:state.current,
-  busy:smartFillPending,playing:state.playing
+  busy:smartFillPending,playing:state.playing,online:navigator.onLine,
+  offlineAutoSave:autoSaveNextOffline,offlineSaveStatus:autoSaveNextStatus
  });
  const rows=state.queue.map((track,i)=>{
   const title=safe(track.title),artist=safe(displayArtist(track));
@@ -2326,7 +2479,9 @@ function renderQueuePanel(){
   const fallback=safe(track.artwork||icon);
   const attrs=' data-context="queue" data-index="'+i+'"';
   const offline=isOffline(track.id)?' <span class="native-queue-offline">✓ Offline</span>':'';
-  const origin=track._gnarlyAutoMode?
+  const origin=track._gnarlyAutoMode==='offline'?' · Offline · salva':
+   track._gnarlyPrewarmRequested?' · Pré-cache solicitado':
+   track._gnarlyAutoMode?
     (track._gnarlyPreparationRequired?' · Mix · preparo necessário':' · Mix · pronta'):
     ' · Adicionada por você';
   return '<div class="native-queue-row" role="listitem">'+
@@ -2925,6 +3080,20 @@ function handlePanelClick(e){const target=e.target.closest('button,[data-lyric-t
 function handlePanelInput(e){const el=e.target;if(el.id==='lyric-font-search'){updateLyricFontFilter();return}if(el.id==='lyrics-ai-autofallback'){lyricsAIAutoSession=el.checked;if(el.checked&&state.current?.source==='local'&&state.current.file&&!state.lyricsSynced&&!state.lyricsAIWorking&&!lyricsAIOnce.has(state.current.id)){lyricsAIOnce.add(state.current.id);void transcribeOwnLyrics(state.current.file)}return}if(el.hasAttribute('data-dj-bpm')){pads.setBpm(el.value);return}if(el.dataset.photoParameter){const key=el.dataset.photoParameter;const v=Number(el.value);if(['photoZoom','photoX','photoY'].includes(key)&&Number.isFinite(v)){state[key]=v;setSetting(key,v);applyBackground();if(key==='photoZoom')$('#photo-zoom-value').textContent=Math.round(v*100)+'%'}return}if(el.dataset.panelToggle){displayStore.set(el.dataset.panelToggle,el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.hasAttribute('data-zen-toggle')){displayStore.setZen(el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.id==='search-term'){void runSearch(el.value,{live:true});return}if(el.dataset.stemLevel){const kind=el.dataset.stemLevel;stems.setLevel(kind,el.value);const label=$(`#stem-${kind}-value`);if(label)label.textContent=`${Math.round(stems.levels[kind]*100)}%`;return}if(el.dataset.slider){const id=el.dataset.slider,v=Number(el.value);if(id==='speed'){state.speed=v;scheduleSpeedMix();state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='reverb'){state.reverb=v;engine.setReverb(v);state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='bass'){state.bass=v;engine.setBass(v)}if((id==='bass'||id==='reverb')&&audioEffectsRequested())void autoEnableStudioEffects();setSetting(id,v);const out=$(`#${id}-value`);if(out)out.textContent=mixerValue(id,v)}if(el.id==='pitch-check'){state.pitch=el.checked;commitSpeedMix();setSetting('pitch',state.pitch?'yes':'no');state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}}
 for(const host of [$('#sheet-content'),$('#module-dock')]){host.addEventListener('click',handlePanelClick);host.addEventListener('input',handlePanelInput);
  host.addEventListener('change',e=>{if(e.target?.dataset?.slider==='speed')commitSpeedMix()})}
+$('#sheet-content').addEventListener('change',event=>{
+ const toggle=event.target;
+ if(!toggle?.matches?.('[data-auto-offline-save]'))return;
+ autoSaveNextOffline=!!toggle.checked;
+ setSetting('autoSaveNextOffline',autoSaveNextOffline?'yes':'no');
+ if(!autoSaveNextOffline){
+  cancelAutoSaveNext();
+  autoSaveNextStatus='Pré-download offline desativado; pré-cache de streaming continua ativo.';
+ }else{
+  autoSaveNextStatus='Ativo · salva uma próxima faixa que já esteja pronta, se houver buffer e espaço.';
+  maybeAutoSaveNext();
+ }
+ if(state.sheet==='queue')renderSheet();
+});
 $('#sheet-content').addEventListener('change',e=>{if(!e.target.hasAttribute('data-smart-playlist'))return;const name=e.target.value;if(!playlistStore.names().includes(name))return;selectedPlaylist=name;setSetting('smartPlaylist',name);if(smartMode==='playlist'){invalidateSmartFill();state.queue=retainManualQueue(state.queue);void maybeFillSmartQueue({force:true})}renderSheet()});
 // Live catalogue discovery: user taste only boosts actually matching recordings.
 const SEARCH_PAGE_SIZE=20,PREVIEW_PAGE_SIZE=22;
@@ -3250,14 +3419,9 @@ audio.addEventListener('play',()=>{if(state.userPaused){audio.pause();return}if(
   recovering:!!recoveryOperation})){
   completeCurrentRecording({ghost:true});return;
  }
- // Warm one upcoming recording in the last 75 seconds, never full playlists.
- const nextTrack=state.queue[0];
- if(state.playing&&!audio.paused&&nextTrack?.source==='youtube'&&!isOffline(nextTrack?.id)&&canWarmNext({
-  current:state.current,next:nextTrack,
-  remaining:(activeTimeline().duration||Infinity)-(audio.currentTime||0),
-  online:navigator.onLine,saveData:navigator.connection?.saveData,
-  effectiveType:navigator.connection?.effectiveType
- }))void queueAudioWarmup.start(nextTrack);
+ // A single guarded scheduler handles early and late pre-cache, including
+ // streams whose buffered ranges remain empty until decoding is complete.
+ if(state.playing&&!audio.paused){prepareUpcomingAudio();maybeAutoSaveNext();}
 });audio.addEventListener('progress',prepareUpcomingAudio);
 audio.addEventListener('durationchange',updateProgress);
 audio.addEventListener('loadedmetadata',()=>{
@@ -3286,7 +3450,8 @@ function completeCurrentRecording({ghost=false}={}){
  lyricTransportSync.stop();coverCharge.hide();playbackStallGuard.clear();
  if(lastRecordedSelection===completed)listeningMemory.record('finish',state.current);
  karaokeStage.scorer.finish();karaokeStage.updateScore();
- if(state.queue.length||smartMode!=='off'){
+ if(!navigator.onLine||state.current.source==='local')seedOfflineQueue();
+ if(state.queue.length||smartMode!=='off'||offlineNextTracks().length){
   void next().then(()=>{
    // Sparse smart radios may not have any verified successor. They should
    // stop at the real end instead of displaying a permanent Pause button.
@@ -3326,7 +3491,7 @@ audio.addEventListener('stalled',()=>{
   signalPlaybackMetric(playbackMetricErrorSelection===playbackSelection||
     audioDelivery.attempt>0?'recovered_audio':'first_audio');
   playbackStartedAt=0;
- }prepareUpcomingAudio();void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!audio.error||!state.current||state.userPaused||state.audioState==='official'||isAudioAlreadyPlaying())return;
+ }scheduleUpcomingPrecache();prepareUpcomingAudio();void maybeFillSmartQueue()});audio.addEventListener('error',()=>{if(!audio.error||!state.current||state.userPaused||state.audioState==='official'||isAudioAlreadyPlaying())return;
  tdr.mark(playbackSelection,'media_error');
  // Browser MediaError 4 often means the first /fast-audio request got a
  // temporary 503 while the Windows node is still extracting. Record the
@@ -3422,8 +3587,17 @@ if('serviceWorker' in navigator){
    .catch(error=>console.debug('GNARLY offline shell unavailable:',error?.message));
  },{once:true});
 }
-window.addEventListener('online',()=>{if(state.sheet==='library')renderSheet()});
-window.addEventListener('offline',()=>{if(state.sheet==='library')renderSheet()});
+window.addEventListener('online',()=>{
+ if(state.sheet==='library'||state.sheet==='queue')renderSheet();
+ if(state.current&&!state.userPaused&&smartMode!=='off'&&state.queue.length<2)
+  void maybeFillSmartQueue({force:true});
+});
+window.addEventListener('offline',()=>{
+ queueAudioWarmup.cancel();cancelSelectedWarmup();invalidateSmartFill();
+ if(state.current)seedOfflineQueue();
+ updatePlayer();
+ if(state.sheet==='library'||state.sheet==='queue')renderSheet();
+});
 
 // Direct backend playback has no separate invite login or YouTube modal on Play.
 

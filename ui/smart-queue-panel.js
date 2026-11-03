@@ -3,7 +3,7 @@
  * Modelled after the compact Mix / Queue surface in native GNARLY.
  */
 const esc=s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
-export function renderSmartQueuePanel({queueCount=0,status='',anchor=null,busy=false,playing=false}={}){
+export function renderSmartQueuePanel({queueCount=0,status='',anchor=null,busy=false,playing=false,online=true,offlineAutoSave=false,offlineSaveStatus=''}={}){
  const ready=Boolean(anchor),count=Math.max(0,Number(queueCount)||0);
  const activity=busy?'Buscando próximas músicas…':
   status&&(count===0||/preparo|preparad|Sem novas|Não há|Nenhuma|Falha|limitado|indisponível|preservada/i.test(status))?status:'';
@@ -18,6 +18,10 @@ export function renderSmartQueuePanel({queueCount=0,status='',anchor=null,busy=f
     <button type="button" data-command="smart-refresh" class="native-queue-action" ${!ready||busy?'disabled':''} aria-label="Atualizar sugestões automáticas"><span aria-hidden="true">↻</span><span>Atualizar</span></button>
    </div>
    ${activity?'<p class="native-queue-status" role="status">'+esc(activity)+'</p>':''}
+   <label class="native-queue-offline-prefetch"><input type="checkbox" data-auto-offline-save="1"
+      ${offlineAutoSave?'checked':''} ${!online?'disabled':''}/>
+      <span>Salvar automaticamente a próxima música offline</span></label>
+   ${offlineSaveStatus?'<p class="native-queue-status" role="status">'+esc(offlineSaveStatus)+'</p>':''}
    ${!ready?'<p class="native-queue-hint">Escolha uma música em Busca para o Mix continuar automaticamente.</p>':''}
   </section>`;
 }
