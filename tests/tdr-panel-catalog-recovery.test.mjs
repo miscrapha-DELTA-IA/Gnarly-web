@@ -48,6 +48,21 @@ test('failed exclusive song is prominently visible beside successful-only TDR',(
  assert.match(html,/tempo parcial até o erro/);
  assert.match(html,/não identifica automaticamente a causa/);
 });
+test('TDR dashboard identifies an audio start after a premature terminal warning',()=>{
+ let now=0;
+ const tdr=new TdrMonitor({now:()=>now});
+ tdr.select(1,{source:'youtube',autoplay:true});
+ now=100;tdr.playCall(1);
+ now=121019;tdr.finish(1,'terminal_error');
+ let html=renderTdrPanel(tdr.snapshot());
+ assert.match(html,/FALHAS · TEMPO ATÉ ERRO/);
+ now=123000;tdr.playing(1,{route:'fast_edge'});
+ html=renderTdrPanel(tdr.snapshot());
+ assert.match(html,/REPRODUÇÃO APÓS ERRO/);
+ assert.match(html,/iniciou após aviso de erro/);
+ assert.match(html,/Alertas corrigidos por reprodução tardia: 1/);
+ assert.doesNotMatch(html,/ÚLTIMA FALHA · LINHA DO TEMPO/);
+});
 test('TDR is reachable through More and Exibição, refresh timer is cancelled on close',()=>{
  const app=source('app.js'),display=source('ui/display-panel.js'),css=source('styles.css');
  assert.match(app,/case 'tdr':content\.innerHTML=renderTdrPanel\(tdr\.snapshot\(\)\);break/);
