@@ -106,6 +106,8 @@ test('header arrows are conspicuous, self-contained vectors and bypass stale CSS
  const html=src('index.html'),css=src('styles.css'),sw=src('sw.js');
  assert.match(html,/href="\.\/styles\.css\?v=tdr-panel-20261103-v1"/);
  assert.match(sw,/gnarly-web-shell-20261103-palette-gnarly-cycle-v26/);
+ assert.doesNotMatch(sw,/gnarly-web-shell-20261103-tdr-dashboard-v25/,
+  'installed GNARLY clients must not retain the previous PWA shell');
  const ids=['search-toggle','theme-button','experience-button','lyric-style-button'];
  for(const id of ids){
   const content=html.match(new RegExp('id="'+id+'"[^>]*>(.*?)<\\/button>'))?.[1]||'';
