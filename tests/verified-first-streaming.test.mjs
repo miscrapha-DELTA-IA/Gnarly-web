@@ -34,7 +34,7 @@ test('Smart Mix prefers verified full tracks and labels strictly matched metadat
  assert.match(source,/if\(!added\.length&&\['mix','artist','album'\]\.includes\(mode\)/);
  assert.match(source,/searchNativeBackend\(query,\{limit:20,signal:controller\.signal\}\)/);
  assert.match(source,/_gnarlyPreparationRequired:track\.source==='youtube'/);
- assert.match(source,/\? ' · Mix · preparo necessário'/);
+ assert.match(source,/\?' · Mix · preparo necessário'/);
  assert.match(source,/searchReadyAudio\(query,\{limit:24,signal:controller\.signal\}\)/);
  assert.match(source,/searchAudius\(query,\{limit:20,signal:controller\.signal\}\)/);
  assert.doesNotMatch(source,/const primary=searchNativeBackend\(query,\{signal:controller\.signal\}\)/);
