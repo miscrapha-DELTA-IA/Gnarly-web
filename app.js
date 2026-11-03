@@ -411,7 +411,7 @@ function toggleMusicShortcut(){
  }
  toggleModule('controls',true);
 }
-function renderActiveSurfaces(){visual.prioritizeInteraction();if(state.sheet)renderSheet();for(const name of MODULE_NAMES)if(isModuleOpen(name))renderModule(name)}
+function renderActiveSurfaces(){visual.prioritizeInteraction();if(state.sheet&&!refreshVisualSheetSelection())renderSheet();for(const name of MODULE_NAMES)if(isModuleOpen(name))renderModule(name)}
 if(!PALETTES[state.theme])state.theme='ACID';
 if(!MATERIAL_THEMES.includes(state.materialLayer))state.materialLayer='none';
 if(!['DESLIGADO','FLUIDO','REATIVO'].includes(state.reaction))state.reaction='FLUIDO';
@@ -2348,6 +2348,37 @@ function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet)
  case 'background':content.innerHTML=`<div class="background-menu"><button class="background-menu-row" data-command="show-visual">✦ <span>Tema visual</span><b>${state.backgroundMode==='visual'?'✓':''}</b></button><button class="background-menu-row" data-command="show-cover">▧ <span>Capa do álbum</span><b>${state.backgroundMode==='cover'?'✓':''}</b></button><button class="background-menu-row" data-command="load-background">▣ <span>Minha foto · escolher / trocar</span></button><button class="background-menu-row" data-command="use-photo" ${state.backgroundURL?'':'disabled'}>✓ <span>Usar minha foto</span><b>${state.backgroundMode==='custom'?'✓':''}</b></button><button class="background-menu-row" data-command="adjust-photo" ${state.backgroundURL?'':'disabled'}>☷ <span>Ajustar foto</span></button><button class="background-menu-row danger" data-command="remove-background">× <span>Remover foto</span></button></div>${state.backgroundMode==='cover'&&state.current?.artwork?`<p class="section-note" id="artwork-quality-info">Resolução real da capa: ${safe($('#photo-background').dataset.artPixels||'verificando…')}. ${$('#photo-background').dataset.artQuality==='low'?'A fonte original tem poucos pixels; o GNARLY preserva o tamanho nativo para evitar blocos e artefatos.':'A melhor versão disponível será aplicada sem interromper a música.'}</p>`:''}${state.photoAdjust&&state.backgroundURL?`<div class="photo-editor"><p class="section-note">Ajustes locais · a imagem não é enviada ao servidor</p><label for="photo-zoom">Zoom <output id="photo-zoom-value">${Math.round(state.photoZoom*100)}%</output></label><input type="range" id="photo-zoom" data-photo-parameter="photoZoom" min="1" max="2.5" step=".025" value="${state.photoZoom}" /><label for="photo-x">Posição horizontal</label><input type="range" id="photo-x" data-photo-parameter="photoX" min="-40" max="40" step="1" value="${state.photoX}"/><label for="photo-y">Posição vertical</label><input type="range" id="photo-y" data-photo-parameter="photoY" min="-40" max="40" step="1" value="${state.photoY}"/><button class="action-button" data-command="done-photo">Concluído</button></div>`:''}`;break;
  default:content.textContent='';
  }}
+/** Keep the existing menu DOM and scroll position on a simple theme/experience
+ * selection. Only the selected CSS classes and status text change. GNARLY 2
+ * creates conditional controls, so its structural transitions still rerender.
+ * Rebuilding all swatches on each tap used to force a full modal layout/paint.
+ */
+function refreshVisualSheetSelection(){
+ const layer=state.sheet;
+ if(!['theme','experience','reaction'].includes(layer))return false;
+ const content=$('#sheet-content'),status=content?.querySelector('.visual-status small');
+ if(!status)return false;
+ const resolved=resolveVisual(state.theme,state.experience,state.reaction);
+ if(layer==='theme'){
+  const studio=!!content.querySelector('.gnarly2-studio');
+  if(studio||state.theme==='GNARLY 2')return false;
+  // The return-to-manual button is conditional for GNARLY modes.
+  const previousButton=!!content.querySelector('[data-command="restore-theme"]');
+  if(previousButton!==!!resolved.override)return false;
+ }
+ status.textContent='Tema: '+state.theme+' · Experiência: '+resolved.experienceName+' · '+state.reaction;
+ const options=layer==='theme'?'[data-theme],[data-material-layer]':
+  layer==='experience'?'[data-experience]':'[data-reaction]';
+ for(const item of content.querySelectorAll(options)){
+  let selected=false;
+  if(item.hasAttribute('data-theme'))selected=item.dataset.theme===state.theme;
+  else if(item.hasAttribute('data-material-layer'))selected=item.dataset.materialLayer===state.materialLayer;
+  else if(item.hasAttribute('data-experience'))selected=item.dataset.experience===state.experience;
+  else if(item.hasAttribute('data-reaction'))selected=item.dataset.reaction===state.reaction;
+  item.classList.toggle('active',selected);
+ }
+ return true;
+}
 function renderSheet(){renderSheetCore();if(OMNIBOX_TABS.includes(state.sheet))$('#sheet-content').insertAdjacentHTML('afterbegin',omniboxTabs());refreshMixerRails();upgradeMediaArtwork();if(state.sheet==='search')syncSearchMore();if(state.sheet==='lyric-style'){updateLyricFontFilter();observeLyricFontCards()}}
 function updateLyricFontFilter(){
  const panel=$('#sheet-content .lyric-style-panel');if(!panel)return;
