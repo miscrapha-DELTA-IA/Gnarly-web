@@ -871,6 +871,10 @@ async function loadAutoLyrics(track){
  state.lyricsLoading=!immediate||(!manual&&!immediate?.synced);state.lastLyric=-2;
  state.lyricsStatus=immediate?.status||'Procurando letra automaticamente…';
  syncLyrics();
+ // A preloaded or manual LRC may arrive after the opening precision pass.
+ // Re-arm the same caption-only clock without restarting or touching audio.
+ if(state.lyricsSynced&&!audio.paused&&!audio.ended&&!document.hidden)
+  lyricTransportSync.start();
  if(state.sheet==='karaoke')renderSheet();
  // A cached plain result must be displayed immediately AND upgraded to
  // synchronized LRC. Never freeze an unsynced karaoke result for five minutes.
