@@ -18,8 +18,11 @@ export function normalizeJamendoTrack(item){
 }
 export async function onRequestGet({request,env},fetcher=fetch){
  const key=clientId(env?.JAMENDO_CLIENT_ID);
- if(!key)return Response.json({status:'not_configured',results:[]},{status:503,
-  headers:{'Cache-Control':'no-store'}});
+ // Optional provider: no Cloudflare secret means the feature is disabled,
+ // not that the entire GNARLY service has failed. A capability response
+ // avoids repeated 503s for every search/recovery attempt.
+ if(!key)return Response.json({status:'not_configured',results:[]},{status:200,
+  headers:{'Cache-Control':'public,max-age=120','X-Gnarly-Provider':'disabled'}});
  const u=new URL(request.url),term=clean(u.searchParams.get('term'),90);
  if(!term)return Response.json({status:'invalid_query',results:[]},{status:400});
  const limit=Math.max(1,Math.min(20,Number(u.searchParams.get('limit'))||15));
