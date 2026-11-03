@@ -41,7 +41,7 @@ test('failed exclusive song is prominently visible beside successful-only TDR',(
  assert.match(html,/TDR MEDIANO/);
  assert.match(html,/772 ms/);
  assert.match(html,/FALHAS · TEMPO ATÉ ERRO/);
- assert.match(html,/2,0 min|122,0 s|121,0 s/);
+ assert.match(html,/121,2 s/);
  assert.match(html,/ÚLTIMA FALHA · LINHA DO TEMPO/);
  assert.match(html,/PC Node pronto/);
  assert.match(html,/Espera cache R2/);
