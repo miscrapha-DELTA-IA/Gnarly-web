@@ -3196,6 +3196,89 @@ async function fetchSearchDiscovery(page){
  page.finished=true;page.failed=!page.remote.length;
  refreshSearchDiscovery(page,{failed:!page.remote.length});
 }
+/** Real query suggestions live above the track list; no rerender of
+ * the active input, and no audio/video extraction while typing.
+ */
+function renderSearchSuggestions(page){
+ const host=$('#search-suggestions');
+ if(!host||state.sheet!=='search')return;
+ const query=page?.query||'',recent=omnibox.recentQueries();
+ const known=localMusicSuggestions(query,{
+  favorites:state.favorites,history:state.history,
+  playlists:playlistStore.names().flatMap(name=>playlistStore.tracks(name)).slice(0,80),
+  max:6
+ });
+ const choices=mergeSearchSuggestions(query,{
+  recent,local:known,remote:page?.remoteSuggestions||[],max:8
+ });
+ host.hidden=!choices.length;
+ if(!choices.length){host.innerHTML='';host.dataset.signature='';return}
+ const signature=choices.join('|');
+ if(host.dataset.signature===signature)return;
+ host.dataset.signature=signature;
+ host.innerHTML='<span class="search-suggestions-title">'+
+  (query?'Buscas sugeridas':'Pesquisas recentes')+'</span>'+
+  '<div class="search-suggestions-list">'+choices.map(term=>
+   '<button type="button" class="search-suggestion" data-search-suggest="'+safe(term)+
+   '" aria-label="Pesquisar '+safe(term)+'"><span class="search-suggestion-icon" aria-hidden="true">'+
+   svg('search')+'</span><span class="search-suggestion-text">'+safe(term)+
+   '</span></button>').join('')+'</div>';
+}
+/** Optional lookup, short debounce, and cancellation for superseded typing. */
+function scheduleMusicSuggestions(page,{live=false}={}){
+ if(!page?.query||page.query.length<3)return;
+ const valid=()=>searchPaging===page&&page.revision===searchCounter&&
+  !page.controller.signal.aborted;
+ page.suggestionsStarted=true;
+ const perform=async()=>{
+  if(!valid())return;
+  try{
+   page.remoteSuggestions=await fetchMusicSuggestions(page.query,{
+    signal:page.controller.signal
+   });
+  }finally{
+   if(valid()){
+    page.suggestionsReady=true;
+    renderSearchSuggestions(page);
+    if(page.nativeFinished)void attemptSearchRepair(page);
+   }
+  }
+ };
+ if(live)searchSuggestionDebounce=setTimeout(()=>{
+  searchSuggestionDebounce=null;void perform();
+ },310);
+ else void perform();
+}
+/** A native catalogue can autocorrect a typo while its browser filter still
+ * rejects the result as not literally identical to the request. Ask once for
+ * the strongly evidenced correction, never for guessed playback IDs.
+ */
+async function attemptSearchRepair(page){
+ if(searchPaging!==page||page.revision!==searchCounter||
+    page.repairStarted||page.nativeFailed||!page.nativeFinished||
+    !page.readyFinished||!page.previewFinished||
+    (page.suggestionsStarted&&!page.suggestionsReady)||
+    page.controller.signal.aborted)return;
+ if(curateOfficialSearch(page.query,{native:page.native,ready:page.ready}).songs.length)return;
+ const known=[...page.local,...state.favorites,...state.history,
+  ...playlistStore.names().flatMap(name=>playlistStore.tracks(name)).slice(0,100)];
+ const proposed=credibleCorrection(page.query,page.remoteSuggestions)||
+  suggestedKnownQuery(page.query,known);
+ if(!proposed||normalKey(proposed)===normalKey(page.query))return;
+ page.repairStarted=true;page.repairPending=true;page.correctedQuery=proposed;
+ refreshLiveResults(page);
+ try{
+  const songs=await searchNativeBackend(proposed,{
+   limit:14,signal:page.controller.signal});
+  if(searchPaging===page&&!page.controller.signal.aborted)
+   page.correctedNative=songs;
+ }catch{/* Unavailable metadata cannot trigger repeated catalogue searches. */}
+ finally{
+  if(searchPaging===page&&!page.controller.signal.aborted){
+   page.repairPending=false;refreshLiveResults(page);
+  }
+ }
+}
 function refreshLiveResults(page,info=''){
  if(searchPaging!==page||page.revision!==searchCounter)return;
  // The visible Omnibox is an official-song catalogue, NOT a public audio
@@ -3272,26 +3355,9 @@ async function fetchLiveSearch(page){
  if(!valid())return;
  enrichSearchCredits(songs,previews);
  page.previewBuffer=songs.length?[]:personalizedRank(query,previews,searchPreferenceContext());
- // Search backends are often literal. A typo in a previously listened
- // artist/title can yield zero new results, despite local fuzzy filtering.
- // Make at most ONE serialized, high-confidence spelling repair; never
- // retry a failed origin or issue a parallel burst of metadata searches.
- if(!page.nativeFailed&&query.length>=4&&
-    !curateOfficialSearch(query,{native:songs}).songs.length){
-  const known=[...page.local,...state.favorites,...state.history,
-   ...playlistStore.names().flatMap(name=>playlistStore.tracks(name)).slice(0,100)];
-  const corrected=suggestedKnownQuery(query,known);
-  if(corrected&&valid()){
-   page.correctedQuery=corrected;page.repairPending=true;
-   refreshLiveResults(page);
-   try{
-    const repaired=await searchNativeBackend(corrected,{
-     limit:14,signal:controller.signal});
-    if(valid())page.correctedNative=repaired;
-   }catch{/* Search repair must never weaken primary results. */}
-   finally{if(valid()){page.repairPending=false;refreshLiveResults(page)}}
-  }
- }
+ // The optional autocomplete can corroborate a spelling without risking
+ // a burst of simultaneous native searches.
+ if(valid())await attemptSearchRepair(page);
  if(valid())refreshLiveResults(page);
 }
 const searchResultKey=item=>normalKey((item.artist||'')+' '+(item.title||''))||String(item.id||'');
