@@ -95,6 +95,43 @@ test('explicit download is full canonical M4A only; partial Ranges/errors never 
  await assert.rejects(fetchFullAudio(track,{fetcher:async()=>new Response('<html/>',{status:200,headers:{'content-type':'text/html'}})}),/sem áudio/);
  await assert.rejects(fetchFullAudio({...track,videoId:'invalid'},{fetcher}),/identificadas/);
 });
+test('explicit Save waits for the already-accepted Guardian job then reads only completed cache',async()=>{
+ const bytes=new Uint8Array(4096).fill(42),calls=[];
+ const fetcher=async url=>{
+  calls.push(url);
+  if(url.includes('cache_only=1')&&url.includes('retry=1'))
+   return new Response(bytes,{status:200,headers:{
+    'content-type':'audio/mp4','content-length':String(bytes.byteLength)
+   }});
+  return new Response('Preparing',{status:503});
+ };
+ let waiter=0;
+ const file=await fetchFullAudio(track,{fetcher,waitForReady:async(requested)=>{
+  waiter++;assert.equal(requested.videoId,track.videoId);
+  return 'ready';
+ }});
+ assert.equal(file.size,bytes.length);
+ assert.equal(waiter,1);
+ assert.equal(calls.length,3);
+ assert.ok(calls[0].includes('/download?')&&!calls[0].includes('cache_only=1'));
+ assert.ok(calls[1].includes('cache_only=1'));
+ assert.ok(calls[2].includes('cache_only=1')&&calls[2].includes('retry=1'));
+});
+test('failed or unconfirmed PC preparation never launches another extraction or stores partial files',async()=>{
+ let calls=0,waits=0;
+ await assert.rejects(fetchFullAudio(track,{
+  fetcher:async()=>{calls++;return new Response('Not ready',{status:503})},
+  waitForReady:async()=>{waits++;return 'unavailable'}
+ }),error=>error.name==='AudioNotReadyError'&&error.status===503);
+ assert.equal(calls,2,'one initial GET and one read-only exact-ID probe');
+ assert.equal(waits,1);
+ const canceled=new AbortController();canceled.abort();
+ await assert.rejects(fetchFullAudio(track,{signal:canceled.signal,
+  fetcher:async()=>new Response('Unavailable',{status:503}),
+  waitForReady:()=>{throw Error('must not start a waiter after cancellation')}
+ }),error=>error.name==='AudioNotReadyError'||error.name==='AbortError');
+});
+
 test('offline shell caches static resources but refuses remote audio, APIs, and user data',()=>{
  const sw=readFileSync(new URL('../sw.js',import.meta.url),'utf8');
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
@@ -103,6 +140,8 @@ test('offline shell caches static resources but refuses remote audio, APIs, and 
  assert.match(sw,/url.origin===self.location.origin/);
  assert.match(sw,/url.pathname/);
  assert.match(sw,/cache.match\(request/);
+ assert.match(sw,/await Promise\.all\(essentials\.map/);
+ assert.doesNotMatch(sw,/Promise\.allSettled\(essentials/);
  assert.match(sw,/request.mode==='navigate'/);
  assert.match(build,/offline-assets.json/);
  assert.match(build,/sw.js/);

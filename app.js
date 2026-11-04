@@ -26,6 +26,7 @@ import {audioSourceCategory,recordStreamingMetric} from './lib/streaming-metrics
 import {TdrMonitor,tdrSourceForTrack} from './lib/tdr-metrics.js';
 import {renderTdrPanel,formatTdrDuration} from './ui/tdr-panel.js';
 import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-library.js';
+import {suggestedKnownQuery} from './lib/search-query-repair.js';
 import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from './lib/queue-audio-warmup.js';
 import {quickPlaylistMarkup} from './ui/quick-playlist.js';
 import {createMediaSessionController,configureBrowserAudioSession} from './lib/media-session-controller.js';
@@ -1902,7 +1903,18 @@ async function downloadOfflineTrack(track){
  try{
   // The user asked for this single track. Do not download other artists'
   // catalogs or automatically store unrequested audio.
-  const blob=await fetchFullAudio(track);
+  const blob=await fetchFullAudio(track,{
+   // An explicit Save can follow a previously accepted exact-ID PC job.
+   // Opportunistic pre-cache intentionally omits this read-only wait.
+   waitForReady:async (requested,{signal}={})=>waitForPCNodeReady(requested.videoId,{
+    prepare:false,maxWaitMs:100000,pollMs:2300,
+    current:()=>!signal?.aborted,
+    onProgress:()=>{
+     offlineStatus='Preparando o áudio completo de '+requested.title+'…';
+     if(state.sheet==='library'||state.sheet==='search')renderSheet();
+    }
+   })
+  });
   await offlineLibrary.save(track,blob);
   registerOfflineURL(track,blob);
   offlineStatus=offlineStatusText();
@@ -3110,7 +3122,7 @@ function refreshSearchDiscovery(page,{loading=false,failed=page.failed===true}={
  state.searchResults=mixDiscoveryFeed({
   favorites:locals.favorites,history:locals.history,playlists:locals.playlists,
   offline:locals.offline,queue:locals.queue,remote:page.remote,
-  previous:page.previous,current:state.current,max:36
+  previous:page.previous,current:state.current,memory:listeningMemory,max:36
  });
  const info=loading&&!state.searchResults.length?'Descobrindo músicas…':
   failed?'Catálogo indisponível. Mostrando suas músicas salvas.':'';
@@ -3189,10 +3201,16 @@ function refreshLiveResults(page,info=''){
   // full-catalogue results. Show previews only after native search settles.
   previews:page.nativeFinished?page.previews:[]
  });
- const available=result.songs;
+ // Repaired-query results are validated against that known public spelling.
+ // They keep their own canonical recording IDs: spelling never swaps audio.
+ const repaired=page.correctedQuery?
+  curateOfficialSearch(page.correctedQuery,{native:page.correctedNative||[]}).songs:[];
+ const available=[...result.songs,...repaired];
  state.searchResults=rankRequestedSongFirst(personalizedRank(page.query,[...page.local,...available],searchPreferenceContext()),page.query,{offline:isOffline});
- const waiting=!page.readyFinished||!page.nativeFinished||!page.previewFinished;
- const status=info||(!state.searchResults.length?(waiting?'Buscando músicas oficiais…':
+ const waiting=!page.readyFinished||!page.nativeFinished||!page.previewFinished||page.repairPending;
+ const status=info||(repaired.length?
+  'Busca aproximada · resultados para "'+page.correctedQuery+'".':
+  !state.searchResults.length?(waiting?'Buscando músicas oficiais…':
   page.nativeFailed||page.previewFailed?'Catálogo temporariamente indisponível. Pressione Buscar para tentar novamente.':
   'Nenhuma música oficial correspondente. Tente outros termos.'):
   page.nativeFailed?'Busca online temporariamente limitada. Exibindo resultados disponíveis e prévias quando houver.':
@@ -3245,7 +3263,27 @@ async function fetchLiveSearch(page){
  if(!valid())return;
  enrichSearchCredits(songs,previews);
  page.previewBuffer=songs.length?[]:personalizedRank(query,previews,searchPreferenceContext());
- refreshLiveResults(page);
+ // Search backends are often literal. A typo in a previously listened
+ // artist/title can yield zero new results, despite local fuzzy filtering.
+ // Make at most ONE serialized, high-confidence spelling repair; never
+ // retry a failed origin or issue a parallel burst of metadata searches.
+ if(!page.nativeFailed&&query.length>=4&&
+    !curateOfficialSearch(query,{native:songs}).songs.length){
+  const known=[...page.local,...state.favorites,...state.history,
+   ...playlistStore.names().flatMap(name=>playlistStore.tracks(name)).slice(0,100)];
+  const corrected=suggestedKnownQuery(query,known);
+  if(corrected&&valid()){
+   page.correctedQuery=corrected;page.repairPending=true;
+   refreshLiveResults(page);
+   try{
+    const repaired=await searchNativeBackend(corrected,{
+     limit:14,signal:controller.signal});
+    if(valid())page.correctedNative=repaired;
+   }catch{/* Search repair must never weaken primary results. */}
+   finally{if(valid()){page.repairPending=false;refreshLiveResults(page)}}
+  }
+ }
+ if(valid())refreshLiveResults(page);
 }
 const searchResultKey=item=>normalKey((item.artist||'')+' '+(item.title||''))||String(item.id||'');
 function appendSearchResults(items){
@@ -3384,7 +3422,9 @@ async function runSearch(raw,{live=false}={}){
   !['audius','jamendo'].includes(x.source)&&!unrequestedVersion(x,query)),native:[],ready:[],audius:[],previews:[],
   nativeOffset:0,nativeMore:false,previewOffset:0,previewMore:false,previewBuffer:[],
   loading:false,stalled:false,started:false,nativeFinished:false,readyFinished:false,audiusFinished:true,previewFinished:false,
-  nativeFailed:false,audiusFailed:false,previewFailed:false,controller:new AbortController()};
+  nativeFailed:false,audiusFailed:false,previewFailed:false,
+  correctedQuery:'',correctedNative:[],repairPending:false,
+  controller:new AbortController()};
  searchPaging=page;
  refreshLiveResults(page);
  // Keystrokes must NOT generate remote searches for every one/two-letter

@@ -26,9 +26,15 @@ self.addEventListener('install',event=>{
   // Main modules and offline tracks are cached independently as they load.
   const essentials=['/','/index.html','/app.js','/gnarly-ui.css',
                     '/manifest.webmanifest','/logo.svg'];
-  await Promise.allSettled(essentials.map(async path=>{
+  // Never activate a new revision with a half-empty shell: replacing an
+  // old functional PWA cache during a transient 503/offline visit would
+  // otherwise destroy the very fallback that keeps GNARLY usable offline.
+  // A failed install leaves the previous worker and its cache untouched.
+  await Promise.all(essentials.map(async path=>{
    const response=await fetch(path,{cache:'reload'});
-   if(response.ok&&response.type!=='opaque')await cache.put(path,response);
+   if(!response.ok||response.type==='opaque')
+    throw Error('GNARLY shell resource unavailable: '+path);
+   await cache.put(path,response);
   }));
   await self.skipWaiting();
  })());

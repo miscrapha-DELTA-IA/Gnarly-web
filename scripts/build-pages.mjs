@@ -3,6 +3,7 @@ import {cpSync,copyFileSync,mkdirSync,rmSync,existsSync,writeFileSync,readFileSy
 import {resolve,join} from 'node:path';
 import {buildSync} from 'esbuild';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 const root=resolve(import.meta.dirname,'..'),out=join(root,'dist');
 rmSync(out,{recursive:true,force:true});mkdirSync(out,{recursive:true});
 for(const file of ['index.html','styles.css','performance.css','module-dock.css','ipod-mode.css','cover-charge.css', 'karaoke-art.css','karaoke-art-refined.css','karaoke-stage.css','search-hierarchy.css','app.js','mic.html','mic.js','manifest.webmanifest','logo.svg','sw.js','_headers']){
@@ -76,6 +77,21 @@ for(const dir of ['assets','lib','ui','chunks']){
  walk(join(out,dir));
 }
 writeFileSync(join(out,'offline-assets.json'),JSON.stringify([...new Set(shell)].sort()));
+// Every deployed bundle requires a fresh offline shell revision. Previously
+// the service worker kept its November 3 cache key for multiple releases,
+// potentially keeping an outdated download error message in offline/PWA tabs.
+// Content-address this cache without touching audio, IndexedDB or profiles.
+const shellRevision=createHash('sha256')
+ .update(readFileSync(join(out,'app.js')))
+ .update(readFileSync(join(out,'gnarly-ui.css')))
+ .update(readFileSync(join(out,'index.html')))
+ .digest('hex').slice(0,12);
+const swPath=join(out,'sw.js'),swSource=readFileSync(swPath,'utf8');
+const swVersion=swSource.replace(
+ /const SHELL='gnarly-web-shell-[^']+';/,
+ "const SHELL='gnarly-web-shell-"+shellRevision+"';");
+assert.notEqual(swVersion,swSource,'Missing service worker cache revision');
+writeFileSync(swPath,swVersion);
 // Verify the exact files Cloudflare Pages will serve, not only repository sources.
 await import('./verify-pages-build.mjs');
 console.log('Cloudflare Pages staged; offline shell includes '+shell.length+' static resources; media and user data stay in IndexedDB.');
