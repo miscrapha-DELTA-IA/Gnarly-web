@@ -33,7 +33,6 @@ import {quickPlaylistMarkup} from './ui/quick-playlist.js';
 import {createMediaSessionController,configureBrowserAudioSession} from './lib/media-session-controller.js';
 import {appendUnique,commitPlaying,moveTrack,removeTrack,shuffleUpcoming,radioQuery,chooseSmartTracks,effectiveMode,offlineNextCandidate,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
 import {ListeningMemory,MEMORY_KEY,recommendTracks,retainManualQueue,markAutoTracks,sameRecording,discoverySuggestions,mixTasteArtists} from './lib/listening-intelligence.js';
-import {AdaptiveLibrary,ADAPTIVE_KEY,adaptiveReadyCandidate} from './lib/adaptive-library.js';
 import {renderSmartQueuePanel} from './ui/smart-queue-panel.js';
 import {CLASSIC_THEMES,MATERIAL_THEMES,GNARLY_MODES,NATIVE_COLOR_THEMES,CREATIVE_COLOR_THEMES,EXPERIENCES,REACTIONS,ROLE_EXPLANATION,resolveVisual,restoredThemeAfterGnarly} from './lib/visual-selection.js';
 import {StemMixer,STEM_KINDS,STEM_LABELS,STEM_PRESETS} from './lib/stem-mixer.js';
@@ -152,19 +151,14 @@ function bufferedAudioAhead(element){
 function prepareUpcomingAudio(){
  const next=state.queue[0];
  if(!next||next.source!=='youtube'||isOffline(next.id)||audio.paused||
-    state.userPaused||playbackCooldown.active()||!navigator.onLine){
-  void cacheAdaptiveReadyOffline();return;
- }
+    state.userPaused||playbackCooldown.active()||!navigator.onLine)return;
  const ahead=bufferedAudioAhead(audio);
  // POST /fast-prepare starts the exact next job without waiting for a new
  // selection. Only after safe native buffering do we transfer any bytes.
  if(ahead>=8&&canWarmImmediately({current:state.current,next,online:navigator.onLine,
   saveData:navigator.connection?.saveData,effectiveType:navigator.connection?.effectiveType
  }))void queueAudioWarmup.start(next);
- if(ahead>=25&&audio.currentTime>=8){
-  void cacheNextReadyOffline(next);
-  void cacheAdaptiveReadyOffline();
- }
+ if(ahead>=25&&audio.currentTime>=8)void cacheNextReadyOffline(next);
 }
 
 const offlineLibrary=createOfflineLibrary();
@@ -208,7 +202,7 @@ async function cacheNextReadyOffline(track){
   const blob=await fetchFullAudio(track,{signal:controller.signal,maxBytes:24*1024*1024});
   if(controller.signal.aborted||state.queue[0]?.id!==track.id||
      !navigator.onLine||selection!==playbackSelection)return;
-  await offlineLibrary.save(track,blob,{adaptive:true});
+  await offlineLibrary.save(track,blob);
   registerOfflineURL(track,blob);
   offlineStatus=offlineStatusText();
   if(state.sheet==='queue'||state.sheet==='library')renderSheet();
@@ -224,101 +218,6 @@ async function cacheNextReadyOffline(track){
 function cancelNextOfflinePrefetch(){
  offlinePrefetchOperation?.controller.abort();
  offlinePrefetchOperation=null;
-}
-/** Personal heatmap uses existing R2-only recordings; never speculate via extraction.
- * Automatic offline downloads are opt-in and share the already conservative
- * two-per-session warmup budget with the next-song pre-cache.
- */
-function adaptivePlan(){
- const playlists=playlistStore.names().flatMap(name=>playlistStore.tracks(name)).slice(0,350);
- const plan=adaptiveLibrary.plan({
-  favorites:state.favorites,history:state.history,queue:state.queue,playlists,
-  offlineIds:[...offlineURLs.keys()]
- });
- adaptiveLibrary.commitPlan(plan);
- return plan;
-}
-let adaptiveLastCacheAt=0;
-async function pruneAdaptiveCopies(plan){
- // No file explicitly imported or saved by a user is eligible for rotation.
- // Pruning is only needed at capacity; never revoke the current player or queue.
- const entries=await offlineLibrary.list();
- const managed=entries.filter(item=>item.adaptive===true),manual=entries.length-managed.length;
- const managedBudget=Math.max(0,plan.capacity-manual);
- if(managed.length<=managedBudget)return;
- const chosen=new Set(plan.all.map(item=>item.track.id));
- const protectedIds=new Set([state.current?.id,...state.queue.map(t=>t.id),...state.favorites.map(t=>t.id)]);
- const expired=managed.filter(item=>!chosen.has(item.track.id)&&!protectedIds.has(item.track.id)&&
-  Date.now()-item.savedAt>3*86400000).sort((a,b)=>a.savedAt-b.savedAt);
- const victim=expired[0];
- if(!victim)return;
- await offlineLibrary.remove(victim.track.id);
- const url=offlineURLs.get(victim.track.id);
- offlineURLs.delete(victim.track.id);
- if(url&&audio.src!==url)URL.revokeObjectURL(url);
- state.tracks=state.tracks.filter(item=>item.id!==victim.track.id);
-}
-async function cacheAdaptiveReadyOffline(){
- if(!adaptiveAutoCache||!offlineLoaded||!navigator.onLine||document.hidden||
-    !state.playing||state.userPaused||audio.paused||state.audioState!=='playing'||
-    playbackCooldown.active()||offlinePrefetchOperation||
-    offlinePrefetchAttempted.size>=OFFLINE_PREFETCH_SESSION_LIMIT||
-    navigator.connection?.saveData||
-    /^(slow-2g|2g|3g)$/i.test(navigator.connection?.effectiveType||'')||
-    (!navigator.connection?.type&&window.matchMedia?.('(pointer: coarse)')?.matches)||
-    audio.currentTime<8||bufferedAudioAhead(audio)<25||
-    Date.now()-adaptiveLastCacheAt<60000)return;
- const plan=adaptivePlan();
- const candidate=adaptiveReadyCandidate(plan,{
-  offlineIds:[...offlineURLs.keys()],
-  excludeIds:[state.current?.id,...offlinePrefetchAttempted]
- });
- if(!candidate)return;
- const quota=await navigator.storage?.estimate?.().catch(()=>null);
- if(quota&&quota.quota-quota.usage<48*1024*1024)return;
- if(offlinePrefetchOperation||state.userPaused||audio.paused||
-    bufferedAudioAhead(audio)<20||!navigator.onLine||!adaptiveAutoCache)return;
- const controller=new AbortController(),selection=playbackSelection;
- const operation={controller,id:candidate.id};
- offlinePrefetchOperation=operation;offlinePrefetchAttempted.add(candidate.id);
- offlinePending.add(candidate.id);adaptiveLastCacheAt=Date.now();
- try{
-  // cacheOnly=true cannot create a new origin job, even on a cache miss.
-  const blob=await fetchFullAudio(candidate,{
-   signal:controller.signal,cachedOnly:true,maxBytes:24*1024*1024
-  });
-  if(controller.signal.aborted||selection!==playbackSelection||
-     !navigator.onLine||!adaptiveAutoCache)return;
-  await offlineLibrary.save(candidate,blob,{adaptive:true});
-  registerOfflineURL(candidate,blob);
-  await pruneAdaptiveCopies(plan).catch(()=>{});
-  offlineStatus=offlineStatusText();
-  if(state.sheet==='library')renderSheet();
- }catch(error){
-  // A missing R2 object, a partial response or a quota failure never
-  // triggers /prepare, modifies the queue or blocks current playback.
-  console.debug('GNARLY adaptive cache skipped:',error?.name||'unavailable');
- }finally{
-  offlinePending.delete(candidate.id);
-  if(offlinePrefetchOperation===operation)offlinePrefetchOperation=null;
- }
-}
-function adaptiveLibraryMarkup(){
- const plan=adaptivePlan(),daily=plan.daily;
- const preview=(items)=>items.slice(0,5).map(item=>
-  '<span class="adaptive-library-song">'+safe(item.track.artist?item.track.artist+' · '+item.track.title:item.track.title)+'</span>').join('');
- return '<section class="adaptive-library-panel" aria-label="Biblioteca adaptativa">'+
-  '<div class="offline-library-kicker">SEU PERFIL NESTE DISPOSITIVO</div>'+
-  '<strong>Biblioteca adaptativa</strong>'+
-  '<p>'+daily.today+' músicas diferentes hoje · '+daily.activeDays+' dias de aprendizado · '+plan.candidates+' conhecidas</p>'+
-  '<div class="adaptive-library-counts"><span><b>'+plan.stable.length+'</b> estáveis</span><span><b>'+plan.rotating.length+'</b> rotativas</span>'+
-  '<span><b>'+plan.capacity+'</b> posições planejadas</span></div>'+
-  '<p class="section-note">O tamanho se ajusta às músicas diferentes ouvidas por dia. A rotação muda prioridades, não apaga arquivos pessoais.</p>'+
-  '<div class="section-head">Prioridade estável</div><div class="adaptive-library-tracks">'+(preview(plan.stable)||'<span class="section-note">Aprendendo suas preferências…</span>')+'</div>'+
-  '<div class="section-head">Descobertas rotativas</div><div class="adaptive-library-tracks">'+(preview(plan.rotating)||'<span class="section-note">Novas descobertas aparecerão aqui.</span>')+'</div>'+
-  '<div class="button-row">'+btn(adaptiveAutoCache?'✓ Pré-cache pessoal ativado':'Ativar pré-cache pessoal','adaptive-cache-toggle','alt')+'</div>'+
-  '<p class="section-note">O pré-cache é opcional: guarda até duas músicas já prontas no R2 por sessão, somente durante reprodução estável, em rede adequada e com espaço. Nunca inicia extrações e nunca apaga downloads manuais.</p>'+
-  '</section>';
 }
 // The first requested Play owns the source until audio starts or the attempt ends.
 // Subsequent clicks while loading join it rather than creating competing play().
@@ -361,8 +260,6 @@ const fullscreen=createFullscreenController(document,{
 let omniboxStorage=null;try{omniboxStorage=window.localStorage}catch{}
 const omnibox=new OmniboxSession(omniboxStorage);
 const listeningMemory=new ListeningMemory(omniboxStorage);
-const adaptiveLibrary=new AdaptiveLibrary(omniboxStorage);
-adaptiveLibrary.bootstrap(listeningMemory.events);
 const displayStore=createDisplayStore(omniboxStorage);
 const lyricFonts=new LyricFontPreferences(omniboxStorage);
 let lyricScope='song',lyricGroup='art',fontPreviewObserver=null;
@@ -370,7 +267,6 @@ const safe=(v)=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').rep
 const svg=(name)=>`<svg class="icon" aria-hidden="true"><use href="#i-${name}" /></svg>`;
 const getSetting=(name,fallback)=>{try{return localStorage.getItem('gnarly.web.'+name)||fallback}catch{return fallback}};
 const setSetting=(name,value)=>{try{localStorage.setItem('gnarly.web.'+name,String(value))}catch{/* private mode */}};
-let adaptiveAutoCache=getSetting('adaptiveAutoCache','no')==='yes';
 const parseJSON=(s,fallback)=>{try{return JSON.parse(s)}catch{return fallback}};
 // Set iOS output route before the first user-initiated audio playback.
 engine.setBackgroundPriority(true); // Automatic native iOS playback; no user-facing switch.
@@ -1934,7 +1830,7 @@ function advanceToNext(track){
  const position=Number(audio.currentTime)||0;
  if(state.current&&lastRecordedSelection===playbackSelection&&!state.userPaused&&
     !audio.ended&&position>=0&&position<Math.min(45,(audio.duration||240)*.35))
-  listeningMemory.record('skip',state.current);adaptiveLibrary.record('skip',state.current);
+  listeningMemory.record('skip',state.current);
  selectTrack(track,true,{fromQueue:true});
 }
 function prefetchNextLyrics(){
@@ -2197,7 +2093,7 @@ async function tryNativeFromOfficial(){
  button.textContent='▶ Voltar ao GNARLY';
  status.textContent='';status.hidden=true;
 }
-function toggleFavorite(){if(!state.current){openSheet('library');return}const at=state.favorites.findIndex(x=>x.id===state.current.id);if(at>=0){state.favorites.splice(at,1);listeningMemory.record('unlike',state.current);adaptiveLibrary.record('unlike',state.current);toast('Removido dos favoritos')}else{state.favorites.push(state.current);listeningMemory.record('like',state.current);adaptiveLibrary.record('like',state.current);toast('Adicionado aos favoritos')}setSetting('favorites',JSON.stringify(state.favorites.filter(x=>x.source!=='local').slice(-100)));updatePlayer();if(state.sheet==='favorites')renderSheet()}
+function toggleFavorite(){if(!state.current){openSheet('library');return}const at=state.favorites.findIndex(x=>x.id===state.current.id);if(at>=0){state.favorites.splice(at,1);listeningMemory.record('unlike',state.current);toast('Removido dos favoritos')}else{state.favorites.push(state.current);listeningMemory.record('like',state.current);toast('Adicionado aos favoritos')}setSetting('favorites',JSON.stringify(state.favorites.filter(x=>x.source!=='local').slice(-100)));updatePlayer();if(state.sheet==='favorites')renderSheet()}
 function closeQuickPlaylist(){
  const menu=$('#quick-playlist-popover'),button=$('#quick-playlist-button');
  if(!menu||!button)return;
@@ -2684,7 +2580,7 @@ function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet)
   content.innerHTML=`<form id="search-form" class="search-bar"><input id="search-term" type="search" autocomplete="off" aria-autocomplete="list" aria-controls="search-suggestions" placeholder="Música, artista, álbum ou trecho" aria-label="Omnibox GNARLY" value="${safe(state.searchTerm)}"/><button type="submit">Buscar</button></form><div id="search-suggestions" class="search-suggestions" role="region" aria-label="Sugestões de pesquisa" hidden></div><div class="section-head">Resultados da busca</div><div id="search-state" class="status-text" role="status" ${state.searchError?'':'hidden'}>${safe(state.searchError)}</div><div id="search-results">${state.searchResults.length?mediaList(state.searchResults,'search'):''}</div><div id="search-more-zone" class="search-more-zone" hidden><button id="search-more" type="button">Carregar mais resultados</button><div id="search-sentinel" aria-hidden="true"></div></div>`;
   break;
  }
- case 'library':content.innerHTML=adaptiveLibraryMarkup()+`<div class="offline-library-head"><div class="offline-library-kicker">NO SEU DISPOSITIVO</div><strong>Biblioteca offline</strong><span class="offline-library-summary">${safe(offlineStatusText())}</span><p>Arquivos importados e músicas baixadas ficam neste navegador e podem tocar sem internet. Não são sincronizados com outros aparelhos.</p><small role="status">${safe(offlineStatus)}</small></div>${btn('＋ Importar áudios','import')}<div class="section-head">Downloads · ${state.tracks.length} músicas</div>${mediaList(state.tracks,'library')}<div class="section-head">Favoritas · ${state.favorites.length}</div>${mediaList(state.favorites,'favorites')}`;break;
+ case 'library':content.innerHTML=`<div class="offline-library-head"><div class="offline-library-kicker">NO SEU DISPOSITIVO</div><strong>Biblioteca offline</strong><span class="offline-library-summary">${safe(offlineStatusText())}</span><p>Arquivos importados e músicas baixadas ficam neste navegador e podem tocar sem internet. Não são sincronizados com outros aparelhos.</p><small role="status">${safe(offlineStatus)}</small></div>${btn('＋ Importar áudios','import')}<div class="section-head">Downloads · ${state.tracks.length} músicas</div>${mediaList(state.tracks,'library')}<div class="section-head">Favoritas · ${state.favorites.length}</div>${mediaList(state.favorites,'favorites')}`;break;
  case 'playlists':{
   const options=playlistStore.names().map(name=>'<option value="'+safe(name)+'"'+
    (name===selectedPlaylist?' selected':'')+'>'+safe(name)+'</option>').join('');
@@ -2827,7 +2723,7 @@ function handleCommand(command){switch(command){
    if(!state.current){toast('Escolha uma música para atualizar o Mix.');break}
    invalidateSmartFill();state.queue=retainManualQueue(state.queue);
    void maybeFillSmartQueue({force:true});break;
- case 'taste-reset':listeningMemory.clear();adaptiveLibrary.clear();recommendationsByMode.clear();toast('Aprendizado local reiniciado. Suas playlists e favoritos foram preservados.');renderActiveSurfaces();break;
+ case 'taste-reset':listeningMemory.clear();recommendationsByMode.clear();toast('Aprendizado local reiniciado. Suas playlists e favoritos foram preservados.');renderActiveSurfaces();break;
  case 'playlist-add-current':if(!state.current){toast('Escolha uma faixa primeiro.');break}if(playlistStore.add(selectedPlaylist,state.current)){toast('Salvo em '+selectedPlaylist);if(state.sheet==='queue'||state.sheet==='playlists')renderSheet()}else toast('Faixa já salva ou não persistível.');break;
  case 'playlist-create':{const name=window.prompt('Nome da nova playlist (até 45 caracteres):');if(name===null)break;if(!playlistStore.create(name)){toast('Nome repetido ou limite de playlists atingido.');break}selectedPlaylist=name.trim().slice(0,45);setSetting('smartPlaylist',selectedPlaylist);if(state.sheet==='queue'||state.sheet==='playlists')renderSheet();break}
  case 'playlist-load':{const items=playlistStore.tracks(selectedPlaylist);const before=state.queue.length;state.queue=appendUnique(state.queue,items,state.current?.id);updatePlayer();prepareUpcomingAudio();if(state.sheet==='queue'||state.sheet==='playlists')renderSheet();toast((state.queue.length-before)+' adicionadas · '+selectedPlaylist);break}
@@ -2867,7 +2763,6 @@ function handleCommand(command){switch(command){
   document.body.append(link);link.click();link.remove();
   setTimeout(()=>URL.revokeObjectURL(url),2500);break;
  }
- case 'adaptive-cache-toggle':adaptiveAutoCache=!adaptiveAutoCache;setSetting('adaptiveAutoCache',adaptiveAutoCache?'yes':'no');if(!adaptiveAutoCache)cancelNextOfflinePrefetch();renderSheet();break;
  case 'import':$('#audio-import').click();break;case 'load-lrc':$('#lrc-import').click();break;case 'retry-lyrics':if(state.current)void loadAutoLyrics(state.current);break;case 'lyrics-ai':if(state.current&&!state.lyricsAIWorking)$('#lyrics-ai-import').click();break;case 'load-background':$('#background-import').click();break;case 'use-photo':if(state.backgroundURL){state.backgroundMode='custom';setSetting('backgroundMode','custom');applyBackground();renderActiveSurfaces()}break;case 'adjust-photo':state.photoAdjust=true;renderActiveSurfaces();break;case 'done-photo':state.photoAdjust=false;renderActiveSurfaces();break;case 'show-visual':state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();closeSheet();break;case 'show-cover':if(!state.current?.artwork){toast('Selecione uma música com capa primeiro.');break}state.backgroundMode='cover';setSetting('backgroundMode','cover');applyBackground();closeSheet();break;case 'remove-background':if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL);state.backgroundURL=null;state.photoAdjust=false;state.backgroundMode='visual';setSetting('backgroundMode','visual');applyBackground();toast('Tema animado restaurado');break;case 'clear-queue':clearNextDiscoveryStatus();state.queue.length=0;navigationRevision++;nextDiscovery=null;invalidateSmartFill();queueAudioWarmup.cancel();updatePlayer();renderActiveSurfaces();break;case 'play-youtube':if(state.current?.source==='youtube')openYouTubePlayer(state.current);break;case 'reset-audio':state.speed=1;state.reverb=0;state.bass=0;state.pitch=true;state.preset='ORIGINAL';commitSpeedMix();engine.setBass(0);engine.setReverb(0);for(const p of ['speed','bass','reverb','pitch','preset'])setSetting(p,p==='pitch'?'yes':p==='preset'?'ORIGINAL':p==='speed'?1:0);renderActiveSurfaces();break;case 'go-theme':openSheet('theme');break;case 'go-experience':openSheet('experience');break;case 'go-reaction':openSheet('reaction');break;case 'go-lyric-style':openSheet('lyric-style');break;case 'restore-theme':state.theme=restoredThemeAfterGnarly(state.previousTheme);setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();break;case 'reset-theme-only':state.theme='ACID';setSetting('theme',state.theme);updateBadges();renderActiveSurfaces();break;case 'reset-experience-only':state.experience='original';setSetting('experience',state.experience);updateBadges();renderActiveSurfaces();break;case 'reset-reaction-only':state.reaction='FLUIDO';setSetting('reaction',state.reaction);updateBadges();renderActiveSurfaces();break;case 'reset-visual':state.theme='ACID';state.experience='original';state.reaction='FLUIDO';state.materialLayer='none';for(const k of ['theme','experience','reaction','materialLayer'])setSetting(k,state[k]);updateBadges();renderActiveSurfaces();break;case 'go-stems':state.musicTab='stems';openSheet('controls');void refreshCloudStemAvailability();break;case 'go-speed-pitch':state.musicTab='speedPitch';openSheet('controls');break;case 'auto-demucs':void startDemucs();break;case 'cancel-stems':state.demucsAbort?.abort();state.stemStatus='Cancelamento solicitado; o provedor pode continuar consumindo a cota.';renderActiveSurfaces();break;case 'load-stems':if(!state.current){toast('Selecione uma música antes de importar Stems.');break}$('#stems-import').click();break;case 'reset-stems':stems.applyPreset('original');renderActiveSurfaces();break;case 'clear-stems':stems.clear();state.stemModel='';state.stemStatus='Mixer desativado. Voltamos ao áudio original.';renderActiveSurfaces();break;case 'go-controls':state.musicTab='speedPitch';openSheet('controls');break;case 'go-performance':openSheet('performance');break;case 'go-library':openSheet('library');break;case 'download-current':if(state.current)void downloadOfflineTrack(state.current);else toast('Selecione uma faixa antes de baixar');break;case 'go-playlists':openSheet('playlists');break;case 'go-favorites':openSheet('favorites');break;case 'go-queue':openSheet('queue');break;case 'karaoke-mic':void karaokeStage.toggleMic();break;case 'karaoke-expand':karaokeStage.open($('#karaoke-expand-button'));closeSheet();break;case 'karaoke-record':void toggleMicRecording();break;case 'karaoke-share-score':void shareKaraokeScore();break;case 'go-karaoke':openSheet('karaoke');karaokeStage.updateScore();break;case 'go-display':openSheet('display');break;
  case 'go-tdr':openSheet('tdr');break;
  case 'tdr-refresh':refreshTdrPanel();break;
@@ -3724,7 +3619,7 @@ function completeCurrentRecording({ghost=false}={}){
   audio.pause();state.playing=false;updatePlayer();
  }
  lyricTransportSync.stop();coverCharge.hide();playbackStallGuard.clear();
- if(lastRecordedSelection===completed){listeningMemory.record('finish',state.current);adaptiveLibrary.record('finish',state.current)}
+ if(lastRecordedSelection===completed)listeningMemory.record('finish',state.current);
  karaokeStage.scorer.finish();karaokeStage.updateScore();
  if(state.queue.length||smartMode!=='off'||!navigator.onLine&&
     offlineNextCandidate({current:state.current,queue:state.queue,
@@ -3761,7 +3656,7 @@ audio.addEventListener('stalled',()=>{
  tdr.mark(playbackSelection,'stalled');
  playbackContinuity.transportEvent('stalled');visual.prioritizeAudio('stalled');
  updateBufferingCue();
-});audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;tdr.playing(playbackSelection,{position:audio.currentTime||0,route:audioSourceCategory(audio.currentSrc||audio.src)});refreshTdrPanel();hideOptionalOfficialSource();coverCharge.hide();rebufferWatch=null;engine.setTransportPaused(false);sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);adaptiveLibrary.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
+});audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;tdr.playing(playbackSelection,{position:audio.currentTime||0,route:audioSourceCategory(audio.currentSrc||audio.src)});refreshTdrPanel();hideOptionalOfficialSource();coverCharge.hide();rebufferWatch=null;engine.setTransportPaused(false);sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
   const ms=Math.round(performance.now()-playbackStartedAt);
   const origin=audio.currentSrc.startsWith('blob:')?'offline':audio.currentSrc.includes('/fast-audio/')?'fast-edge':audio.currentSrc.includes('/audius-audio/')?'audius':audio.currentSrc.includes('/jamendo-audio/')?'jamendo':'render';
   console.debug('GNARLY startup ms',ms,'origin',origin);
@@ -3843,9 +3738,7 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden){playbackCo
  if(!document.hidden&&engine.ctx?.state==='suspended')
   void engine.resume().catch(()=>{});
 }syncSystemPlayback(true);});
-window.addEventListener('storage',event=>{if(event.key===MEMORY_KEY){listeningMemory.refresh();if(state.sheet==='search'||state.sheet==='queue')renderSheet();}
- if(event.key===ADAPTIVE_KEY){adaptiveLibrary.refresh();if(state.sheet==='library')renderSheet();}
- if(event.key==='gnarly.web.adaptiveAutoCache'){adaptiveAutoCache=event.newValue==='yes';if(!adaptiveAutoCache)cancelNextOfflinePrefetch();if(state.sheet==='library')renderSheet();}});
+window.addEventListener('storage',event=>{if(event.key===MEMORY_KEY){listeningMemory.refresh();if(state.sheet==='search'||state.sheet==='queue')renderSheet();}});
 window.addEventListener('beforeunload',()=>{coverCharge.destroy();playbackStallGuard.clear();lyricTransportSync.stop();karaokeStage.destroy();fontPreviewObserver?.disconnect();midiAnalysis.abort?.abort();lyricsAIController?.abort();metadataAbort?.abort();pads.destroy();state.micRecorder?.state==='recording'&&state.micRecorder.stop();state.micStream?.getTracks()?.forEach(x=>x.stop());state.demucsAbort?.abort();stems.clear();for(const url of offlineURLs.values())URL.revokeObjectURL(url);if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL);if(ipodSkinURL)URL.revokeObjectURL(ipodSkinURL)});
 applyPlayerSurfaceMode(state.playerSurfaceMode,{persist:false});updatePlayer();applyPanelVisibility();
 void hydrateIPodSkin();
