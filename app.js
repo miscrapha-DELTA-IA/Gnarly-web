@@ -3312,6 +3312,10 @@ audio.addEventListener('play',()=>{if(state.userPaused){audio.pause();return}if(
   recovering:!!recoveryOperation})){
   completeCurrentRecording({ghost:true});return;
  }
+ // A ready R2 successor may already be fully buffered before the first
+ // timeupdate tick. Re-check a bounded offline pre-cache after 8 s of stable
+ // playback, without waiting for another 'progress' event.
+ if(audio.currentTime>=8&&state.playing&&!audio.paused)prepareUpcomingAudio();
  // Warm one upcoming recording in the last 75 seconds, never full playlists.
  const nextTrack=state.queue[0];
  if(state.playing&&!audio.paused&&nextTrack?.source==='youtube'&&!isOffline(nextTrack?.id)&&canWarmNext({
