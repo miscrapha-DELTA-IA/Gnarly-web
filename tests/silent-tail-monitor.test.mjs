@@ -64,7 +64,7 @@ test('app uses measured waveform only when a WebAudio graph already exists',()=>
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(app,/\!\!engine\.mediaSource\&\&\!engine\.nativeTransport/);
  assert.match(app,/silentTailMonitor\.read\(engine\.analyser\)/);
- assert.match(app,/confirmedSilentTail:silent/);
+ assert.match(app,/recovering:!!recoveryOperation,confirmedSilentTail/);
  assert.match(app,/silentTailMonitor\.reset\(\)/);
  assert.match(app,/silentTailMonitor\.cancelSilence\(\)/);
 });
