@@ -3401,7 +3401,7 @@ async function runSearch(raw,{live=false}={}){
  if(delay)searchDebounce=setTimeout(()=>{searchDebounce=null;void fetchLiveSearch(page)},delay);
  else void fetchLiveSearch(page);
 }
-audio.addEventListener('play',()=>{if(state.userPaused){audio.pause();return}if(!state.current||audio.paused||audio.ended)return;updatePlayer()});audio.addEventListener('pause',()=>{silentTailMonitor.cancelSilence();lyricTransportSync.stop();engine.setTransportPaused(true);stems.pause();pads.stopLoop();playbackContinuity.resetClock();state.playing=false;if(state.userPaused||!['loading','recovering'].includes(state.audioState))coverCharge.hide();updatePlayer()});audio.addEventListener('timeupdate',()=>{
+audio.addEventListener('play',()=>{if(state.userPaused){audio.pause();return}if(!state.current||audio.paused||audio.ended)return;updatePlayer()});audio.addEventListener('pause',()=>{lyricTransportSync.stop();engine.setTransportPaused(true);silentTailMonitor.cancelSilence();stems.pause();pads.stopLoop();playbackContinuity.resetClock();state.playing=false;if(state.userPaused||!['loading','recovering'].includes(state.audioState))coverCharge.hide();updatePlayer()});audio.addEventListener('timeupdate',()=>{
  const possiblyDoubled=activeTimeline().suspectedDouble;
  // Never create/attach a WebAudio graph for this diagnosis. When native
  // playback owns the element (especially iOS), silence is UNOBSERVABLE.
