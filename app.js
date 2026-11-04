@@ -60,11 +60,13 @@ import {PlaybackStallGuard} from './lib/playback-stall-guard.js';
 import {midstreamStallConfirmed,midstreamResumeAt} from './lib/midstream-recovery.js';
 import {PlaybackContinuityMonitor,playableBufferAhead} from './lib/playback-continuity.js';
 import {mediaTimeline,shouldFinishGhostTail} from './lib/media-duration.js';
+import {SilentTailMonitor} from './lib/silent-tail-monitor.js';
 import {settleAudioStart} from './lib/audio-start-deadline.js';
 
 const $=(selector)=>document.querySelector(selector);
 const app=$('#app-shell'), background=$('#gnarly-background'), audio=$('#player-audio'), visual=new FluidVisual($('#fluid-canvas'));
 const engine=new WebAudioEngine(audio);
+const silentTailMonitor=new SilentTailMonitor();
 // Purely visual loading cue, deferred so instant cache hits never flash.
 const coverCharge=createCoverCharge({target:$('#player-section')});
 const playbackStallGuard=new PlaybackStallGuard();
@@ -77,7 +79,15 @@ const playbackContinuity=new PlaybackContinuityMonitor({
     detail.seconds,detail.ahead);
  }
 });
-window.gnarlyAudioDiagnostics=()=>playbackContinuity.snapshot();
+window.gnarlyAudioDiagnostics=()=>({
+ ...playbackContinuity.snapshot(),
+ // Only numerical values. No identifiers, searches, audio bytes or URLs.
+ audioDuration:Number.isFinite(audio.duration)?audio.duration:null,
+ catalogueDuration:Number(state.current?.duration)||null,
+ displayDuration:activeTimeline().duration,
+ suspectedDouble:activeTimeline().suspectedDouble,
+ extendedAudioConfirmed:silentTailMonitor.audibleExtended
+});
 // Local-only visual health snapshot. Never uploads device or playback details.
 window.gnarlyVisualDiagnostics=()=>visual.diagnostics();
 const stems=new StemMixer(engine,audio);
@@ -325,7 +335,8 @@ const state={
 // events re-enter the SAME playback, queue and seek functions as onscreen UI.
 function activeTimeline(){
  return mediaTimeline({mediaDuration:audio.duration,catalogDuration:state.current?.duration,
-  source:state.current?.source,offline:!!offlineAudio(state.current?.id)});
+  source:state.current?.source,offline:!!offlineAudio(state.current?.id),
+  audibleExtended:silentTailMonitor.audibleExtended});
 }
 function externalSeek(seconds,{fastSeek=false}={}){
  if(!state.current||!Number.isFinite(Number(seconds)))return;
@@ -333,7 +344,7 @@ function externalSeek(seconds,{fastSeek=false}={}){
  if(!(duration>0))return;
  const position=Math.max(0,Math.min(duration,Number(seconds)));
  try{if(fastSeek&&typeof audio.fastSeek==='function')audio.fastSeek(position);else audio.currentTime=position}catch{return}
- externalMedia.position({track:state.current,force:true});
+ externalMedia.position({track:state.current,force:true,durationOverride:activeTimeline().duration});
 }
 const externalMedia=createMediaSessionController({
  audio,session:navigator.mediaSession||null,
@@ -355,7 +366,7 @@ function syncSystemPlayback(forcePosition=false){
  const track=state.current;
  externalMedia.sync({track,artist:track?displayArtist(track):'',canNext:canAdvancePlayback(),
   playing:!!track&&!audio.paused&&!audio.ended,
-  forcePosition});
+  forcePosition,durationOverride:activeTimeline().duration});
 }
 // Expanded karaoke shares this audio element, existing LRCLIB/LRC and typography state.
 document.body.insertAdjacentHTML('beforeend',karaokeStageMarkup());
@@ -769,7 +780,7 @@ function updateProgress(){
  $('#ipod-screen-elapsed').textContent=fmt(visibleTime);
  $('#ipod-screen-duration').textContent=fmt(d);
  $('#ipod-screen-progress').style.width=(p/10)+'%';
- externalMedia.position({track:state.current});
+ externalMedia.position({track:state.current,durationOverride:d});
 }
 // Internal artwork uses a separate layer, never the app's backgroundMode.
 // Repeating two identical tiles produces a cyclic lateral loop with no reset jump.
@@ -1174,7 +1185,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false,tdrH
   playbackBackstack.push(state.current);
   if(playbackBackstack.length>30)playbackBackstack.shift();
  }
- playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();playbackIntentEpoch++;playStartOperation=null;cancelNextOfflinePrefetch();playbackContinuity.select(playbackSelection);
+ playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();playbackIntentEpoch++;playStartOperation=null;cancelNextOfflinePrefetch();playbackContinuity.select(playbackSelection);silentTailMonitor.reset();
  tdr.select(playbackSelection,{at:selectedAt,autoplay,
   source:tdrSourceForTrack(track,{offline:!!offlineAudio(track.id)}),
   readyHint:track.playbackAvailability==='r2',handoff:tdrHandoff});
@@ -3390,7 +3401,22 @@ async function runSearch(raw,{live=false}={}){
  if(delay)searchDebounce=setTimeout(()=>{searchDebounce=null;void fetchLiveSearch(page)},delay);
  else void fetchLiveSearch(page);
 }
-audio.addEventListener('play',()=>{if(state.userPaused){audio.pause();return}if(!state.current||audio.paused||audio.ended)return;updatePlayer()});audio.addEventListener('pause',()=>{lyricTransportSync.stop();engine.setTransportPaused(true);stems.pause();pads.stopLoop();playbackContinuity.resetClock();state.playing=false;if(state.userPaused||!['loading','recovering'].includes(state.audioState))coverCharge.hide();updatePlayer()});audio.addEventListener('timeupdate',()=>{
+audio.addEventListener('play',()=>{if(state.userPaused){audio.pause();return}if(!state.current||audio.paused||audio.ended)return;updatePlayer()});audio.addEventListener('pause',()=>{silentTailMonitor.cancelSilence();lyricTransportSync.stop();engine.setTransportPaused(true);stems.pause();pads.stopLoop();playbackContinuity.resetClock();state.playing=false;if(state.userPaused||!['loading','recovering'].includes(state.audioState))coverCharge.hide();updatePlayer()});audio.addEventListener('timeupdate',()=>{
+ const possiblyDoubled=activeTimeline().suspectedDouble;
+ // Never create/attach a WebAudio graph for this diagnosis. When native
+ // playback owns the element (especially iOS), silence is UNOBSERVABLE.
+ const canHear=possiblyDoubled&&!document.hidden&&
+  !!engine.mediaSource&&!engine.nativeTransport&&
+  engine.ctx?.state==='running'&&engine.transportPaused===false&&
+  !audio.paused&&!audio.seeking&&!audio.muted&&audio.volume>0&&
+  audio.readyState>=2;
+ const rms=canHear?silentTailMonitor.read(engine.analyser):null;
+ const confirmedSilentTail=silentTailMonitor.sample({
+  mediaDuration:audio.duration,catalogDuration:state.current?.duration,
+  source:state.current?.source,offline:!!offlineAudio(state.current?.id),
+  currentTime:audio.currentTime,rms,valid:canHear&&rms!==null,
+  now:performance.now(),paused:audio.paused,seeking:audio.seeking
+ });
  if(tdr.confirmProgress(playbackSelection,audio.currentTime||0))refreshTdrPanel();
  if(state.current)playbackContinuity.sample({
   position:audio.currentTime,timeMs:performance.now(),rate:audio.playbackRate,
@@ -3405,7 +3431,7 @@ audio.addEventListener('play',()=>{if(state.userPaused){audio.pause();return}if(
   mediaDuration:audio.duration,catalogDuration:state.current.duration,
   source:state.current.source,offline:!!offlineAudio(state.current.id),
   currentTime:audio.currentTime,paused:audio.paused,ended:audio.ended,
-  recovering:!!recoveryOperation})){
+  recovering:!!recoveryOperation,confirmedSilentTail})){
   completeCurrentRecording({ghost:true});return;
  }
  // A ready R2 successor may already be fully buffered before the first
@@ -3432,7 +3458,7 @@ audio.addEventListener('loadedmetadata',()=>{
   track.duration=audio.duration;
  void enrichSelectedTrack(track,activeTimeline().duration);
  void enrichOfficialAlbumArt(track);
-});audio.addEventListener('seeking',()=>playbackContinuity.transportEvent('seeking'));
+});audio.addEventListener('seeking',()=>{silentTailMonitor.cancelSilence();playbackContinuity.transportEvent('seeking')});
 audio.addEventListener('seeked',()=>{playbackContinuity.transportEvent('seeked');stems.seek();syncLyrics();karaokeStage.tick(true);if(!audio.paused&&!audio.ended)lyricTransportSync.start()});let completedPlaybackSelection=-1;
 function completeCurrentRecording({ghost=false}={}){
  if(!state.current||state.userPaused||completedPlaybackSelection===playbackSelection)return;
