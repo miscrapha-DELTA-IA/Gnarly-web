@@ -28,7 +28,7 @@ test('search repair changes only public lookup terms, not player URLs or IDs',()
  assert.match(app,/suggestedKnownQuery\(page\.query,known\)/);
  assert.match(app,/page\.repairStarted\|\|page\.nativeFailed/);
  assert.match(app,/searchNativeBackend\(proposed,\{/);
- assert.match(app,/limit:14,signal:controller\.signal/);
+ assert.match(app,/limit:14,signal:page\.controller\.signal/);
  assert.match(app,/page\.correctedNative=songs/);
  assert.match(app,/curateOfficialSearch\(page\.correctedQuery,\{native:page\.correctedNative/);
  assert.match(app,/Busca aproximada/);
