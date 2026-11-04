@@ -1055,3 +1055,16 @@ body{position:relative;min-height:100dvh;background:#05090a}
 .tdr-panel .button-row{display:flex;flex-wrap:wrap;gap:8px}
 .tdr-panel .button-row>button{min-height:40px}
 @media(max-width:380px){.tdr-stat{padding:12px 9px}.tdr-stat strong{font-size:1.35rem}.tdr-current,.tdr-phase,.tdr-attempt{padding:10px 9px}}
+
+
+/* Adaptive Library lives in the existing Library sheet, with no player overlays. */
+.adaptive-library-panel{margin:0 0 20px;padding:16px;border:1px solid rgba(255,255,255,.15);border-radius:18px;background:rgba(18,30,28,.62);max-width:100%;min-width:0;overflow-wrap:anywhere}
+.adaptive-library-panel>strong{display:block;font-size:20px;margin:3px 0 7px}
+.adaptive-library-panel>p{font-size:12px;line-height:1.5;opacity:.83;margin:6px 0 10px}
+.adaptive-library-counts{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.adaptive-library-counts span{border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);border-radius:12px;padding:8px 10px;font-size:11px}
+.adaptive-library-counts b{font-variant-numeric:tabular-nums;font-size:15px;margin-right:3px}
+.adaptive-library-tracks{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 12px}
+.adaptive-library-song{font-size:11px;max-width:100%;padding:6px 9px;border-radius:10px;background:rgba(255,255,255,.065);border:1px solid rgba(255,255,255,.09);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.adaptive-library-panel .button-row{margin-top:10px}
+@media(max-width:420px){.adaptive-library-panel{padding:12px}.adaptive-library-counts span{flex:1 1 42%}}
