@@ -178,7 +178,8 @@ async function cacheNextReadyOffline(track){
  const quota=await navigator.storage?.estimate?.().catch(()=>null);
  if(quota&&quota.quota-quota.usage<32*1024*1024)return;
  if(audio.paused||state.userPaused||!navigator.onLine||
-    bufferedAudioAhead(audio)<20||state.queue[0]?.id!==track.id)return;
+    bufferedAudioAhead(audio)<20||state.queue[0]?.id!==track.id||
+    offlinePrefetchOperation||offlinePrefetchAttempted.has(track.id))return;
  const controller=new AbortController(),selection=playbackSelection;
  const operation={controller,id:track.id};
  offlinePrefetchOperation=operation;offlinePrefetchAttempted.add(track.id);
