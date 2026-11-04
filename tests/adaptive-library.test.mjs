@@ -41,7 +41,7 @@ test('first upgrade imports only bounded actual listening events exactly once',(
   {type:'play',key:'video:invalid',at:now-1000,title:'Invalid'}
  ];
  assert.equal(lib.bootstrap(events,now),true);
- assert.equal(lib.dailyUsage(now).activeDays,0,'historical activity older than 14 days is outside daily forecast');
+ assert.equal(lib.dailyUsage(now).activeDays,1,'eligible existing listening day is retained');
  assert.equal(lib.tracks.size,1);
  assert.equal(lib.tracks.get(song(14).videoId).finishes,1);
  assert.equal(new AdaptiveLibrary(store,{now:()=>now}).bootstrap(events,now),false);
