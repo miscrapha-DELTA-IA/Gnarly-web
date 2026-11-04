@@ -150,7 +150,7 @@ test('integration maintains manual entries and only logs actual audio playback, 
  // Listening signals personalize matching results but cannot inject unrelated history.
  assert.doesNotMatch(source,/discoverySuggestions\(/);
  assert.match(source,/instantSearch\(query,options\)/);
- assert.match(source,/rankRequestedSongFirst\(personalizedRank\(page\.query,\[\.\.\.page\.local,\.\.\.available\]/);
+ assert.match(source,/rankRequestedSongFirst\(\s*personalizedRank\(page\.query,\[\.\.\.page\.local,\.\.\.available\]/);
  assert.match(source,/case 'taste-reset'/);
 });
 
