@@ -1584,7 +1584,10 @@ function stopUnresponsivePlayback(track,selection){
  }
  playbackStallGuard.clear();
  const youtube=track.source==='youtube'&&!isOffline(track.id);
- if(youtube&&midstream&&!recoveryOperation&&!midstreamRescuePending){
+ // A direct-origin rescue already owns the native element; a second watchdog
+ // must not tear down its in-flight request or start a second recovery.
+ if(midstreamRescuePending)return;
+ if(youtube&&midstream&&!recoveryOperation){
   if(midstreamRescueSelection===selection){
    // Do not loop the same damaged recording forever; keep user selection.
    state.playing=false;state.audioState='error';
