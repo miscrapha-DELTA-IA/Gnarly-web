@@ -15,7 +15,7 @@ test('blank query has two bounded, distinct searches even for a new listener',()
 test('discovery respects learned favorite artist but always includes broad exploration',()=>{
  const memory={affinityArtists:()=>['Aurora','Florence']};
  const queries=discoveryQueries({memory,now:0});
- assert.deepEqual(queries,['Aurora','hip hop']);
+ assert.deepEqual(queries,['Aurora','Florence']);
 });
 test('blank-query feed interleaves favorites history playlists and verified discoveries',()=>{
  const liked=song('AAAAAAAAAAA','Liked');
@@ -39,6 +39,12 @@ test('empty search never fabricates tracks and does not repeat across providers'
  assert.ok(!result.some(t=>t.id===first.id||t.id===same.id));
  assert.equal(result.length,1);
  assert.deepEqual(mixDiscoveryFeed({}),[]);
+});
+test('unrelated earlier searches cannot linger in personalized blank discovery',()=>{
+ const known=song('AAAAAAAAAAA','Loved'),old=song('BBBBBBBBBBB','Unrelated');
+ const results=mixDiscoveryFeed({favorites:[known],previous:[old]});
+ assert.ok(results.some(x=>x.id===known.id));
+ assert.ok(!results.some(x=>x.id===old.id));
 });
 test('discovery still shows saved tracks when remote catalogue is unavailable',()=>{
  const offline=song('AAAAAAAAAAA','Offline','local');
