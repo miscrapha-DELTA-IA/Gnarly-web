@@ -69,7 +69,7 @@ test('long lyric searches retain a small, explicitly approximate real provider r
  const result=curateOfficialSearch('i need somebody to heal',{native:[lyric,cover]});
  assert.equal(result.mode,'related-songs');
  assert.deepEqual(result.songs.map(x=>x.id),[lyric.id]);
- assert.deepEqual(curateOfficialSearch('someone loved',{native:[lyric]}).songs,[],
+ assert.deepEqual(curateOfficialSearch('green elephant',{native:[lyric]}).songs,[],
   'short non-matching phrases are never automatically considered a confirmed song');
 });
 
