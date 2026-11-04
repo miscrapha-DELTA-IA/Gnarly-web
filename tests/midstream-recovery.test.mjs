@@ -30,7 +30,7 @@ test('GNARLY rebuffer rescue is selection-bound, preserves playback position and
  assert.match(app,/trackAudioURL\(track,\{attempt:1\}\)/);
  assert.match(app,/midstreamResumeAt\(position,audio\.duration\)/);
  assert.match(app,/midstreamRescueSelection===selection/);
- assert.match(app,/state\.userPaused\|\|playbackIntentEpoch!==epoch/);
+ assert.match(app,/!state\.userPaused&&playbackIntentEpoch===epoch/);
  assert.match(app,/void resumeStalledRecording\(track,selection,audio\.currentTime\)/);
  assert.match(app,/if\(!document\.hidden&&engine\.ctx\?\.state==='suspended'/);
 });
