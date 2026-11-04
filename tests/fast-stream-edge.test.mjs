@@ -146,7 +146,7 @@ test('early next-song warmup is restricted to one eligible real recording',()=>{
  assert.equal(canWarmImmediately({current:track,next:{...next,source:'preview'}}),false);
 });
 
-test('complete progressive AAC is streamed without blocking an asynchronous R2 write',async()=>{
+test('unverified progressive AAC is streamed but never promoted into shared R2',async()=>{
  const writes=[],pending=[];
  const bucket={async get(){return null},async put(key,bytes,metadata){writes.push({key,bytes:new Uint8Array(bytes),metadata});return {}}};
  const result=await handleFastAudio({
@@ -159,10 +159,7 @@ test('complete progressive AAC is streamed without blocking an asynchronous R2 w
  assert.equal(result.headers.get('x-gnarly-playback-source'),'progressive-origin');
  assert.equal((await result.arrayBuffer()).byteLength,audio.length);
  await Promise.all(pending);
- assert.equal(writes.length,1);
- assert.equal(writes[0].key,'ABCDEFGHIJK/audio.m4a');
- assert.equal(writes[0].bytes.byteLength,audio.length);
- assert.equal(writes[0].metadata.httpMetadata.contentType,'audio/mp4');
+ assert.equal(writes.length,0,'No backend decoder attestation: do not poison R2');
 });
 test('partial or oversized origin media is never promoted into a complete R2 object',async()=>{
  let writes=0;
