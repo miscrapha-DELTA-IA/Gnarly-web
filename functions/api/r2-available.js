@@ -1,3 +1,4 @@
+import {fuzzySongMatchScore} from '../../lib/search-intent.js';
 /** Public availability index of ALREADY-CACHED, complete GNARLY R2 media.
  * Only public YouTube metadata and canonical IDs; no object URLs, private keys,
  * R2 object listing responses, or new extraction requests are exposed.
@@ -41,7 +42,16 @@ export async function onRequestGet({request,env},cache=globalThis.caches?.defaul
     if(!track||seen.has(track.id))continue;
     seen.add(track.id);
     const searchable=track.artist==='Artista não identificado'?track.title:track.artist+' '+track.title;
-    if(needle&&!normalize(searchable).includes(needle))continue;
+    // Native catalogue and verified cache must agree on query semantics:
+    // token order, small spelling errors and transpositions are supported
+    // locally. This scans only the already-bounded R2 index and NEVER
+    // launches an extraction or guesses a different song ID.
+    if(needle&&!normalize(searchable).includes(needle)&&
+       fuzzySongMatchScore({title:track.title,
+        // A placeholder is not a real credited artist; approximate matching
+        // must never turn "Artista não identificado" into an artist search.
+        artist:track.artist==='Artista não identificado'?'':track.artist
+       },needle)<82)continue;
     results.push(track);
    }
    if(!response.truncated||!response.cursor)break;

@@ -38,7 +38,7 @@ test('Smart Mix prefers verified full tracks and labels strictly matched metadat
  assert.match(source,/searchReadyAudio\(query,\{limit:24,signal:controller\.signal\}\)/);
  assert.match(source,/searchAudius\(query,\{limit:20,signal:controller\.signal\}\)/);
  assert.doesNotMatch(source,/const primary=searchNativeBackend\(query,\{signal:controller\.signal\}\)/);
- assert.match(source,/state\.searchResults=rankRequestedSongFirst\(personalizedRank/);
+ assert.match(source,/rankRequestedSongFirst\(\s*personalizedRank/);
  assert.match(source,/Catálogo · áudio não verificado/);
 });
 

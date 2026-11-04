@@ -178,3 +178,39 @@ html.gnarly-fullscreen .app-shell .quick-actions #omnibox-shell{
   padding-inline-end:max(20px,env(safe-area-inset-right,0px));
  }
 }
+
+
+/* Premium, touch-first GNARLY search suggestions. Never overlap the player,
+ * modal tabs or result scroll, and respect the existing acid-color theme. */
+.app-shell #search-suggestions[hidden]{display:none!important}
+.app-shell #search-suggestions{
+ padding:9px 5px 10px;margin:0 0 15px;
+ border-bottom:1px solid rgba(230,255,236,.13);
+}
+.app-shell .search-suggestions-title{
+ display:block;margin:0 9px 6px;
+ font-size:10px;font-weight:800;letter-spacing:.14em;
+ text-transform:uppercase;color:color-mix(in srgb,var(--acid) 70%,white);
+}
+.app-shell .search-suggestions-list{display:flex;flex-direction:column;gap:3px}
+.app-shell .search-suggestion{
+ width:100%;min-height:40px;display:flex;align-items:center;gap:11px;
+ padding:9px 11px;border-radius:12px;
+ color:#f5fbf7;text-align:left;font-size:14px;font-weight:630;
+ background:transparent;transition:background .14s,color .14s;
+}
+.app-shell .search-suggestion-icon{flex:0 0 20px;opacity:.6;color:var(--acid)}
+.app-shell .search-suggestion-icon .icon{width:18px;height:18px}
+.app-shell .search-suggestion-text{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.app-shell .search-suggestion:is(:hover,:focus-visible){
+ background:color-mix(in srgb,var(--acid) 13%,rgba(255,255,255,.04));
+ color:#fff;
+}
+.app-shell .search-suggestion:focus-visible{outline:2px solid var(--acid);outline-offset:-2px}
+@media(max-width:650px){
+ .app-shell .search-suggestion{min-height:43px;padding:10px 9px}
+ .app-shell .search-suggestions-title{font-size:10px}
+}
+@media(prefers-reduced-motion:reduce){
+ .app-shell .search-suggestion{transition:none}
+}

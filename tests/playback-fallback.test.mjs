@@ -63,7 +63,7 @@ test('HTTP 429 never silently swaps away from GNARLY; official source requires a
 test('live search waits for a meaningful query and discovery limits its backend burst',()=>{
  const app=source('app.js');
  assert.match(app,/if\(live&&query\.length<3\)\{/);
- assert.match(app,/const delay=live\?760:0/);
+ assert.match(app,/const delay=live\?520:0/);
  assert.match(app,/memory:listeningMemory\}\)\.slice\(0,2\)/);
  assert.match(app,/for\(const \[i,query\] of queries\.entries\(\)\)/,
   'two discovery queries run sequentially, never as a provider burst');
