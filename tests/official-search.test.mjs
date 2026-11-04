@@ -50,7 +50,7 @@ test('Search uses curated native music only and no Audius request on every keyst
  assert.match(area,/curateOfficialSearch\(page.query/);
  assert.doesNotMatch(area,/const audius=searchAudius\(query/);
  assert.doesNotMatch(area,/matchingIndependentTracks/);
- assert.match(app,/const delay=live\?760:0/);
+ assert.match(app,/const delay=live\?520:0/);
  const recovery=app.slice(app.indexOf('async function recoverIndependentAudio'),app.indexOf('async function recoverNativeAudio'));
  assert.match(recovery,/sourceRouter.resolve\(track/);
 });
