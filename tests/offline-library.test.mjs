@@ -78,6 +78,20 @@ test('explicit download is full canonical M4A only; partial Ranges/errors never 
  assert.ok(calls[0].url.includes('aaaaaaaaaaa'));
  assert.equal(calls[0].options.credentials,'omit');
  await assert.rejects(fetchFullAudio(track,{fetcher:async()=>new Response(bytes,{status:206,headers:{'content-type':'audio/mp4'}})}),/arquivo completo/);
+ const incomplete=async()=>new Response(bytes.slice(0,2000),{status:200,headers:{
+  'content-type':'audio/mp4','content-length':'4096'}});
+ await assert.rejects(fetchFullAudio(track,{fetcher:incomplete}),/Resposta de áudio incompleta/);
+ const unavailable=[];
+ await assert.rejects(fetchFullAudio(track,{fetcher:async url=>{
+  unavailable.push(url);return new Response('Not ready',{status:503});
+ }}),e=>e.name==='AudioNotReadyError'&&e.code==='audio_not_ready');
+ assert.equal(unavailable.length,2,'only one read-only cache probe after an unavailable origin');
+ assert.match(unavailable[1],/cache_only=1/);
+ const recovered=await fetchFullAudio(track,{fetcher:async url=>
+  url.includes('cache_only=1')
+   ?new Response(bytes,{status:200,headers:{'content-type':'audio/mp4','content-length':'4096'}})
+   :new Response('pending',{status:503})});
+ assert.equal(recovered.size,4096);
  await assert.rejects(fetchFullAudio(track,{fetcher:async()=>new Response('<html/>',{status:200,headers:{'content-type':'text/html'}})}),/sem áudio/);
  await assert.rejects(fetchFullAudio({...track,videoId:'invalid'},{fetcher}),/identificadas/);
 });
