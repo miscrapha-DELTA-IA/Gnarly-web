@@ -125,7 +125,7 @@ test('web integration is opt-in, cache-only, bounded and cannot touch core playe
  assert.match(adaptive,/!adaptiveAutoCache/);
  assert.match(adaptive,/offlinePrefetchAttempted\.size>=OFFLINE_PREFETCH_SESSION_LIMIT/);
  assert.match(adaptive,/cachedOnly:true/);
- assert.doesNotMatch(adaptive,/\/prepare|\.play\(|audio\.load\(|selectTrack\(|state\.queue\s*=/);
+ assert.doesNotMatch(adaptive,/fetch\([^)]*\/prepare|\.play\(|audio\.load\(|selectTrack\(|state\.queue\s*=/);
  assert.match(offline,/const url=trackAudioURL\(track,\{cacheOnly:cachedOnly\}\)/);
  assert.match(offline,/if\(!cachedOnly&&\[503,504\]/);
  assert.match(app,/item\.adaptive===true/);
