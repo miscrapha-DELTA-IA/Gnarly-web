@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {discoveryQueries,mixDiscoveryFeed} from '../lib/search-discovery.js';
+import {songFingerprint} from '../lib/listening-intelligence.js';
 
 const song=(id,artist='Demo',source='youtube')=>({
  id:'youtube:'+id,videoId:id,artist,title:'Canção '+id,source,duration:180
@@ -52,6 +53,34 @@ test('discovery still shows saved tracks when remote catalogue is unavailable',(
  const result=mixDiscoveryFeed({offline:[offline],playlists:[fromPlaylist],remote:[]});
  assert.deepEqual(new Set(result.map(t=>t.id)),new Set([offline.id,fromPlaylist.id]));
 });
+test('new discovery suppresses recently replayed or skipped recordings',()=>{
+ const liked=song('AAAAAAAAAAA','Taste');
+ const replay=song('BBBBBBBBBBB','Taste');
+ const fresh=song('CCCCCCCCCCC','Taste');
+ const unrelated=song('DDDDDDDDDDD','Random Artist');
+ const now=Date.now();
+ const memory={events:[{type:'play',key:songFingerprint(replay),artist:replay.artist,
+  title:replay.title,at:now},{type:'skip',key:songFingerprint(unrelated),
+  artist:unrelated.artist,title:unrelated.title,at:now}],
+  profile:()=>({artists:new Map([['taste',9]])})};
+ const feed=mixDiscoveryFeed({favorites:[liked],remote:[replay,fresh,unrelated],
+  memory,max:12});
+ assert.ok(feed.some(x=>x.id===fresh.id));
+ assert.ok(!feed.some(x=>x.id===replay.id||x.id===unrelated.id));
+});
+test('discovery caps random new artists when history supports known favorites',()=>{
+ const favorite=song('AAAAAAAAAAA','Taste');
+ const random=Array.from({length:13},(_,i)=>song(
+  String(i).padStart(11,'0'),'Unrelated'+i));
+ const feed=mixDiscoveryFeed({favorites:[favorite],remote:random,max:24});
+ const unknown=feed.filter(x=>x.artist!=='Taste');
+ assert.ok(unknown.length<=3,'at most one unrelated artist per eight positions');
+ assert.ok(feed.some(x=>x.id===favorite.id));
+ const newListener=mixDiscoveryFeed({remote:random,max:24});
+ assert.ok(newListener.length>unknown.length,
+  'people with no history must still get broad new music discovery');
+});
+
 test('search tab starts a mixed feed without typing and leaving search aborts old work on typing',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(app,/if\(which==='search'\)\{void runSearch\(state\.searchTerm,\{live:true\}\)/);
