@@ -362,7 +362,6 @@ let omniboxStorage=null;try{omniboxStorage=window.localStorage}catch{}
 const omnibox=new OmniboxSession(omniboxStorage);
 const listeningMemory=new ListeningMemory(omniboxStorage);
 const adaptiveLibrary=new AdaptiveLibrary(omniboxStorage);
-let adaptiveAutoCache=getSetting('adaptiveAutoCache','no')==='yes';
 const displayStore=createDisplayStore(omniboxStorage);
 const lyricFonts=new LyricFontPreferences(omniboxStorage);
 let lyricScope='song',lyricGroup='art',fontPreviewObserver=null;
@@ -370,6 +369,7 @@ const safe=(v)=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').rep
 const svg=(name)=>`<svg class="icon" aria-hidden="true"><use href="#i-${name}" /></svg>`;
 const getSetting=(name,fallback)=>{try{return localStorage.getItem('gnarly.web.'+name)||fallback}catch{return fallback}};
 const setSetting=(name,value)=>{try{localStorage.setItem('gnarly.web.'+name,String(value))}catch{/* private mode */}};
+let adaptiveAutoCache=getSetting('adaptiveAutoCache','no')==='yes';
 const parseJSON=(s,fallback)=>{try{return JSON.parse(s)}catch{return fallback}};
 // Set iOS output route before the first user-initiated audio playback.
 engine.setBackgroundPriority(true); // Automatic native iOS playback; no user-facing switch.
