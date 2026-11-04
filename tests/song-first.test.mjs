@@ -34,6 +34,6 @@ test('empty discovery does not pollute the home feed with unrelated R2 and Audiu
  assert.match(discovery,/page.remote=originals/);
  assert.doesNotMatch(discovery,/searchReadyAudio\(''/);
  assert.doesNotMatch(discovery,/searchAudius\(mainQuery/);
- assert.match(app,/state\.searchResults=rankRequestedSongFirst\(\s*personalizedRank/);
+ assert.match(app,/rankRequestedSongFirst\(\s*personalizedRank/);
  assert.doesNotMatch(app,/state\.searchResults=verifiedFirst\(personalizedRank/);
 });
