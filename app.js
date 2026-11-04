@@ -362,6 +362,7 @@ let omniboxStorage=null;try{omniboxStorage=window.localStorage}catch{}
 const omnibox=new OmniboxSession(omniboxStorage);
 const listeningMemory=new ListeningMemory(omniboxStorage);
 const adaptiveLibrary=new AdaptiveLibrary(omniboxStorage);
+adaptiveLibrary.bootstrap(listeningMemory.events);
 const displayStore=createDisplayStore(omniboxStorage);
 const lyricFonts=new LyricFontPreferences(omniboxStorage);
 let lyricScope='song',lyricGroup='art',fontPreviewObserver=null;
