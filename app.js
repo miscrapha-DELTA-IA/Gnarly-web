@@ -27,6 +27,7 @@ import {TdrMonitor,tdrSourceForTrack} from './lib/tdr-metrics.js';
 import {renderTdrPanel,formatTdrDuration} from './ui/tdr-panel.js';
 import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-library.js';
 import {suggestedKnownQuery} from './lib/search-query-repair.js';
+import {fetchMusicSuggestions,credibleCorrection,mergeSearchSuggestions,localMusicSuggestions} from './lib/music-autocomplete.js';
 import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from './lib/queue-audio-warmup.js';
 import {quickPlaylistMarkup} from './ui/quick-playlist.js';
 import {createMediaSessionController,configureBrowserAudioSession} from './lib/media-session-controller.js';
@@ -2576,7 +2577,7 @@ function renderVisualLayer(layer){
 function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet){
  case 'search':{
   // Live search shows personal matching suggestions immediately, then the full catalogue.
-  content.innerHTML=`<form id="search-form" class="search-bar"><input id="search-term" type="search" autocomplete="off" placeholder="Buscar música ou artista" aria-label="Omnibox GNARLY" value="${safe(state.searchTerm)}"/><button type="submit">Buscar</button></form><div class="section-head">Resultados da busca</div><div id="search-state" class="status-text" role="status" ${state.searchError?'':'hidden'}>${safe(state.searchError)}</div><div id="search-results">${state.searchResults.length?mediaList(state.searchResults,'search'):''}</div><div id="search-more-zone" class="search-more-zone" hidden><button id="search-more" type="button">Carregar mais resultados</button><div id="search-sentinel" aria-hidden="true"></div></div>`;
+  content.innerHTML=`<form id="search-form" class="search-bar"><input id="search-term" type="search" autocomplete="off" aria-autocomplete="list" aria-controls="search-suggestions" placeholder="Música, artista, álbum ou trecho" aria-label="Omnibox GNARLY" value="${safe(state.searchTerm)}"/><button type="submit">Buscar</button></form><div id="search-suggestions" class="search-suggestions" role="region" aria-label="Sugestões de pesquisa" hidden></div><div class="section-head">Resultados da busca</div><div id="search-state" class="status-text" role="status" ${state.searchError?'':'hidden'}>${safe(state.searchError)}</div><div id="search-results">${state.searchResults.length?mediaList(state.searchResults,'search'):''}</div><div id="search-more-zone" class="search-more-zone" hidden><button id="search-more" type="button">Carregar mais resultados</button><div id="search-sentinel" aria-hidden="true"></div></div>`;
   break;
  }
  case 'library':content.innerHTML=`<div class="offline-library-head"><div class="offline-library-kicker">NO SEU DISPOSITIVO</div><strong>Biblioteca offline</strong><span class="offline-library-summary">${safe(offlineStatusText())}</span><p>Arquivos importados e músicas baixadas ficam neste navegador e podem tocar sem internet. Não são sincronizados com outros aparelhos.</p><small role="status">${safe(offlineStatus)}</small></div>${btn('＋ Importar áudios','import')}<div class="section-head">Downloads · ${state.tracks.length} músicas</div>${mediaList(state.tracks,'library')}<div class="section-head">Favoritas · ${state.favorites.length}</div>${mediaList(state.favorites,'favorites')}`;break;
@@ -3043,7 +3044,11 @@ for(const el of document.querySelectorAll('[data-drawer]'))el.addEventListener('
 for(const host of [$('#sheet-content'),$('#module-dock')])host.addEventListener('pointerdown',e=>{const pad=e.target.closest('[data-dj-pad]');if(!pad||!isModuleOpen('performance')||(e.pointerType==='mouse'&&e.button!==0))return;e.preventDefault();void pads.trigger(Number(pad.dataset.djPad));},{passive:false});
 for(const host of [$('#sheet-content'),$('#module-dock')])host.addEventListener('change',e=>{if(e.target.hasAttribute('data-dj-output'))pads.setOutput(e.target.value)});
 $('#sheet-content').addEventListener('submit',e=>{if(e.target.id==='search-form'){e.preventDefault();void runSearch($('#search-term').value)}});
-function handlePanelClick(e){const target=e.target.closest('button,[data-lyric-time]');if(!target)return;if(target.dataset.djPad!==undefined){if(e.detail===0)void pads.trigger(Number(target.dataset.djPad));return}if(target.dataset.djCommand){const c=target.dataset.djCommand;if(c==='loop')void pads.startLoop().catch(()=>toast('Não foi possível iniciar o áudio do loop.'));if(c==='record')void pads.setRecording(!pads.recording).catch(()=>toast('Não foi possível iniciar a gravação.'));if(c==='clear')pads.clearPattern();if(c==='refresh')void pads.prepareSong(state.current,{force:true});if(c==='midi')void pads.connectMIDI().then(ok=>{renderModule('performance');toast(ok?'Controlador MIDI conectado aos pads.':'Controlador MIDI indisponível. Os pads funcionam sem ele.')});if(c==='analyze-midi'){if(state.current?.source==='local'&&state.current.file)void analyzeMidi(state.current.file);else $('#dj-midi-import').click()}if(c==='cancel-midi'){invalidateMidiAnalysis();renderModule('performance')}if(c==='save-midi')exportEstimatedMidi();if(c==='map-midi'){const count=pads.applyNotePattern(midiAnalysis.notes);toast(count?`${count} passos da transcrição mapeados para pads. Toque Loop para ouvir os recortes.`:'Nenhuma nota válida para mapear.');renderModule('performance')}return}if(target.id==='search-more'){void loadMoreSearchResults(true);return}if(target.dataset.omniboxTab){openSheet(target.dataset.omniboxTab);return}if(target.dataset.playerSize){displayStore.setSize(target.dataset.playerSize);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.playerMaterial){displayStore.setMaterial(target.dataset.playerMaterial);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.layout){displayStore.apply(target.dataset.layout);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.layoutGroup){displayStore.setGroup(['presets','controls'],target.dataset.layoutGroup==='all');applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.exportStyle){state.exportStyle=target.dataset.exportStyle;renderActiveSurfaces();return}if(target.dataset.exportFormat){void openShareStudio(target.dataset.exportFormat,target);return}if(target.dataset.lyricTime){audio.currentTime=Number(target.dataset.lyricTime);return}if(target.dataset.command){handleCommand(target.dataset.command);return}if(target.dataset.visualTab){openSheet(target.dataset.visualTab);return}if(target.dataset.lyricScope){if(!['song','artist','global'].includes(target.dataset.lyricScope))return;lyricScope=target.dataset.lyricScope;renderSheet();return}
+function handlePanelClick(e){const target=e.target.closest('button,[data-lyric-time]');if(!target)return;if(target.dataset.djPad!==undefined){if(e.detail===0)void pads.trigger(Number(target.dataset.djPad));return}if(target.dataset.djCommand){const c=target.dataset.djCommand;if(c==='loop')void pads.startLoop().catch(()=>toast('Não foi possível iniciar o áudio do loop.'));if(c==='record')void pads.setRecording(!pads.recording).catch(()=>toast('Não foi possível iniciar a gravação.'));if(c==='clear')pads.clearPattern();if(c==='refresh')void pads.prepareSong(state.current,{force:true});if(c==='midi')void pads.connectMIDI().then(ok=>{renderModule('performance');toast(ok?'Controlador MIDI conectado aos pads.':'Controlador MIDI indisponível. Os pads funcionam sem ele.')});if(c==='analyze-midi'){if(state.current?.source==='local'&&state.current.file)void analyzeMidi(state.current.file);else $('#dj-midi-import').click()}if(c==='cancel-midi'){invalidateMidiAnalysis();renderModule('performance')}if(c==='save-midi')exportEstimatedMidi();if(c==='map-midi'){const count=pads.applyNotePattern(midiAnalysis.notes);toast(count?`${count} passos da transcrição mapeados para pads. Toque Loop para ouvir os recortes.`:'Nenhuma nota válida para mapear.');renderModule('performance')}return}if(target.dataset.searchSuggest!==undefined){
+  const query=target.dataset.searchSuggest;
+  if(query) {const box=$('#search-term');if(box)box.value=query;void runSearch(query)}
+  return;
+ }if(target.id==='search-more'){void loadMoreSearchResults(true);return}if(target.dataset.omniboxTab){openSheet(target.dataset.omniboxTab);return}if(target.dataset.playerSize){displayStore.setSize(target.dataset.playerSize);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.playerMaterial){displayStore.setMaterial(target.dataset.playerMaterial);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.layout){displayStore.apply(target.dataset.layout);applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.layoutGroup){displayStore.setGroup(['presets','controls'],target.dataset.layoutGroup==='all');applyPanelVisibility();renderActiveSurfaces();return}if(target.dataset.exportStyle){state.exportStyle=target.dataset.exportStyle;renderActiveSurfaces();return}if(target.dataset.exportFormat){void openShareStudio(target.dataset.exportFormat,target);return}if(target.dataset.lyricTime){audio.currentTime=Number(target.dataset.lyricTime);return}if(target.dataset.command){handleCommand(target.dataset.command);return}if(target.dataset.visualTab){openSheet(target.dataset.visualTab);return}if(target.dataset.lyricScope){if(!['song','artist','global'].includes(target.dataset.lyricScope))return;lyricScope=target.dataset.lyricScope;renderSheet();return}
  if(target.dataset.fontGroup){lyricGroup=target.dataset.fontGroup;updateLyricFontFilter();return}
  if(target.hasAttribute('data-lyric-reset')){const result=lyricFonts.clear(lyricScope,state.current);state.lyricStyle=result.style;applyLyricStyle(app,result.style);void loadLyricTypeface(designFont(result.style));refreshLyricArtwork();renderSheet();return}
  if(target.hasAttribute('data-lyric-next')){const styles=allLyricStyles();const index=styles.findIndex(x=>x.id===state.lyricStyle);applyChosenLyricFont(styles[(index+1)%styles.length].id);return}
@@ -3099,7 +3104,8 @@ for(const host of [$('#sheet-content'),$('#module-dock')]){host.addEventListener
 $('#sheet-content').addEventListener('change',e=>{if(!e.target.hasAttribute('data-smart-playlist'))return;const name=e.target.value;if(!playlistStore.names().includes(name))return;selectedPlaylist=name;setSetting('smartPlaylist',name);if(smartMode==='playlist'){invalidateSmartFill();state.queue=retainManualQueue(state.queue);void maybeFillSmartQueue({force:true})}renderSheet()});
 // Live catalogue discovery: user taste only boosts actually matching recordings.
 const SEARCH_PAGE_SIZE=20,PREVIEW_PAGE_SIZE=22;
-let searchCounter=0,searchPaging=null,searchMoreObserver=null,searchDebounce=null;
+let searchCounter=0,searchPaging=null,searchMoreObserver=null,searchDebounce=null,
+ searchSuggestionDebounce=null;
 let discoveryRemoteCache={items:[],savedAt:0};
 function searchPreferenceContext(){
  return {favorites:state.favorites,history:state.history,queue:state.queue,memory:listeningMemory,originLimited:playbackCooldown.active()};
@@ -3221,6 +3227,9 @@ function refreshLiveResults(page,info=''){
 }
 function stopSearchRequests(){
  if(searchDebounce!==null){clearTimeout(searchDebounce);searchDebounce=null}
+ if(searchSuggestionDebounce!==null){
+  clearTimeout(searchSuggestionDebounce);searchSuggestionDebounce=null;
+ }
  searchPaging?.controller?.abort();
 }
 async function fetchLiveSearch(page){
@@ -3303,6 +3312,7 @@ function appendSearchResults(items){
 function displaySearch(results,info='',append=[],offset=0){
  if(state.sheet!=='search')return;
  const list=$('#search-results'),status=$('#search-state');
+ renderSearchSuggestions(searchPaging);
  if(list){
   const rendered=results.map(x=>[x.id,x.title,x.artist,x.artwork].join('|'));
   let previous=[];
@@ -3382,6 +3392,7 @@ async function loadMoreSearchResults(manual=false){
 }
 async function runSearch(raw,{live=false}={}){
  const query=String(raw||'').trim();
+ if(!live&&query&&classifyIntent(query).kind==='text')omnibox.rememberQuery(query);
  const existing=searchPaging;
  if(existing?.query===query&&existing.started&&state.sheet==='search'){
   const pending=existing.kind==='discovery'?!existing.finished:
@@ -3423,13 +3434,17 @@ async function runSearch(raw,{live=false}={}){
   nativeOffset:0,nativeMore:false,previewOffset:0,previewMore:false,previewBuffer:[],
   loading:false,stalled:false,started:false,nativeFinished:false,readyFinished:false,audiusFinished:true,previewFinished:false,
   nativeFailed:false,audiusFailed:false,previewFailed:false,
-  correctedQuery:'',correctedNative:[],repairPending:false,
+  correctedQuery:'',correctedNative:[],repairPending:false,repairStarted:false,
+  remoteSuggestions:[],suggestionsReady:false,suggestionsStarted:false,
   controller:new AbortController()};
  searchPaging=page;
  refreshLiveResults(page);
  // Keystrokes must NOT generate remote searches for every one/two-letter
  // prefix. Local favorites, history, offline and cached results remain instant.
  // Enter explicitly searches even short terms.
+ // Suggestions have a shorter debounce than full-catalogue search and
+ // are always optional. A failed suggestion endpoint never blocks songs.
+ scheduleMusicSuggestions(page,{live});
  if(live&&query.length<3){
   page.nativeFinished=true;page.readyFinished=true;page.audiusFinished=true;page.previewFinished=true;
   refreshLiveResults(page,state.searchResults.length?'':'Continue digitando ou pressione Enter para buscar.');
@@ -3437,7 +3452,7 @@ async function runSearch(raw,{live=false}={}){
  }
  // Local suggestions stay instant. Remote queries are debounced to avoid
  // hammering a single search slot for each temporary typed prefix.
- const delay=live?760:0;
+ const delay=live?520:0;
  if(delay)searchDebounce=setTimeout(()=>{searchDebounce=null;void fetchLiveSearch(page)},delay);
  else void fetchLiveSearch(page);
 }
