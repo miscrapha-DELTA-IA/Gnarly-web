@@ -47,7 +47,11 @@ export async function onRequestGet({request,env},cache=globalThis.caches?.defaul
     // locally. This scans only the already-bounded R2 index and NEVER
     // launches an extraction or guesses a different song ID.
     if(needle&&!normalize(searchable).includes(needle)&&
-       fuzzySongMatchScore(track,needle)<82)continue;
+       fuzzySongMatchScore({title:track.title,
+        // A placeholder is not a real credited artist; approximate matching
+        // must never turn "Artista não identificado" into an artist search.
+        artist:track.artist==='Artista não identificado'?'':track.artist
+       },needle)<82)continue;
     results.push(track);
    }
    if(!response.truncated||!response.cursor)break;
