@@ -3119,7 +3119,7 @@ async function fetchSearchDiscovery(page){
   return;
  }
  const queries=discoveryQueries({favorites:state.favorites,history:state.history,
-  memory:listeningMemory}).slice(0,1); // One discovery query, not a burst on every empty search.
+  memory:listeningMemory}).slice(0,2); // One taste query plus one adjacent or broad exploration, serial.
  const batches=queries.map(()=>[]);
  const merge=()=>{
   const out=[];
@@ -3137,12 +3137,22 @@ async function fetchSearchDiscovery(page){
  // Discovery must not wait for a YouTube *metadata* failure before showing
  // independent full songs: metadata can succeed while every audio URL is 429.
  const mainQuery=queries[0]||'music';
- const native=Promise.allSettled(queries.map((query,i)=>searchNativeBackend(query,{
-  limit:14,signal:page.controller.signal
- }).then(songs=>{if(valid()){batches[i]=songs;refresh();}})));
- // Only requested/affinity matches are eligible for recovery, not an
- // anonymous feed of unrelated open tracks. No provider-catalogue burst here.
- await native;
+ // Run searches serially: the backend has a single expensive upstream
+ // search slot. A parallel taste+exploration burst returned search_busy 503
+ // and turned discovery into an apparently broken empty catalogue.
+ for(const [i,query] of queries.entries()){
+  if(!valid())return;
+  try{
+   const songs=await searchNativeBackend(query,{
+    limit:14,signal:page.controller.signal
+   });
+   if(valid()){batches[i]=songs;refresh()}
+  }catch(error){
+   if(error?.name==='AbortError'||!valid())return;
+   // Keep the first successful group when exploratory metadata is offline.
+  }
+ }
+ // No extraction, audio prefetch, or anonymous provider audio requests here.
  if(!valid())return;
  // Previews are explicitly marked; they do not replace full tracks.
  if(!page.remote.length){
