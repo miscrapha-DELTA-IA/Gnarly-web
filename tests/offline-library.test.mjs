@@ -139,7 +139,9 @@ test('offline shell caches static resources but refuses remote audio, APIs, and 
  assert.match(sw,/const CORE=/);
  assert.match(sw,/url.origin===self.location.origin/);
  assert.match(sw,/url.pathname/);
- assert.match(sw,/cache.match\(request/);
+ assert.match(sw,/cache.match\\(request/);
+ assert.match(sw,/await Promise\\.all\\(essentials\\.map/);
+ assert.doesNotMatch(sw,/Promise\\.allSettled\\(essentials/);
  assert.match(sw,/request.mode==='navigate'/);
  assert.match(build,/offline-assets.json/);
  assert.match(build,/sw.js/);
