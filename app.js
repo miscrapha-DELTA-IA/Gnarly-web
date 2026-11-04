@@ -3274,7 +3274,8 @@ async function attemptSearchRepair(page){
     !page.readyFinished||!page.previewFinished||
     (page.suggestionsStarted&&!page.suggestionsReady)||
     page.controller.signal.aborted)return;
- if(curateOfficialSearch(page.query,{native:page.native,ready:page.ready}).songs.length)return;
+ const direct=curateOfficialSearch(page.query,{native:page.native,ready:page.ready});
+ if(direct.songs.length&&direct.mode!=='related-songs')return;
  const known=[...page.local,...state.favorites,...state.history,
   ...playlistStore.names().flatMap(name=>playlistStore.tracks(name)).slice(0,100)];
  const proposed=credibleCorrection(page.query,page.remoteSuggestions)||
@@ -3310,10 +3311,16 @@ function refreshLiveResults(page,info=''){
  const repaired=page.correctedQuery?
   curateOfficialSearch(page.correctedQuery,{native:page.correctedNative||[]}).songs:[];
  const available=[...result.songs,...repaired];
- state.searchResults=rankRequestedSongFirst(
-  personalizedRank(page.query,[...page.local,...available],searchPreferenceContext()),
-  page.query,{offline:isOffline,taste:track=>searchTasteScore(track,searchPreferenceContext())}
- );
+ // For genuine lyric/description queries there is no literal title match.
+ // Preserve the music provider's relevance order rather than letting an old
+ // favorite swamp an unfamiliar but genuinely matched song.
+ const providerRelated=result.mode==='related-songs'&&!repaired.length;
+ state.searchResults=providerRelated?
+  [...new Map([...page.local,...available].map(track=>[track.id,track])).values()].slice(0,8):
+  rankRequestedSongFirst(
+   personalizedRank(page.query,[...page.local,...available],searchPreferenceContext()),
+   page.query,{offline:isOffline,taste:track=>searchTasteScore(track,searchPreferenceContext())}
+  );
  const waiting=!page.readyFinished||!page.nativeFinished||!page.previewFinished||page.repairPending;
  const status=info||(repaired.length?
   'Busca aproximada · resultados para "'+page.correctedQuery+'".':
@@ -3321,6 +3328,7 @@ function refreshLiveResults(page,info=''){
   page.nativeFailed||page.previewFailed?'Catálogo temporariamente indisponível. Pressione Buscar para tentar novamente.':
   'Nenhuma música oficial correspondente. Tente outros termos.'):
   page.nativeFailed?'Busca online temporariamente limitada. Exibindo resultados disponíveis e prévias quando houver.':
+  result.mode==='related-songs'?'Resultados aproximados do catálogo · confira a gravação antes de tocar.':
   result.mode==='apple-previews'?'Prévia de até 30 segundos; áudio completo não confirmado nesta busca.':'');
  state.searchError=status;
  displaySearch(state.searchResults,status);
