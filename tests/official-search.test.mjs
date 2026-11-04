@@ -63,6 +63,16 @@ test('native YouTube hits need actual artist/title relevance; a video ID alone i
  assert.deepEqual(r.songs.map(x=>x.id),[exact.id]);
  assert.equal(relevantSong(missing,'Real Artist Original Song'),false);
 });
+test('long lyric searches retain a small, explicitly approximate real provider result set',()=>{
+ const lyric=yt('ZYXWVUTSRQP','Someone You Loved','Lewis Capaldi');
+ const cover=yt('QPRSUTVWXYZ','Someone You Loved (Cover)','Another Artist');
+ const result=curateOfficialSearch('i need somebody to heal',{native:[lyric,cover]});
+ assert.equal(result.mode,'related-songs');
+ assert.deepEqual(result.songs.map(x=>x.id),[lyric.id]);
+ assert.deepEqual(curateOfficialSearch('someone loved',{native:[lyric]}).songs,[],
+  'short non-matching phrases are never automatically considered a confirmed song');
+});
+
 test('official artist-only queries still return song catalogue recordings',()=>{
  const song=yt('IJKLMNOPQRS','Never Said Goodbye','Real Artist');
  assert.equal(curateOfficialSearch('Real Artist',{native:[song]}).songs[0].id,song.id);
