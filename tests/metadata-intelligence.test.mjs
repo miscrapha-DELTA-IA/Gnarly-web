@@ -107,7 +107,7 @@ test('metadata integration never overwrites audio graph or identity',()=>{
 });
 
 test('provider labels never appear as an artist, including legacy favorites',()=>{
- for(const artist of ['YouTube Music','YT Music','Youtube - Topic','YouTube','Artista não identificado','']){
+ for(const artist of ['YouTube Music','YT Music','Apple Music','APPLE MUSIC','iTunes','Youtube - Topic','YouTube','Artista não identificado','']){
   assert.equal(displayArtist({artist}),'Artista não identificado',artist);
  }
  assert.equal(displayArtist({artist:'AURORA'}),'AURORA');
