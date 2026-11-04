@@ -19,6 +19,32 @@ export function completeAudioLength(response){
  const match=/^bytes 0-(\d+)\/(\d+)$/.exec(response.headers.get('content-range')||'');
  return match&&Number(match[1])+1===size&&Number(match[2])===size?size:0;
 }
+/** Shallow ISO-BMFF integrity check before admitting a VERIFIED complete file
+ * to shared R2. It cannot prove decoded audio; the trusted Render origin must
+ * supply X-Gnarly-Integrity after full server-side FFmpeg verification.
+ */
+export function verifiedMP4Bytes(bytes){
+ if(!(bytes instanceof Uint8Array)||bytes.length<1024)return false;
+ const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+ const atom=(offset)=>String.fromCharCode(...bytes.subarray(offset+4,offset+8));
+ let position=0,ftyp=false,moov=false,mdat=0;
+ while(position<bytes.length){
+  if(bytes.length-position<8)return false;
+  const type=atom(position),small=view.getUint32(position),header=small===1?16:8;
+  if(bytes.length-position<header)return false;
+  const wide=small===1?view.getBigUint64(position+8):null;
+  if(wide!==null&&wide>BigInt(Number.MAX_SAFE_INTEGER))return false;
+  const size=small===1?Number(wide):small===0?bytes.length-position:small;
+  if(size<header||position+size>bytes.length)return false;
+  if(position===0&&type!=='ftyp')return false;
+  if(type==='ftyp')ftyp=ftyp||position===0&&size>=12;
+  if(type==='moov')moov=moov||size>=24;
+  if(type==='mdat')mdat+=size-header;
+  position+=size;
+ }
+ return ftyp&&moov&&mdat>=1024;
+}
+
 /** Render supplies the original filename on completed /download responses.
  * Without this, the edge write-through cache used to delete title/cover
  * metadata that Render had already stored, hiding fresh songs from Search.
@@ -36,7 +62,10 @@ export function promotionTitle(headers){
 }
 function promoteCompleteStream({upstream,bucket,id,waitUntil}){
  const size=completeAudioLength(upstream);
- if(!size||!/^audio\/(?:mp4|x-m4a)(?:;|$)/i.test(upstream.headers.get('content-type')||'')||
+ // Progressive bytes may be playable for a moment yet end with silence.
+ // Only the trusted Render origin can certify a full local FFmpeg decode.
+ if(!size||upstream.headers.get('X-Gnarly-Integrity')!=='decoded-v1'||
+  !/^audio\/(?:mp4|x-m4a)(?:;|$)/i.test(upstream.headers.get('content-type')||'')||
   !upstream.body||!bucket||typeof bucket.put!=='function'||typeof waitUntil!=='function')
   return upstream.body;
  const [browser,copy]=upstream.body.tee();
@@ -53,15 +82,15 @@ function promoteCompleteStream({upstream,bucket,id,waitUntil}){
    if(received!==size)return;
    const bytes=new Uint8Array(size);let offset=0;
    for(const part of chunks){bytes.set(part,offset);offset+=part.byteLength}
-   // A complete ISO-BMFF file begins with an ftyp box. Never promote a
-   // mislabeled HTML/error body or another codec into the shared M4A key.
-   if(bytes[4]!==102||bytes[5]!==116||bytes[6]!==121||bytes[7]!==112)return;
+   // Complete HTTP transfer is NOT proof of valid audio. Validate the
+   // container even after Render's verified full-track decoder attestation.
+   if(!verifiedMP4Bytes(bytes))return;
    const key=id+'/audio.m4a';
    // Head can be unavailable in minimal test bindings or temporarily fail
    // in R2; the valid complete media can still be promoted.
    let previous=null;
    try{previous=await bucket.head?.(key)}catch{}
-   const metadata={...(previous?.customMetadata||{})};
+   const metadata={...(previous?.customMetadata||{}),integrity:'decoded-v1'};
    const title=promotionTitle(upstream.headers);
    if(!metadata.title&&title)metadata.title=title;
    if(!metadata.thumbnail)metadata.thumbnail='https://i.ytimg.com/vi/'+id+'/hqdefault.jpg';
