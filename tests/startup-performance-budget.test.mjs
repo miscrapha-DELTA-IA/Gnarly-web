@@ -32,7 +32,7 @@ test('animated background preserves 60fps while music is active and uses idle ca
 test('service worker installs only critical assets, defers bounded offline warmup',()=>{
  const sw=source('sw.js'),app=source('app.js');
  assert.match(sw,/const essentials=\[/);
- assert.match(sw,/Promise\.allSettled\(essentials\.map/);
+ assert.match(sw,/Promise\.all\(essentials\.map/);
  assert.doesNotMatch(sw,/Promise\.allSettled\(urls\.map/);
  assert.match(sw,/await Promise\.all\(\[0,1\]\.map/);
  assert.match(sw,/GNARLY_WARM_SHELL/);
