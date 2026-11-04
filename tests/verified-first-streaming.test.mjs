@@ -39,7 +39,7 @@ test('Smart Mix prefers verified full tracks and labels strictly matched metadat
  assert.match(source,/searchAudius\(query,\{limit:20,signal:controller\.signal\}\)/);
  assert.doesNotMatch(source,/const primary=searchNativeBackend\(query,\{signal:controller\.signal\}\)/);
  assert.match(source,/state\.searchResults=rankRequestedSongFirst\(personalizedRank/);
- assert.match(source,/YouTube · áudio não verificado/);
+ assert.match(source,/Catálogo · áudio não verificado/);
 });
 
 test('artist Smart Mix can enqueue real Audius tracks rather than YouTube-only metadata',()=>{

@@ -2207,7 +2207,7 @@ function mediaList(tracks,context,startIndex=0){
  if(!tracks.length)return '<p class="section-note">Nenhuma música por aqui ainda.</p>';
  return '<div class="media-list">'+tracks.map((tr,i)=>{
   const label=safe(tr.title),attrs=' data-context="'+safe(context)+'" data-index="'+(startIndex+i)+'"';
-  const source=isOffline(tr.id)?'✓ Áudio offline':tr.playbackAvailability==='r2'?'✓ Pronta no GNARLY · R2':tr.source==='audius'?'Audius · música completa':tr.source==='preview'?'Prévia · 30 s':tr.source==='youtube'?(playbackCooldown.active()?'YouTube · origem limitada · áudio não verificado':'YouTube · áudio não verificado'):'Arquivo local';
+  const source=isOffline(tr.id)?'✓ Áudio offline':tr.playbackAvailability==='r2'?'✓ Pronta no GNARLY · R2':tr.source==='audius'?'Audius · música completa':tr.source==='preview'?'Prévia · 30 s':tr.source==='youtube'?(playbackCooldown.active()?'Catálogo · temporariamente limitado · áudio não verificado':'Catálogo · áudio não verificado'):'Arquivo local';
   const play='<button data-action="play"'+attrs+' aria-label="Reproduzir '+label+'">'+svg('play')+'</button>';
   const actions=context==='queue'
    ? '<button data-action="remove"'+attrs+' aria-label="Remover '+label+' da fila">×</button>'
@@ -3174,8 +3174,8 @@ function refreshLiveResults(page,info=''){
  // recovery after the listener selects a song.
  const result=curateOfficialSearch(page.query,{
   native:page.native,ready:page.ready,
-  // Never flash Apple preview rows and then replace them seconds later with
-  // YT Music songs. Only show the Apple fallback once native search settles.
+  // Avoid flashing short preview rows and replacing them seconds later with
+  // full-catalogue results. Show previews only after native search settles.
   previews:page.nativeFinished?page.previews:[]
  });
  const available=result.songs;
@@ -3184,8 +3184,8 @@ function refreshLiveResults(page,info=''){
  const status=info||(!state.searchResults.length?(waiting?'Buscando músicas oficiais…':
   page.nativeFailed||page.previewFailed?'Catálogo temporariamente indisponível. Pressione Buscar para tentar novamente.':
   'Nenhuma música oficial correspondente. Tente outros termos.'):
-  page.nativeFailed?'YouTube Music indisponível. Exibindo apenas metadados/prévias oficiais da Apple (não o áudio completo).':
-  result.mode==='apple-previews'?'Prévia oficial de 30 segundos; áudio completo não confirmado nesta busca.':'');
+  page.nativeFailed?'Busca online temporariamente limitada. Exibindo resultados disponíveis e prévias quando houver.':
+  result.mode==='apple-previews'?'Prévia de até 30 segundos; áudio completo não confirmado nesta busca.':'');
  state.searchError=status;
  displaySearch(state.searchResults,status);
  if(available.length)omnibox.cacheResults(page.query,available);
