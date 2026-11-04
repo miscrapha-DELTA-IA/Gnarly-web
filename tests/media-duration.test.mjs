@@ -5,20 +5,22 @@ import {mediaTimeline,shouldFinishGhostTail} from '../lib/media-duration.js';
 import {mediaPosition} from '../lib/media-session-controller.js';
 
 const recorded={source:'youtube',catalogDuration:192,mediaDuration:390,currentTime:0};
-test('catalog duration wins only when a YouTube M4A stream substantially overstates its actual duration',()=>{
+test('decoded duration wins even when catalogue metadata is radically shorter',()=>{
  const t=mediaTimeline(recorded);
  assert.equal(t.inflated,true);
- assert.equal(t.duration,192);
+ assert.equal(t.duration,390);
  assert.equal(t.mediaDuration,390);
  assert.ok(t.ghostEndAt>=200&&t.ghostEndAt<=212);
  assert.equal(mediaTimeline({...recorded,mediaDuration:192}).duration,192);
  assert.equal(mediaTimeline({...recorded,mediaDuration:210}).duration,210,
   'small drift from a known recording must not cause early termination');
 });
-test('a ghost tail finishes once the media clock goes beyond catalog end plus conservative grace',()=>{
+test('potential ghost tail never ends a healthy track unless independently confirmed',()=>{
  const t=mediaTimeline(recorded);
  assert.equal(shouldFinishGhostTail({...recorded,currentTime:t.ghostEndAt-.2}),false);
- assert.equal(shouldFinishGhostTail({...recorded,currentTime:t.ghostEndAt+.2}),true);
+ assert.equal(shouldFinishGhostTail({...recorded,currentTime:t.ghostEndAt+.2}),false,
+  'a healthy track must NEVER be cut at the catalogue duration');
+ assert.equal(shouldFinishGhostTail({...recorded,currentTime:t.ghostEndAt+.2,confirmedSilentTail:true}),true);
  assert.equal(shouldFinishGhostTail({...recorded,currentTime:t.ghostEndAt+.2,paused:true}),false);
  assert.equal(shouldFinishGhostTail({...recorded,currentTime:t.ghostEndAt+.2,ended:true}),false);
  assert.equal(shouldFinishGhostTail({...recorded,currentTime:t.ghostEndAt+.2,recovering:true}),false);
@@ -46,14 +48,14 @@ test('browser-known media duration is authoritative when there is no clear misma
 });
 test('lock-screen position, elapsed time and duration share identical bounded timeline',()=>{
  const state=mediaPosition({duration:390,currentTime:235,playbackRate:.8},{source:'youtube',duration:192});
- assert.equal(state.duration,192);
- assert.equal(state.position,192);
+ assert.equal(state.duration,390);
+ assert.equal(state.position,235);
  assert.equal(state.playbackRate,.8);
  const local=mediaPosition({duration:390,currentTime:235,playbackRate:1},{source:'local',duration:192});
  assert.equal(local.duration,390);
  assert.equal(local.position,235);
 });
-test('player integrates the same duration policy for UI, seek, playlist and phantom ended',()=>{
+test('player uses decoded duration for UI and never ends a healthy track based solely on catalogue data',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(app,/function activeTimeline\(\)/);
  assert.match(app,/const duration=activeTimeline\(\)\.duration/);

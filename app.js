@@ -57,6 +57,7 @@ import {createFullscreenController} from './lib/fullscreen-controller.js';
 import {karaokeStageMarkup,KaraokeStage} from './ui/karaoke-stage.js';
 import {createCoverCharge} from './lib/cover-charge.js';
 import {PlaybackStallGuard} from './lib/playback-stall-guard.js';
+import {midstreamStallConfirmed,midstreamResumeAt} from './lib/midstream-recovery.js';
 import {PlaybackContinuityMonitor,playableBufferAhead} from './lib/playback-continuity.js';
 import {mediaTimeline,shouldFinishGhostTail} from './lib/media-duration.js';
 import {settleAudioStart} from './lib/audio-start-deadline.js';
@@ -160,6 +161,7 @@ let offlineLoaded=false,offlineStatus='Preparando biblioteca offline…';
 const isOffline=id=>offlineURLs.has(id);
 const offlineAudio=id=>offlineURLs.get(id)||null;
 let recoveryOperation=null,independentRecoveryController=null;
+let midstreamRescueSelection=-1,midstreamRescuePending=null,rebufferWatch=null;
 /** Bounded device pre-cache. At most two unique ready recordings per
  * session, never a speculative cold download or an unverified audio source.
  * Prioritize current playback, meter limits, storage and cancellation.
@@ -1205,6 +1207,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false,tdrH
  if(!sameArtistContinuation)state.queue=retainManualQueue(state.queue);
  if(isGenericArtist(track.artist))track.artist=displayArtist(track);
  lyricWorkshop.clear();
+ rebufferWatch=null;midstreamRescueSelection=-1;
  audioDelivery.select(track);recoveryOperation=null;state.userPaused=false;
  state.demucsAbort?.abort();metadataAbort?.abort();invalidateMidiAnalysis();lyricsAIController?.abort();state.lyricsAIWorking=false;pads.resetSong();stems.clear();state.stemModel='';state.stemStatus='Escolha quatro Stems ou solicite separação automática.';
  closeYouTubePlayer();audio.pause();state.playing=false;state.current=track;
@@ -1508,15 +1511,93 @@ async function recoverNativeAudio(track,initialError=null){
  recoveryOperation=operation;
  try{return await operation}finally{if(recoveryOperation===operation)recoveryOperation=null;}
 }
+/** A single direct-origin retry for a song that REALLY stopped midtrack.
+ * Keep the user's playback clock and selected video ID. Do not run /stream
+ * extraction, change songs, or reset the queue during the source change.
+ * The existing recovery handles a failed retry; one rescue per selection
+ * prevents endless requests when an upstream cached asset is malformed.
+ */
+async function resumeStalledRecording(track,selection,position){
+ if(midstreamRescuePending||midstreamRescueSelection===selection)return false;
+ midstreamRescueSelection=selection;
+ const epoch=playbackIntentEpoch;
+ const current=()=>state.current===track&&playbackSelection===selection&&
+  !state.userPaused&&playbackIntentEpoch===epoch;
+ const url=trackAudioURL(track,{attempt:1});
+ if(!url||!current())return false;
+ const restore=()=>{
+  if(!current()||audio.readyState<1)return;
+  const seek=midstreamResumeAt(position,audio.duration);
+  if(seek>0&&Math.abs((Number(audio.currentTime)||0)-seek)>1){
+   try{audio.currentTime=seek}catch{}
+  }
+ };
+ const task=(async()=>{
+  state.audioState='recovering';
+  reportAudioStatus('Restabelecendo trecho interrompido, sem trocar a música…');
+  audio.pause();
+  audio.preload='auto';
+  audio.src=new URL(url,location.href).href;
+  engine.restoreSpeed();
+  audio.addEventListener('loadedmetadata',restore);
+  audio.addEventListener('canplay',restore);
+  try{
+   const start=audio.play(),unlock=resumePlayerAudio();
+   await settleAudioStart(start,unlock,{timeoutMs:7500});
+   if(!current())return false;
+   restore();
+   coverCharge.hide();state.playing=true;state.audioState='playing';
+   state.playbackError='';reportAudioStatus('');updatePlayer();
+   signalPlaybackMetric('recovered_audio');
+   return true;
+  }catch(error){
+   if(!current())return false;
+   // A separate origin may still be unavailable or limited. The existing
+   // bounded exact-ID/verified-source recovery owns the remaining attempts.
+   audioDelivery.attempt=Math.max(1,audioDelivery.attempt);
+   audio.pause();audio.removeAttribute('src');audio.load();
+   state.playing=false;state.audioState='recovering';
+   return await recoverNativeAudio(track,error);
+  }finally{
+   audio.removeEventListener('loadedmetadata',restore);
+   audio.removeEventListener('canplay',restore);
+  }
+ })();
+ midstreamRescuePending=task;
+ try{return await task}finally{
+  if(midstreamRescuePending===task)midstreamRescuePending=null;
+ }
+}
 /** Prevent an unresolved media play() or recurring waiting events from
  * leaving a permanent AJUSTANDO SINAL overlay. Keep selection unchanged.
  */
 function stopUnresponsivePlayback(track,selection){
  if(state.current!==track||playbackSelection!==selection||state.userPaused)return;
  if(!recoveryOperation)signalPlaybackMetric('watchdog');
- if(audio.readyState>=3&&!audio.paused){playbackStallGuard.clear();coverCharge.hide();return}
+ const midstream=midstreamStallConfirmed({
+  phase:rebufferWatch?.selection===selection?'rebuffer':'startup',
+  startedAt:rebufferWatch?.position,position:audio.currentTime,
+  duration:audio.duration,paused:audio.paused,ended:audio.ended,seeking:audio.seeking
+ });
+ if(audio.readyState>=3&&!audio.paused&&!midstream){
+  playbackStallGuard.clear();coverCharge.hide();return;
+ }
  playbackStallGuard.clear();
  const youtube=track.source==='youtube'&&!isOffline(track.id);
+ // A direct-origin rescue already owns the native element; a second watchdog
+ // must not tear down its in-flight request or start a second recovery.
+ if(midstreamRescuePending)return;
+ if(youtube&&midstream&&!recoveryOperation){
+  if(midstreamRescueSelection===selection){
+   // Do not loop the same damaged recording forever; keep user selection.
+   state.playing=false;state.audioState='error';
+   audio.pause();
+   reportAudioError('O áudio desta gravação foi interrompido. Tente reproduzir novamente.');
+   updatePlayer();return;
+  }
+  void resumeStalledRecording(track,selection,audio.currentTime);
+  return;
+ }
  // Stop the hung browser request; unlike pause(), do not mark an involuntary
  // transport timeout as a user pause. Read the real origin status and try
  // existing R2 or an exact independent recording without re-extracting.
@@ -1546,6 +1627,10 @@ function stopUnresponsivePlayback(track,selection){
  updatePlayer();
 }
 function watchPlayback(track,selection,phase='startup'){
+ if(phase==='rebuffer'){
+  if(rebufferWatch?.selection!==selection)
+   rebufferWatch={selection,position:Number(audio.currentTime)||0};
+ }else rebufferWatch=null;
  playbackStallGuard.arm({selection,phase,onTimeout:()=>stopUnresponsivePlayback(track,selection)});
 }
 
@@ -3388,7 +3473,7 @@ audio.addEventListener('stalled',()=>{
  tdr.mark(playbackSelection,'stalled');
  playbackContinuity.transportEvent('stalled');visual.prioritizeAudio('stalled');
  updateBufferingCue();
-});audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;tdr.playing(playbackSelection,{position:audio.currentTime||0,route:audioSourceCategory(audio.currentSrc||audio.src)});refreshTdrPanel();hideOptionalOfficialSource();coverCharge.hide();engine.setTransportPaused(false);sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
+});audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;tdr.playing(playbackSelection,{position:audio.currentTime||0,route:audioSourceCategory(audio.currentSrc||audio.src)});refreshTdrPanel();hideOptionalOfficialSource();coverCharge.hide();rebufferWatch=null;engine.setTransportPaused(false);sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
   const ms=Math.round(performance.now()-playbackStartedAt);
   const origin=audio.currentSrc.startsWith('blob:')?'offline':audio.currentSrc.includes('/fast-audio/')?'fast-edge':audio.currentSrc.includes('/audius-audio/')?'audius':audio.currentSrc.includes('/jamendo-audio/')?'jamendo':'render';
   console.debug('GNARLY startup ms',ms,'origin',origin);
@@ -3465,7 +3550,11 @@ window.addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select
  if(routeMenuKeyboard(e))return;
  if(e.code==='Space'){e.preventDefault();state.playing?pause():void play()}if(e.code==='Escape'){if(!$('#player-surface-menu').hidden){e.preventDefault();closePlayerSurfaceMenu(true);return}closeSheet();closeYouTubePlayer()};if(e.key==='ArrowRight'&&state.current)audio.currentTime=Math.min(audio.duration||0,audio.currentTime+5);if(e.key==='ArrowLeft'&&state.current)audio.currentTime=Math.max(0,audio.currentTime-5)});
 window.addEventListener('dragover',e=>{if(e.dataTransfer?.types.includes('Files')){e.preventDefault();app.classList.add('dragover')}});window.addEventListener('dragleave',e=>{if(!e.relatedTarget)app.classList.remove('dragover')});window.addEventListener('drop',e=>{e.preventDefault();app.classList.remove('dragover');importAudio(e.dataTransfer?.files||[])});
-document.addEventListener('visibilitychange',()=>{if(document.hidden){playbackContinuity.resetClock();lyricTransportSync.stop();karaokeStage.mic.stop();karaokeStage.scorer.stop();karaokeStage.updateScore();if(pads.running)pads.stopLoop();}else if(!audio.paused&&!audio.ended&&state.current)lyricTransportSync.start();syncSystemPlayback(true);});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){playbackContinuity.resetClock();lyricTransportSync.stop();karaokeStage.mic.stop();karaokeStage.scorer.stop();karaokeStage.updateScore();if(pads.running)pads.stopLoop();}else if(!audio.paused&&!audio.ended&&state.current){
+ lyricTransportSync.start();
+ if(!document.hidden&&engine.ctx?.state==='suspended')
+  void engine.resume().catch(()=>{});
+}syncSystemPlayback(true);});
 window.addEventListener('storage',event=>{if(event.key===MEMORY_KEY){listeningMemory.refresh();if(state.sheet==='search'||state.sheet==='queue')renderSheet();}});
 window.addEventListener('beforeunload',()=>{coverCharge.destroy();playbackStallGuard.clear();lyricTransportSync.stop();karaokeStage.destroy();fontPreviewObserver?.disconnect();midiAnalysis.abort?.abort();lyricsAIController?.abort();metadataAbort?.abort();pads.destroy();state.micRecorder?.state==='recording'&&state.micRecorder.stop();state.micStream?.getTracks()?.forEach(x=>x.stop());state.demucsAbort?.abort();stems.clear();for(const url of offlineURLs.values())URL.revokeObjectURL(url);if(state.backgroundURL)URL.revokeObjectURL(state.backgroundURL);if(ipodSkinURL)URL.revokeObjectURL(ipodSkinURL)});
 applyPlayerSurfaceMode(state.playerSurfaceMode,{persist:false});updatePlayer();applyPanelVisibility();
