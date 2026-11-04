@@ -31,6 +31,22 @@ test('local-only adaptive planner has no provider download, user ID or audio byt
  assert.equal(new AdaptiveLibrary(store,{now:()=>now}).dailyUsage(now).today,1);
 });
 
+test('first upgrade imports only bounded actual listening events exactly once',()=>{
+ const now=Date.UTC(2026,10,4,15),store=storage(),lib=new AdaptiveLibrary(store,{now:()=>now});
+ const events=[
+  {type:'play',key:'video:'+song(14).videoId,at:now-2*DAY,title:'Old song',artist:'Known'},
+  {type:'finish',key:'video:'+song(14).videoId,at:now-2*DAY+1000,title:'Old song',artist:'Known'},
+  {type:'like',key:'song:artist|title',at:now-2000,title:'Ambiguous'},
+  {type:'play',key:'video:'+song(15).videoId,at:now-40*DAY,title:'Expired'},
+  {type:'play',key:'video:invalid',at:now-1000,title:'Invalid'}
+ ];
+ assert.equal(lib.bootstrap(events,now),true);
+ assert.equal(lib.dailyUsage(now).activeDays,0,'historical activity older than 14 days is outside daily forecast');
+ assert.equal(lib.tracks.size,1);
+ assert.equal(lib.tracks.get(song(14).videoId).finishes,1);
+ assert.equal(new AdaptiveLibrary(store,{now:()=>now}).bootstrap(events,now),false);
+ assert.equal(new AdaptiveLibrary(store,{now:()=>now}).tracks.size,1);
+});
 test('80 different songs per day create a personalized 55/25-ish stable/rotation split',()=>{
  const now=Date.UTC(2026,10,4,15),store=storage(),lib=new AdaptiveLibrary(store,{now:()=>now});
  for(let n=0;n<80;n++)lib.record('play',song(n),now-n);
