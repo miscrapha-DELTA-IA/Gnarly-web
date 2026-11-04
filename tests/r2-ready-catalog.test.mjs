@@ -47,6 +47,15 @@ test('public R2 search never starts extraction and has bounded listing',async()=
  assert.equal(data.results[0].id,'youtube:AAAAAAAAAAA');
  assert.ok(!JSON.stringify(data).includes('private/file.m4a'));
 });
+test('already cached R2 recordings can be found with a safe misspelling',async()=>{
+ const r=await onRequestGet({
+  request:new Request('https://gnarly.test/api/r2-available?term=electronci'),
+  env:{GNARLY_AUDIO_R2:{list:async()=>({objects:rows,truncated:false})}}
+ },null);
+ assert.equal(r.status,200);
+ assert.deepEqual((await r.json()).results.map(x=>x.videoId),['AAAAAAAAAAA']);
+});
+
 test('R2 index empty query provides a genuinely cached discovery set',async()=>{
  const res=await onRequestGet({request:new Request('https://gnarly.test/api/r2-available?limit=3'),
   env:{GNARLY_AUDIO_R2:{list:async()=>({objects:rows,truncated:false})}}},null);
