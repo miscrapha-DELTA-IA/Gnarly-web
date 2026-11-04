@@ -6,6 +6,7 @@ import {ROOM_PATTERN} from '../lib/karaoke-relay-protocol.js';
 export {KaraokeRoom} from './karaoke-relay.js';
 import {onRequestGet as catalog} from '../functions/api/catalog.js';
 import {onRequestGet as omnibox} from '../functions/api/omnibox.js';
+import {onRequestGet as suggest} from '../functions/api/suggest.js';
 import {onRequestGet as audiusSearch} from '../functions/api/audius-search.js';
 import {onRequestGet as jamendoSearch} from '../functions/api/jamendo-search.js';
 import {onRequestGet as r2Available} from '../functions/api/r2-available.js';
@@ -23,6 +24,7 @@ const ALLOW=Object.freeze({
   '/api/jamendo-search': {method:'GET', handler:jamendoSearch},
   '/api/r2-available': {method:'GET', handler:r2Available},
   '/api/omnibox': {method:'GET', handler:omnibox},
+  '/api/suggest': {method:'GET', handler:suggest},
   '/api/metadata': {method:'GET', handler:metadata},
   '/api/artwork': {method:'GET', handler:artwork},
   '/api/stems-ticket': {method:'POST', handler:stemsTicket}
