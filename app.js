@@ -3044,6 +3044,21 @@ for(const el of document.querySelectorAll('[data-drawer]'))el.addEventListener('
 for(const host of [$('#sheet-content'),$('#module-dock')])host.addEventListener('pointerdown',e=>{const pad=e.target.closest('[data-dj-pad]');if(!pad||!isModuleOpen('performance')||(e.pointerType==='mouse'&&e.button!==0))return;e.preventDefault();void pads.trigger(Number(pad.dataset.djPad));},{passive:false});
 for(const host of [$('#sheet-content'),$('#module-dock')])host.addEventListener('change',e=>{if(e.target.hasAttribute('data-dj-output'))pads.setOutput(e.target.value)});
 $('#sheet-content').addEventListener('submit',e=>{if(e.target.id==='search-form'){e.preventDefault();void runSearch($('#search-term').value)}});
+$('#sheet-content').addEventListener('keydown',e=>{
+ const input=e.target.id==='search-term',button=e.target.closest?.('[data-search-suggest]');
+ if(!input&&!button)return;
+ const choices=[...($('#search-suggestions')?.querySelectorAll('[data-search-suggest]')||[])];
+ if(e.key==='Escape'&&button){
+  e.preventDefault();$('#search-term')?.focus();return;
+ }
+ if((e.key==='ArrowDown'||e.key==='ArrowUp')&&choices.length){
+  e.preventDefault();
+  const index=button?choices.indexOf(button):-1;
+  const next=e.key==='ArrowDown'?(index+1)%choices.length:
+   index<=0?-1:index-1;
+  if(next<0)$('#search-term')?.focus();else choices[next].focus();
+ }
+});
 function handlePanelClick(e){const target=e.target.closest('button,[data-lyric-time]');if(!target)return;if(target.dataset.djPad!==undefined){if(e.detail===0)void pads.trigger(Number(target.dataset.djPad));return}if(target.dataset.djCommand){const c=target.dataset.djCommand;if(c==='loop')void pads.startLoop().catch(()=>toast('Não foi possível iniciar o áudio do loop.'));if(c==='record')void pads.setRecording(!pads.recording).catch(()=>toast('Não foi possível iniciar a gravação.'));if(c==='clear')pads.clearPattern();if(c==='refresh')void pads.prepareSong(state.current,{force:true});if(c==='midi')void pads.connectMIDI().then(ok=>{renderModule('performance');toast(ok?'Controlador MIDI conectado aos pads.':'Controlador MIDI indisponível. Os pads funcionam sem ele.')});if(c==='analyze-midi'){if(state.current?.source==='local'&&state.current.file)void analyzeMidi(state.current.file);else $('#dj-midi-import').click()}if(c==='cancel-midi'){invalidateMidiAnalysis();renderModule('performance')}if(c==='save-midi')exportEstimatedMidi();if(c==='map-midi'){const count=pads.applyNotePattern(midiAnalysis.notes);toast(count?`${count} passos da transcrição mapeados para pads. Toque Loop para ouvir os recortes.`:'Nenhuma nota válida para mapear.');renderModule('performance')}return}if(target.dataset.searchSuggest!==undefined){
   const query=target.dataset.searchSuggest;
   if(query) {const box=$('#search-term');if(box)box.value=query;void runSearch(query)}
