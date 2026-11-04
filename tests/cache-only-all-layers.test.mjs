@@ -4,7 +4,14 @@ import {handleFastAudio} from '../functions/fast-audio/[id].js';
 
 const id='ABCDEFGHIJK';
 const bytes=new Uint8Array(4096);
-bytes.set([0,0,0,24,102,116,121,112,77,52,65,32]);
+const view=new DataView(bytes.buffer);
+function atom(offset,size,type){
+ view.setUint32(offset,size);
+ bytes.set([...type].map(c=>c.charCodeAt(0)),offset+4);
+}
+atom(0,24,'ftyp');bytes.set([77,52,65,32],8);
+atom(24,32,'moov');
+atom(56,4096-56,'mdat');
 const req=(headers={})=>new Request('https://gnarly-web-pages.pages.dev/fast-audio/'+id+'?cached-only=1',{headers});
 function context(bucket,waitUntil=()=>{},request=req()){
  return {request,params:{id},env:{GNARLY_AUDIO_R2:bucket},waitUntil};
@@ -21,7 +28,8 @@ test('HTTP 429 cache-only finds exact full audio in Render local cache and promo
  const response=await handleFastAudio(context(bucket,p=>background=p),async url=>{
   urls.push(url);
   return new Response(bytes,{status:200,headers:{'content-type':'audio/mp4',
-   'content-length':String(bytes.length),'content-disposition':'attachment; filename="Cached Title.m4a"'}});
+   'content-length':String(bytes.length),'X-Gnarly-Integrity':'decoded-v1',
+   'content-disposition':'attachment; filename="Cached Title.m4a"'}});
  });
  assert.equal(response.status,200);
  assert.equal(response.headers.get('X-Gnarly-Playback-Source'),'cached-render-origin');

@@ -63,10 +63,14 @@ test('promotion title sanitizes trusted Content-Disposition only',()=>{
 });
 test('R2 write-through retains existing metadata instead of hiding cached songs',async()=>{
  let background,write;
- const bytes=new Uint8Array(1024);bytes.set([0,0,0,24,102,116,121,112]);
+ const bytes=new Uint8Array(4096);
+ const view=new DataView(bytes.buffer);
+ const atom=(offset,size,name)=>{view.setUint32(offset,size);bytes.set([...name].map(c=>c.charCodeAt(0)),offset+4)};
+ atom(0,24,'ftyp');atom(24,32,'moov');atom(56,4096-56,'mdat');
  const fetcher=async url=>{
   if(url.endsWith('/playback-status'))return Response.json({status:'ready'});
-  return new Response(bytes,{status:200,headers:{'Content-Type':'audio/mp4','Content-Length':'1024',
+  return new Response(bytes,{status:200,headers:{'Content-Type':'audio/mp4','Content-Length':String(bytes.length),
+   'X-Gnarly-Integrity':'decoded-v1',
    'Content-Disposition':'attachment; filename="New Song.m4a"'}});
  };
  const cache={head:async()=>({customMetadata:{title:'Canonical Title',thumbnail:'https://example.org/cover.jpg'}}),

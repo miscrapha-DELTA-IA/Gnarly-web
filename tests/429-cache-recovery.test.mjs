@@ -67,7 +67,7 @@ test('queue-full or access-limited 429 must not trigger another origin request',
  }
 });
 
-test('fully streamed /download fallback can populate edge R2 without blocking first audio',async()=>{
+test('unverified /download fallback streams without poisoning edge R2',async()=>{
  const uploads=[],background=[],urls=[];
  const bucket={
   async get(){return null},
@@ -87,10 +87,7 @@ test('fully streamed /download fallback can populate edge R2 without blocking fi
  assert.equal(result.status,200);
  assert.equal((await result.arrayBuffer()).byteLength,bytes.length);
  await Promise.all(background);
- assert.equal(uploads.length,1);
- assert.equal(uploads[0].key,id+'/audio.m4a');
- assert.equal(uploads[0].data.byteLength,bytes.length);
- assert.equal(uploads[0].metadata.httpMetadata.contentType,'audio/mp4');
+ assert.equal(uploads.length,0,'Unverified fallback must never be promoted as a complete R2 song');
 });
 
 test('provider 429 followed by non-audio 200 is still classified as provider-limited',async()=>{
