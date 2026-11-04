@@ -66,7 +66,7 @@ async function scenario(name,run){
     return await route.fulfill({contentType:'application/json',body:'{"results":[],"lines":[],"plainLines":[]}'});
    const file=u.pathname==='/'?'index.html':u.pathname.slice(1),ext=path.extname(file);
    let body=await source(file);
-   if(file==='app.js')body=Buffer.from(body+`\nglobalThis.__queueQA={audio,state,selectTrack,next,previous,pause,play,maybeFillSmartQueue,setSmartMode,addToQueue,openSheet,closeSheet,handleCommand,updatePlayer,applyPlayerSurfaceMode,engine,externalSeek,listeningMemory,predict:candidates=>recommendTracks({mode:smartMode,anchor:state.current,candidates,existing:state.queue,history:state.history,memory:listeningMemory,max:7,revision:smartRevision}),get mode(){return smartMode},get pending(){return smartFillPending},get status(){return smartStatus}};globalThis.__queueTimings={actions:[],transitions:[]};const markQueueAction=trigger=>__queueTimings.actions.push({trigger,from:state.current?.id,at:performance.now()});document.querySelector('#next-button').addEventListener('click',()=>markQueueAction('next-click'),true);audio.addEventListener('ended',()=>markQueueAction('ended'),true);audio.addEventListener('playing',()=>{const action=__queueTimings.actions.at(-1);if(action&&!action.done&&action.from!==state.current?.id){action.done=true;__queueTimings.transitions.push({trigger:action.trigger,from:action.from,to:state.current?.id,ms:performance.now()-action.at})}},true);visual.stopLoop();visual.setPaused=()=>{};audio.muted=true;setSmartMode('off');`);
+   if(file==='app.js')body=Buffer.from(body+`\nglobalThis.__queueQA={audio,state,selectTrack,next,previous,pause,play,maybeFillSmartQueue,setSmartMode,addToQueue,openSheet,closeSheet,handleCommand,updatePlayer,applyPlayerSurfaceMode,engine,externalSeek,listeningMemory,registerOfflineURL,offlineURLs,predict:candidates=>recommendTracks({mode:smartMode,anchor:state.current,candidates,existing:state.queue,history:state.history,memory:listeningMemory,max:7,revision:smartRevision}),get mode(){return smartMode},get pending(){return smartFillPending},get status(){return smartStatus}};globalThis.__queueTimings={actions:[],transitions:[]};const markQueueAction=trigger=>__queueTimings.actions.push({trigger,from:state.current?.id,at:performance.now()});document.querySelector('#next-button').addEventListener('click',()=>markQueueAction('next-click'),true);audio.addEventListener('ended',()=>markQueueAction('ended'),true);audio.addEventListener('playing',()=>{const action=__queueTimings.actions.at(-1);if(action&&!action.done&&action.from!==state.current?.id){action.done=true;__queueTimings.transitions.push({trigger:action.trigger,from:action.from,to:state.current?.id,ms:performance.now()-action.at})}},true);visual.stopLoop();visual.setPaused=()=>{};audio.muted=true;setSmartMode('off');`);
    return await route.fulfill({contentType:({'.js':'text/javascript','.css':'text/css','.html':'text/html','.png':'image/png','.svg':'image/svg+xml','.json':'application/json'})[ext]||'application/octet-stream',body});
   }catch(error){
    // A canceled old source/query is expected during rapid native navigation.
@@ -88,6 +88,28 @@ async function scenario(name,run){
  console.log(JSON.stringify(results.at(-1)));
 }
 try{
+ await scenario('real offline native playback auto-advances saved songs despite remote queue and no network',async({page,selected,snapshot})=>{
+  const wav=media.toString('base64');
+  await page.evaluate(({A,B,C,D,wav})=>{
+   const bytes=Uint8Array.from(atob(wav),ch=>ch.charCodeAt(0)),blob=new Blob([bytes],{type:'audio/wav'});
+   for(const t of [A,B,C])__queueQA.registerOfflineURL(t,blob);
+   __queueQA.state.queue=[D];
+   Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>false});
+   __queueQA.selectTrack(A);
+  },{A,B,C,D,wav});
+  await selected(A);
+  assert.ok((await snapshot()).src.startsWith('blob:'),'current recording plays real local audio');
+  await page.evaluate(()=>{__queueQA.audio.currentTime=__queueQA.audio.duration-.08});
+  await selected(B);
+  assert.deepEqual((await snapshot()).queue,[D.id],
+   'unavailable manual remote queue survives for reconnect');
+  await page.evaluate(()=>{__queueQA.audio.currentTime=__queueQA.audio.duration-.08});
+  await selected(C);
+  assert.ok((await snapshot()).src.startsWith('blob:'),'offline successor stays local');
+  await page.evaluate(()=>{void __queueQA.next()});
+  await selected(A);
+  assert.equal((await snapshot()).current,A.id,'offline Next wraps saved library in order');
+ });
  await scenario('empty smart queue retains Next on player, iPod and MediaSession',async({page,gate,setSearch,choose,snapshot})=>{
   const hold=gate();setSearch(async()=>{await hold.promise;return [B,C]});
   await page.evaluate(()=>__queueQA.setSmartMode('mix'));await choose(A);

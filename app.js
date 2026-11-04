@@ -29,7 +29,7 @@ import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-
 import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from './lib/queue-audio-warmup.js';
 import {quickPlaylistMarkup} from './ui/quick-playlist.js';
 import {createMediaSessionController,configureBrowserAudioSession} from './lib/media-session-controller.js';
-import {appendUnique,commitPlaying,moveTrack,removeTrack,shuffleUpcoming,radioQuery,chooseSmartTracks,effectiveMode,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
+import {appendUnique,commitPlaying,moveTrack,removeTrack,shuffleUpcoming,radioQuery,chooseSmartTracks,effectiveMode,offlineNextCandidate,PlaylistLibrary,AudioConnectionWarmup} from './lib/smart-queue.js';
 import {ListeningMemory,MEMORY_KEY,recommendTracks,retainManualQueue,markAutoTracks,sameRecording,discoverySuggestions,mixTasteArtists} from './lib/listening-intelligence.js';
 import {renderSmartQueuePanel} from './ui/smart-queue-panel.js';
 import {CLASSIC_THEMES,MATERIAL_THEMES,GNARLY_MODES,NATIVE_COLOR_THEMES,CREATIVE_COLOR_THEMES,EXPERIENCES,REACTIONS,ROLE_EXPLANATION,resolveVisual,restoredThemeAfterGnarly} from './lib/visual-selection.js';
@@ -137,10 +137,15 @@ function bufferedAudioAhead(element){
 }
 function prepareUpcomingAudio(){
  const next=state.queue[0];
- if(!next||next.source!=='youtube'||isOffline(next.id)||audio.paused||state.userPaused||playbackCooldown.active()||bufferedAudioAhead(audio)<8)return;
- if(canWarmImmediately({current:state.current,next,online:navigator.onLine,
+ if(!next||next.source!=='youtube'||isOffline(next.id)||audio.paused||
+    state.userPaused||playbackCooldown.active()||!navigator.onLine)return;
+ const ahead=bufferedAudioAhead(audio);
+ // POST /fast-prepare starts the exact next job without waiting for a new
+ // selection. Only after safe native buffering do we transfer any bytes.
+ if(ahead>=8&&canWarmImmediately({current:state.current,next,online:navigator.onLine,
   saveData:navigator.connection?.saveData,effectiveType:navigator.connection?.effectiveType
  }))void queueAudioWarmup.start(next);
+ if(ahead>=25&&audio.currentTime>=8)void cacheNextReadyOffline(next);
 }
 
 const offlineLibrary=createOfflineLibrary();
@@ -148,10 +153,58 @@ const ipodSkinStore=createIPodSkinStore();
 let ipodSkinURL=null,ipodHardwarePromise=null;
 const offlineURLs=new Map(); // Persistent track IDs mapped to live blob URLs.
 const offlinePending=new Set();
+const offlinePrefetchAttempted=new Set();
+let offlinePrefetchOperation=null;
+const OFFLINE_PREFETCH_SESSION_LIMIT=2;
 let offlineLoaded=false,offlineStatus='Preparando biblioteca offline…';
 const isOffline=id=>offlineURLs.has(id);
 const offlineAudio=id=>offlineURLs.get(id)||null;
 let recoveryOperation=null,independentRecoveryController=null;
+/** Bounded device pre-cache. At most two unique ready recordings per
+ * session, never a speculative cold download or an unverified audio source.
+ * Prioritize current playback, meter limits, storage and cancellation.
+ */
+async function cacheNextReadyOffline(track){
+ if(!track||!offlineLoaded||!navigator.onLine||document.hidden||
+    state.userPaused||audio.paused||state.audioState!=='playing'||
+    track.source!=='youtube'||track.playbackAvailability!=='r2'||
+    isOffline(track.id)||offlinePending.has(track.id)||offlinePrefetchOperation||
+    offlinePrefetchAttempted.has(track.id)||
+    offlinePrefetchAttempted.size>=OFFLINE_PREFETCH_SESSION_LIMIT||
+    playbackCooldown.active()||navigator.connection?.saveData||
+    /^(slow-2g|2g|3g)$/i.test(navigator.connection?.effectiveType||'')||
+    (!navigator.connection?.type&&window.matchMedia?.('(pointer: coarse)')?.matches))
+   return;
+ const quota=await navigator.storage?.estimate?.().catch(()=>null);
+ if(quota&&quota.quota-quota.usage<32*1024*1024)return;
+ if(audio.paused||state.userPaused||!navigator.onLine||
+    bufferedAudioAhead(audio)<20||state.queue[0]?.id!==track.id||
+    offlinePrefetchOperation||offlinePrefetchAttempted.has(track.id))return;
+ const controller=new AbortController(),selection=playbackSelection;
+ const operation={controller,id:track.id};
+ offlinePrefetchOperation=operation;offlinePrefetchAttempted.add(track.id);
+ offlinePending.add(track.id);
+ try{
+  const blob=await fetchFullAudio(track,{signal:controller.signal,maxBytes:24*1024*1024});
+  if(controller.signal.aborted||state.queue[0]?.id!==track.id||
+     !navigator.onLine||selection!==playbackSelection)return;
+  await offlineLibrary.save(track,blob);
+  registerOfflineURL(track,blob);
+  offlineStatus=offlineStatusText();
+  if(state.sheet==='queue'||state.sheet==='library')renderSheet();
+ }catch(error){
+  // Partial audio/HTTP 429/insufficient storage must not poison offline
+  // state or interfere with the song that is already playing.
+  console.debug('GNARLY next-song cache skipped:',error?.name||'unavailable');
+ }finally{
+  offlinePending.delete(track.id);
+  if(offlinePrefetchOperation===operation)offlinePrefetchOperation=null;
+ }
+}
+function cancelNextOfflinePrefetch(){
+ offlinePrefetchOperation?.controller.abort();
+ offlinePrefetchOperation=null;
+}
 // The first requested Play owns the source until audio starts or the attempt ends.
 // Subsequent clicks while loading join it rather than creating competing play().
 let playStartOperation=null,playbackIntentEpoch=0;
@@ -1119,7 +1172,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false,tdrH
   playbackBackstack.push(state.current);
   if(playbackBackstack.length>30)playbackBackstack.shift();
  }
- playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();playbackIntentEpoch++;playStartOperation=null;playbackContinuity.select(playbackSelection);
+ playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();playbackIntentEpoch++;playStartOperation=null;cancelNextOfflinePrefetch();playbackContinuity.select(playbackSelection);
  tdr.select(playbackSelection,{at:selectedAt,autoplay,
   source:tdrSourceForTrack(track,{offline:!!offlineAudio(track.id)}),
   readyHint:track.playbackAvailability==='r2',handoff:tdrHandoff});
@@ -1618,7 +1671,7 @@ async function play(){
   resolvePending();
  }
 }
-function pause(){tdr.finish(playbackSelection,'user_cancel');refreshTdrPanel();coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;playbackIntentEpoch++;playStartOperation=null;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;engine.setTransportPaused(true);audio.pause();stems.pause();pads.stopLoop();closeYouTubePlayer();state.playing=false;updatePlayer()}
+function pause(){tdr.finish(playbackSelection,'user_cancel');refreshTdrPanel();coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;cancelNextOfflinePrefetch();playbackIntentEpoch++;playStartOperation=null;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;engine.setTransportPaused(true);audio.pause();stems.pause();pads.stopLoop();closeYouTubePlayer();state.playing=false;updatePlayer()}
 let nextDiscovery=null;
 function clearNextDiscoveryStatus(){if(nextDiscovery)reportAudioStatus('')}
 // Show only a tiny activity cue while Next looks for a verified recording.
@@ -1631,6 +1684,16 @@ function setNextDiscoveryBusy(busy){
 }
 async function next(){
  const startingTrack=state.current,selection=playbackSelection,revision=navigationRevision;
+ // No network: play downloaded device audio, never block on a remote
+ // discovery request or an unavailable remote-only queued track.
+ if(!navigator.onLine&&startingTrack){
+  const local=offlineNextCandidate({current:startingTrack,queue:state.queue,
+   library:state.tracks,isOffline});
+  if(local){advanceToNext(local);return}
+  if(audio.ended){pause();toast('Fim das músicas disponíveis offline.')}
+  else toast('Nenhuma outra música salva neste dispositivo.');
+  return;
+ }
  let candidate=state.queue[0];
  if(!candidate&&smartMode!=='off'&&startingTrack){
   if(nextDiscovery&&nextDiscovery.anchor===startingTrack&&nextDiscovery.selection===selection){
@@ -3250,6 +3313,10 @@ audio.addEventListener('play',()=>{if(state.userPaused){audio.pause();return}if(
   recovering:!!recoveryOperation})){
   completeCurrentRecording({ghost:true});return;
  }
+ // A ready R2 successor may already be fully buffered before the first
+ // timeupdate tick. Re-check a bounded offline pre-cache after 8 s of stable
+ // playback, without waiting for another 'progress' event.
+ if(audio.currentTime>=8&&state.playing&&!audio.paused)prepareUpcomingAudio();
  // Warm one upcoming recording in the last 75 seconds, never full playlists.
  const nextTrack=state.queue[0];
  if(state.playing&&!audio.paused&&nextTrack?.source==='youtube'&&!isOffline(nextTrack?.id)&&canWarmNext({
@@ -3286,7 +3353,9 @@ function completeCurrentRecording({ghost=false}={}){
  lyricTransportSync.stop();coverCharge.hide();playbackStallGuard.clear();
  if(lastRecordedSelection===completed)listeningMemory.record('finish',state.current);
  karaokeStage.scorer.finish();karaokeStage.updateScore();
- if(state.queue.length||smartMode!=='off'){
+ if(state.queue.length||smartMode!=='off'||!navigator.onLine&&
+    offlineNextCandidate({current:state.current,queue:state.queue,
+     library:state.tracks,isOffline})){
   void next().then(()=>{
    // Sparse smart radios may not have any verified successor. They should
    // stop at the real end instead of displaying a permanent Pause button.
@@ -3423,7 +3492,8 @@ if('serviceWorker' in navigator){
  },{once:true});
 }
 window.addEventListener('online',()=>{if(state.sheet==='library')renderSheet()});
-window.addEventListener('offline',()=>{if(state.sheet==='library')renderSheet()});
+window.addEventListener('offline',()=>{cancelNextOfflinePrefetch();
+ queueAudioWarmup.cancel();if(state.sheet==='library'||state.sheet==='queue')renderSheet()});
 
 // Direct backend playback has no separate invite login or YouTube modal on Play.
 

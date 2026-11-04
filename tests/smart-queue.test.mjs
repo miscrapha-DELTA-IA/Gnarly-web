@@ -1,8 +1,35 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {appendUnique,commitPlaying,moveTrack,removeTrack,shuffleUpcoming,radioQuery,chooseSmartTracks,PlaylistLibrary,AudioConnectionWarmup,effectiveMode} from '../lib/smart-queue.js';
+import {appendUnique,commitPlaying,moveTrack,removeTrack,shuffleUpcoming,radioQuery,chooseSmartTracks,PlaylistLibrary,AudioConnectionWarmup,effectiveMode,offlineNextCandidate} from '../lib/smart-queue.js';
 const tr=(id,artist='AURORA',album='All My Demons')=>({id:'youtube:'+id,videoId:id,source:'youtube',title:'Song '+id,artist,album,duration:220,artwork:'https://example.com/a.jpg'});
 const a=tr('AAAAAAAAAAA'),b=tr('BBBBBBBBBBB'),c=tr('CCCCCCCCCCC'),d=tr('DDDDDDDDDDD','Another Artist','Other');
+test('offline Next skips remote-only queue rows and rotates available device tracks',()=>{
+ const available=id=>[a.id,b.id,c.id].includes(id);
+ assert.equal(offlineNextCandidate({current:a,queue:[d,c],library:[a,b,c],isOffline:available}).id,c.id,
+  'explicit downloaded queued song beats device library order');
+ assert.equal(offlineNextCandidate({current:a,queue:[d],library:[a,b,c],isOffline:available}).id,b.id,
+  'unavailable remote queue rows must not block auto-next');
+ assert.equal(offlineNextCandidate({current:c,queue:[],library:[a,b,c],isOffline:available}).id,a.id,
+  'offline mode wraps to first saved recording');
+ assert.equal(offlineNextCandidate({current:d,queue:[],library:[b],isOffline:available}).id,b.id,
+  'a single saved track may start after a remote track');
+ assert.equal(offlineNextCandidate({current:a,queue:[],library:[a],isOffline:available}),null,
+  'never replay the only saved recording endlessly');
+ assert.deepEqual([d], [d], 'offline transport never mutates the offline queue');
+});
+test('offline playback and full-track pre-cache are tied to native device media, not remote metadata',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ assert.match(app,/if\(!navigator\.onLine&&startingTrack\)/);
+ assert.match(app,/offlineNextCandidate\(\{current:startingTrack,queue:state\.queue/);
+ assert.match(app,/offlineNextCandidate\(\{current:state\.current,queue:state\.queue/);
+ assert.match(app,/state\.queue\[0\]\?\.id!==track\.id/);
+ assert.match(app,/OFFLINE_PREFETCH_SESSION_LIMIT=2/);
+ assert.match(app,/fetchFullAudio\(track,\{signal:controller\.signal,maxBytes:24\*1024\*1024\}\)/);
+ assert.match(app,/track\.playbackAvailability!=='r2'/);
+ assert.match(app,/bufferedAudioAhead\(audio\)<20/);
+ assert.match(app,/cancelNextOfflinePrefetch\(\)/);
+});
 test('queue keeps manually selected order, blocks duplicates and current song',()=>{
  const q=appendUnique([a,b],[a,c,d,c],b.id);assert.deepEqual(q.map(x=>x.id),[a.id,b.id,c.id,d.id]);
  assert.deepEqual(commitPlaying(q,c.id).map(x=>x.id),[a.id,b.id,d.id]);
