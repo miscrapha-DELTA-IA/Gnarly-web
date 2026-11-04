@@ -11,7 +11,7 @@ import {curateOfficialSearch,unrequestedVersion} from './lib/official-search.js'
 import {VerifiedSourceRouter} from './lib/verified-source-router.js';
 import {applyMetadata,enrichSearchCredits,isGenericArtist,inferredCredit,displayArtist,reconcileCatalogCredits} from './lib/metadata-intelligence.js';
 import {OmniboxSession,classifyIntent,rank,normalKey} from './lib/omnibox.js';
-import {instantSearch,personalizedRank} from './lib/live-search.js';
+import {instantSearch,personalizedRank,searchTasteScore} from './lib/live-search.js';
 import {discoveryQueries,mixDiscoveryFeed} from './lib/search-discovery.js';
 import {MUSIC_PRESETS,musicalPreset} from './lib/music-presets.js';
 import {autoLyrics,cachedAutoLyrics,prefetchAutoLyrics,lyricsIdentity} from './lib/lyrics-auto.js';
@@ -3310,7 +3310,10 @@ function refreshLiveResults(page,info=''){
  const repaired=page.correctedQuery?
   curateOfficialSearch(page.correctedQuery,{native:page.correctedNative||[]}).songs:[];
  const available=[...result.songs,...repaired];
- state.searchResults=rankRequestedSongFirst(personalizedRank(page.query,[...page.local,...available],searchPreferenceContext()),page.query,{offline:isOffline});
+ state.searchResults=rankRequestedSongFirst(
+  personalizedRank(page.query,[...page.local,...available],searchPreferenceContext()),
+  page.query,{offline:isOffline,taste:track=>searchTasteScore(track,searchPreferenceContext())}
+ );
  const waiting=!page.readyFinished||!page.nativeFinished||!page.previewFinished||page.repairPending;
  const status=info||(repaired.length?
   'Busca aproximada · resultados para "'+page.correctedQuery+'".':
