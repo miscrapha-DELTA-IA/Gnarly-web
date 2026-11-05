@@ -204,6 +204,7 @@ async function cacheNextReadyOffline(track){
      !navigator.onLine||selection!==playbackSelection)return;
   await offlineLibrary.save(track,blob);
   registerOfflineURL(track,blob);
+  cacheSavedArtwork(track);
   offlineStatus=offlineStatusText();
   if(state.sheet==='queue'||state.sheet==='library')renderSheet();
  }catch(error){
@@ -706,7 +707,7 @@ function updateIPodScreen(){
   image.onerror=()=>{if(version===ipodArtVersion){image.onerror=null;image.src=icon}};
   image.src=cover;
   image.dataset.artQuality='loading';
-  if(cover!==icon){
+  if(cover!==icon&&navigator.onLine){
    const rect=image.getBoundingClientRect();
    const dpr=Math.min(3,window.devicePixelRatio||1);
    void resolveArtworkAsset(cover,{
@@ -740,7 +741,7 @@ function updatePlayer(){
   lastCoverArt=coverKey;const version=++coverArtVersion;
   const image=$('#cover-image');image.decoding='async';image.src=cover;
   image.onerror=()=>{if(version!==coverArtVersion)return;image.onerror=null;image.src=icon};
-  if(cover!==icon)void resolveArtworkAsset(cover,{...artworkViewport('cover'),minDimension:260}).then(asset=>{
+  if(cover!==icon&&navigator.onLine)void resolveArtworkAsset(cover,{...artworkViewport('cover'),minDimension:260}).then(asset=>{
    if(version===coverArtVersion&&lastCoverArt===coverKey){
     applyArtworkQuality(image,asset,'cover');
     if(asset.url!==cover&&asset.url)image.src=asset.url
@@ -1865,6 +1866,19 @@ function addToQueue(track,{quiet=false}={}){
  // object originally came from an automatically suggested Mix tail.
  const manualTrack={...track};delete manualTrack._gnarlyAutoMode;
  const before=state.queue.length;state.queue=appendUnique(state.queue,[manualTrack],state.current?.id);if(before===state.queue.length){if(!quiet)toast('Esta música já está na fila ou tocando.');return false}updatePlayer();prefetchNextLyrics();prepareUpcomingAudio();if(state.sheet==='queue')renderSheet();if(!quiet)toast('Adicionado à fila: '+track.title);return true}
+/** Cache only public artwork for files the listener explicitly stored.
+ * The service worker enforces a small CDN allowlist and bounded image quota.
+ * Neither private audio nor user listening history leaves this device.
+ */
+function cacheSavedArtwork(tracks){
+ if(!navigator.onLine||!('serviceWorker' in navigator))return;
+ const urls=[...new Set((Array.isArray(tracks)?tracks:[tracks])
+  .map(track=>track?.artwork).filter(url=>typeof url==='string'&&url.startsWith('https://')))].slice(0,8);
+ if(!urls.length)return;
+ void navigator.serviceWorker.ready.then(reg=>{
+  reg.active?.postMessage({type:'GNARLY_CACHE_COVERS',urls});
+ }).catch(()=>{});
+}
 const offlineStatusText=()=>{
  const count=offlineURLs.size;
  return (offlineLoaded?'✓ ':'')+count+' música'+(count===1?'':'s')+' guardada'+(count===1?'':'s')+' neste dispositivo';
@@ -1888,6 +1902,7 @@ async function restoreOfflineLibrary(){
    registerOfflineURL(record.track,record.blob);
   }
   offlineLoaded=true;offlineStatus=offlineStatusText();
+  cacheSavedArtwork(entries.filter(record=>record?.track).slice(0,8).map(record=>record.track));
  }catch(error){
   offlineLoaded=true;offlineStatus='Armazenamento offline indisponível neste navegador';
   console.warn('GNARLY offline storage:',error?.message);
@@ -1918,6 +1933,7 @@ async function downloadOfflineTrack(track){
   });
   await offlineLibrary.save(track,blob);
   registerOfflineURL(track,blob);
+  cacheSavedArtwork(track);
   offlineStatus=offlineStatusText();
   toast('✓ '+track.title+' salvo. Disponível sem internet neste dispositivo.');
   void navigator.storage?.persist?.().catch(()=>false);
@@ -1954,7 +1970,7 @@ async function importAudio(files){
   // Make an immediate playable object URL, then persist it. A storage
   // failure must never destroy the currently selected in-memory file.
   registerOfflineURL(track,file);
-  try{await offlineLibrary.save(track,file)}
+  try{await offlineLibrary.save(track,file);cacheSavedArtwork(track)}
   catch(error){toast('Áudio importado para esta sessão; não foi possível salvar offline: '+(error?.message||''))}
  }
  offlineLoaded=true;offlineStatus=offlineStatusText();
@@ -2246,7 +2262,7 @@ function mediaList(tracks,context,startIndex=0){
        (offlinePending.has(tr.id)?' disabled':'')+
        ' aria-label="Baixar '+label+' para ouvir offline" title="Guardar offline">'+
        (offlinePending.has(tr.id)?'…':'↓')+'</button>':'';
-  return '<div class="media-item"><img src="'+safe(artworkCandidates(tr.artwork||icon,{pixels:artPixels('thumb')})[0]||icon)+'" data-original-art="'+safe(tr.artwork||icon)+'" data-art-context="'+safe(context)+'" data-art-index="'+(startIndex+i)+'" alt="" loading="lazy" decoding="async" /><div class="media-text"><strong>'+label+'</strong><small>'+safe(displayArtist(tr))+' · '+source+'</small></div>'+play+actions+offlineControl+'</div>';
+  return '<div class="media-item"><img src="'+safe((!navigator.onLine?tr.artwork:artworkCandidates(tr.artwork||icon,{pixels:artPixels('thumb')})[0])||icon)+'" data-original-art="'+safe(tr.artwork||icon)+'" data-art-context="'+safe(context)+'" data-art-index="'+(startIndex+i)+'" alt="" loading="lazy" decoding="async" /><div class="media-text"><strong>'+label+'</strong><small>'+safe(displayArtist(tr))+' · '+source+'</small></div>'+play+actions+offlineControl+'</div>';
  }).join('')+'</div>';
 }
 // Only probe rows that can come into view. The old thumbnail path loaded the
@@ -2259,7 +2275,8 @@ const thumbnailObserver=typeof IntersectionObserver==='function'
 async function upgradeThumbnail(image){
  thumbnailObserver?.unobserve(image);
  const source=image.dataset.originalArt;
- if(!source||source===icon)return;
+ // No speculative CDN/HD probes without connectivity: use saved source.
+ if(!source||source===icon||!navigator.onLine)return;
  const rect=image.getBoundingClientRect(),dimensions={
   displayWidth:Math.max(72,Math.round(rect.width)),displayHeight:Math.max(72,Math.round(rect.height)),
   dpr:window.devicePixelRatio||1
@@ -2494,7 +2511,7 @@ function renderQueuePanel(){
  });
  const rows=state.queue.map((track,i)=>{
   const title=safe(track.title),artist=safe(displayArtist(track));
-  const art=safe(artworkCandidates(track.artwork||icon,{pixels:artPixels('thumb')})[0]||icon);
+  const art=safe((!navigator.onLine?track.artwork:artworkCandidates(track.artwork||icon,{pixels:artPixels('thumb')})[0])||icon);
   const fallback=safe(track.artwork||icon);
   const attrs=' data-context="queue" data-index="'+i+'"';
   const offline=isOffline(track.id)?' <span class="native-queue-offline">✓ Offline</span>':'';
@@ -3763,9 +3780,14 @@ if('serviceWorker' in navigator){
    .catch(error=>console.debug('GNARLY offline shell unavailable:',error?.message));
  },{once:true});
 }
-window.addEventListener('online',()=>{if(state.sheet==='library')renderSheet()});
+window.addEventListener('online',()=>{
+ if(state.sheet==='library'||state.sheet==='queue')renderSheet();
+ cacheSavedArtwork(state.tracks.filter(track=>isOffline(track.id)).slice(0,8));
+});
 window.addEventListener('offline',()=>{cancelNextOfflinePrefetch();
- queueAudioWarmup.cancel();if(state.sheet==='library'||state.sheet==='queue')renderSheet()});
+ queueAudioWarmup.cancel();if(state.sheet==='library'||state.sheet==='queue')renderSheet();
+ lastCoverArt='';lastSurfaceArt='';lastBackgroundArt='';updatePlayer();
+});
 
 // Direct backend playback has no separate invite login or YouTube modal on Play.
 
