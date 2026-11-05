@@ -79,6 +79,7 @@ self.addEventListener('install',event=>{
   // active worker and cache. Two at a time avoids audio/startup contention.
   const manifest=await fetch('/offline-assets.json',{cache:'reload'});
   if(!manifest.ok)throw Error('GNARLY offline manifest missing');
+  const manifestForCache=manifest.clone();
   const assets=await manifest.json();
   if(!Array.isArray(assets))throw Error('GNARLY offline manifest invalid');
   const required=[...new Set([
@@ -90,7 +91,7 @@ self.addEventListener('install',event=>{
   ])];
   // Always cache the manifest, so later warmups can recover after a page
   // resumes online without relying on untrusted network configuration.
-  await cache.put('/offline-assets.json',manifest.clone());
+  await cache.put('/offline-assets.json',manifestForCache);
   let next=0;
   await Promise.all([0,1].map(async()=>{
    while(next<required.length){
