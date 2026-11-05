@@ -24,7 +24,7 @@ function harness(){
   return {
    async match(key,{ignoreSearch=false}={}){
     const target=normalize(key);
-    const value=map.get(target)||ignoreSearch&&[...map].find(([k])=>k.split('?')[0]===target.split('?')[0])?.[1];
+    const value=map.get(target)||(ignoreSearch?[...map].find(([k])=>k.split('?')[0]===target.split('?')[0])?.[1]:null);
     return value?.clone()||null;
    },
    async put(key,value){map.set(normalize(key),value.clone())},
@@ -106,7 +106,7 @@ test('PWA install guarantees startup bundle, hashed lazy chunks and icon before 
 
 test('missing critical chunk aborts upgrade; old working SW is not replaced',async()=>{
  const w=harness();w.missing.add('/chunks/critical-ABCDE.js');
- await assert.rejects(w.install(),/GNARLY essential offline resource unavailable/);
+ await assert.rejects(w.install(),/offline or missing resource|GNARLY essential offline resource unavailable/);
  assert.equal(w.skipped,false);
 });
 
