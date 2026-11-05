@@ -63,7 +63,7 @@ buildSync({entryPoints:[join(root,'lib','basic-pitch-worker.js')],bundle:true,pl
 // Precache the entire import graph for a genuine first-visit offline PWA,
 // without storing model weights, backend audio or third-party requests.
 const shell=['/','/index.html','/app.js','/gnarly-ui.css','/sw.js','/manifest.webmanifest',
- '/mic.html','/mic.js','/logo.svg'];
+ '/mic.html','/mic.js','/logo.svg','/basic-pitch-worker.js'];
 // Chunks are part of the offline application, but loaded only on demand.
 for(const dir of ['assets','lib','ui','chunks']){
  const walk=folder=>{

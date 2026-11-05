@@ -29,12 +29,13 @@ test('animated background preserves 60fps while music is active and uses idle ca
  assert.match(visual,/this\.renderScale=Math\.max\(\.65/);
 });
 
-test('service worker installs only critical assets, defers bounded offline warmup',()=>{
+test('service worker installs a minimal complete offline startup and warms optional assets at idle',()=>{
  const sw=source('sw.js'),app=source('app.js');
- assert.match(sw,/const essentials=\[/);
- assert.match(sw,/Promise\.all\(essentials\.map/);
- assert.doesNotMatch(sw,/Promise\.allSettled\(urls\.map/);
+ assert.match(sw,/const required=\[/);
+ assert.match(sw,/assets\.filter\(p=>/);
+ assert.match(sw,/p\.startsWith\('\/chunks\/'\)/);
  assert.match(sw,/await Promise\.all\(\[0,1\]\.map/);
+ assert.match(sw,/await self\.skipWaiting\(\)/);
  assert.match(sw,/GNARLY_WARM_SHELL/);
  assert.match(app,/requestIdleCallback\(warm,\{timeout:8000\}\)/);
  assert.match(app,/state\.audioState==='loading'/);

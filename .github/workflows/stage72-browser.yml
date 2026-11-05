@@ -38,6 +38,8 @@ jobs:
           node tests/stage72-browser.mjs
           node tests/header-viewport.browser.mjs
           node tests/dsp-combinations.browser.mjs
+      - name: Test real PWA airplane mode
+        run: node tests/offline-pwa.browser.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
