@@ -90,6 +90,34 @@ test('PC queue, leased extraction and R2 propagation are separate observed phase
  assert.equal(snap.recent[0].recovered,true);
 });
 
+test('first-play prewarm acknowledgment and post-ready delay are distinct observed stages',()=>{
+ const h=harness();h.tdr.select(1,{source:'youtube',autoplay:true});
+ h.advance(10);h.tdr.playCall(1);h.tdr.mark(1,'prewarm_requested');
+ h.advance(630);h.tdr.mark(1,'prewarm_accepted');
+ h.advance(19370);h.tdr.mark(1,'recovery_started');h.tdr.mark(1,'pc_wait_started');
+ h.advance(1700);h.tdr.mark(1,'pc_leased');
+ h.advance(54000);h.tdr.mark(1,'pc_ready');h.tdr.mark(1,'pc_wait_finished');
+ h.advance(16000);h.tdr.playing(1,{route:'fast_edge'});
+ const snap=h.tdr.snapshot();
+ assert.equal(snap.recent[0].prewarmRequested,true);
+ assert.equal(snap.recent[0].prewarmAccepted,true);
+ assert.equal(snap.recent[0].prewarmAcknowledgedMs,630);
+ assert.equal(snap.phases.prewarmAcknowledged.p50Ms,630);
+ assert.equal(snap.phases.pcReadyToPlaying.p50Ms,16000);
+ assert.equal(snap.recent[0].pcReadyToPlayingMs,16000);
+ assert.equal(snap.recent[0].tdrMs,91710);
+});
+test('prewarm requested but never accepted cannot be counted as acknowledged',()=>{
+ const h=harness();h.tdr.select(1,{source:'youtube'});
+ h.tdr.playCall(1);h.tdr.mark(1,'prewarm_requested');
+ h.advance(12000);h.tdr.playing(1);
+ const data=h.tdr.snapshot();
+ assert.equal(data.phases.prewarmAcknowledged.count,0);
+ assert.equal(data.recent[0].prewarmRequested,true);
+ assert.equal(data.recent[0].prewarmAccepted,false);
+ assert.equal(data.recent[0].pcReadyToPlayingMs,null);
+});
+
 test('manual selection and user delay cannot contaminate autoplay TDR statistics',()=>{
  const h=harness();h.tdr.select(1,{autoplay:false,source:'local'});
  h.advance(15000);h.tdr.playCall(1,{source:'local'});
