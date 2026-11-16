@@ -71,6 +71,60 @@ test('Short read-only backend outages do not kill an ongoing preparation',async(
  assert.equal(attempts,2);
 });
 
+test('confirmed Guardian extraction survives three transient backend status failures',async()=>{
+ let clock=0,reads=0,prepares=0;
+ const result=await waitForPCNodeReady(ID,{
+  prepare:true,maxWaitMs:45000,now:()=>clock,wait:async ms=>{clock+=ms;},
+  fetcher:async(_url,opts)=>{
+   if(opts.method==='POST'){
+    prepares++;
+    return {ok:true,status:200,json:async()=>({state:'pending'})};
+   }
+   reads++;
+   if(reads===1)return {ok:true,status:200,json:async()=>({
+    state:'leased',queue_ahead:0,node_online:true
+   })};
+   if(reads===2||reads===3||reads===4)throw Error('temporary Render network outage');
+   return response('ready');
+  }
+ });
+ assert.equal(result,'ready');
+ assert.equal(prepares,1,'network status errors never start another extraction');
+ assert.equal(reads,5,'do not turn an active leased job into premature MediaError 4');
+ assert.ok(clock<45000);
+});
+
+test('a confirmed PC job is bounded and cancelable even when status stays offline',async()=>{
+ let clock=0,selected=true,calls=0;
+ const outcome=await waitForPCNodeReady(ID,{
+  prepare:true,maxWaitMs:11000,now:()=>clock,wait:async ms=>{clock+=ms;},
+  fetcher:async(_url,opts)=>{
+   if(opts.method==='POST')return {ok:true,status:200,json:async()=>({state:'leased'})};
+   calls++;throw Error('status gateway down');
+  }
+ });
+ assert.equal(outcome,'timeout','accepted work is bounded by original deadline');
+ assert.ok(calls>=3);
+ const canceled=await waitForPCNodeReady(ID,{
+  prepare:true,current:()=>selected,
+  fetcher:async(_url,opts)=>opts.method==='POST'?
+   {ok:true,status:200,json:async()=>({state:'leased'})}:
+   (()=>{throw Error('outage')})(),
+  wait:async()=>{selected=false;}
+ });
+ assert.equal(canceled,'cancelled');
+});
+
+test('unconfirmed job still stops after three failed status probes',async()=>{
+ let clock=0,reads=0;
+ const result=await waitForPCNodeReady(ID,{
+  now:()=>clock,wait:async ms=>{clock+=ms;},
+  fetcher:async()=>{reads++;throw Error('Render unreachable');}
+ });
+ assert.equal(result,'unavailable');
+ assert.equal(reads,3,'do not wait indefinitely when no job was accepted');
+});
+
 test('One Play queues exact recording idempotently before polling status',async()=>{
  const calls=[],clock={value:0};
  const responses={
