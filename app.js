@@ -13,7 +13,7 @@ import {applyMetadata,enrichSearchCredits,isGenericArtist,inferredCredit,display
 import {OmniboxSession,classifyIntent,rank,normalKey} from './lib/omnibox.js';
 import {instantSearch,personalizedRank,searchTasteScore} from './lib/live-search.js';
 import {discoveryQueries,mixDiscoveryFeed} from './lib/search-discovery.js';
-import {MUSIC_PRESETS,musicalPreset} from './lib/music-presets.js';
+import {MUSIC_PRESETS,musicalPreset,restoredPlaybackSpeed} from './lib/music-presets.js';
 import {autoLyrics,cachedAutoLyrics,prefetchAutoLyrics,lyricsIdentity} from './lib/lyrics-auto.js';
 import {LyricSyncWorkshop,serializeManualLRC} from './lib/lyric-sync-workshop.js';
 import {cycleValue,bindQuickCreative} from './lib/quick-creative-controls.js';
@@ -88,6 +88,9 @@ window.gnarlyAudioDiagnostics=()=>({
  catalogueDuration:Number(state.current?.duration)||null,
  displayDuration:activeTimeline().duration,
  suspectedDouble:activeTimeline().suspectedDouble,
+ requestedRate:engine.speed,
+ actualRate:Number.isFinite(audio.playbackRate)?audio.playbackRate:null,
+ defaultRate:Number.isFinite(audio.defaultPlaybackRate)?audio.defaultPlaybackRate:null,
  extendedAudioConfirmed:silentTailMonitor.audibleExtended
 });
 // Local-only visual health snapshot. Never uploads device or playback details.
@@ -328,7 +331,7 @@ const state={
   materialLayer:getSetting('materialLayer','none'),lyricStyle:lyricFonts.global,
   stemStatus:'Separação neural de quatro fontes por GPU gratuita quando disponível. Você também pode carregar quatro Stems.',
   demucsBusy:false,demucsAbort:null,demucsAvailable:false,demucsChecked:false,stemModel:'',
-  speed:Number(getSetting('speed','1')),reverb:Number(getSetting('reverb','0')),bass:Number(getSetting('bass','0')),
+  speed:restoredPlaybackSpeed(getSetting('speed','1'),getSetting('preset','ORIGINAL')),reverb:Number(getSetting('reverb','0')),bass:Number(getSetting('bass','0')),
   pitch:getSetting('pitch','yes')!=='no',musicTab:'speedPitch',omniboxTab:getSetting('omniboxTab','search'),micRecorder:null,micStream:null,micChunks:[],exportStyle:'Clássica',
   favorites:parseJSON(getSetting('favorites','[]'),[]),preset:getSetting('preset','ORIGINAL'),
   audioState:'idle', playbackError:'',userPaused:false,
@@ -3501,6 +3504,9 @@ async function loadMoreSearchResults(manual=false){
 }
 async function runSearch(raw,{live=false}={}){
  const query=String(raw||'').trim();
+ // A search is playback intent: overlap the existing one-shot Render health
+ // warmup with discovery, without fetching any audio or blocking user input.
+ if(query&&navigator.onLine&&!navigator.connection?.saveData)audioWarmup.start();
  if(!live&&query&&classifyIntent(query).kind==='text')omnibox.rememberQuery(query);
  const existing=searchPaging;
  if(existing?.query===query&&existing.started&&state.sheet==='search'){
