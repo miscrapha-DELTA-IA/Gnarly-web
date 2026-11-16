@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {WebAudioEngine} from '../lib/audio-engine.js';
-import {MUSIC_PRESETS} from '../lib/music-presets.js';
+import {MUSIC_PRESETS,restoredPlaybackSpeed} from '../lib/music-presets.js';
 import {mediaPosition} from '../lib/media-session-controller.js';
 
 function player(){
@@ -21,7 +21,7 @@ test('Nightcore survives automatic next-track, source-load reset and headset pre
  for(const src of ['track-a.mp3','track-b.mp3','track-a.mp3']){
   audio.src=src;audio.load();engine.restoreSpeed();
   assert.equal(audio.playbackRate,1.25,src);
-  assert.equal(audio.defaultPlaybackRate,1.25,src);
+  assert.equal(audio.defaultPlaybackRate,1,src);
   assert.equal(audio.preservesPitch,false,src);
   // Only the standard preservesPitch is authoritative on current browsers.
   // Rewriting vendor aliases can force redundant decoder reconfiguration.
@@ -69,4 +69,24 @@ test('session preset is restored in selection, Play, new URL, media metadata and
  assert.match(app,/preset:getSetting\('preset','ORIGINAL'\)/);
  assert.match(app,/engine\.setSpeed\(state\.speed,state\.pitch\)/);
  assert.match(app,/for\(const key of \['speed','reverb','pitch','preset'\]\)\s*setSetting/);
+});
+
+test('Original ignores stale accelerated stored rate; explicit creative presets survive',()=>{
+ assert.equal(restoredPlaybackSpeed(1.25,'ORIGINAL'),1);
+ assert.equal(restoredPlaybackSpeed('1.9','NIGHTCORE'),1.25);
+ assert.equal(restoredPlaybackSpeed(1,'SLOWED'),.8);
+ assert.equal(restoredPlaybackSpeed(1.43,'CUSTOM'),1.43);
+ assert.equal(restoredPlaybackSpeed(Infinity,'CUSTOM'),1);
+ assert.equal(restoredPlaybackSpeed(4,'CUSTOM'),1);
+ const audio=player(),engine=create(audio);
+ audio.defaultPlaybackRate=1.25;
+ engine.setSpeed(restoredPlaybackSpeed(1.25,'ORIGINAL'),true);
+ assert.equal(audio.defaultPlaybackRate,1);
+ audio.load();engine.restoreSpeed();
+ assert.equal(audio.playbackRate,1);
+});
+test('music search warms only the existing origin health route, never a new extraction',()=>{
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ assert.match(app,/if\(query&&navigator\.onLine&&!navigator\.connection\?\.saveData\)audioWarmup\.start\(\)/);
+ assert.match(app,/speed:restoredPlaybackSpeed\(getSetting\('speed','1'\),getSetting\('preset','ORIGINAL'\)\)/);
 });
