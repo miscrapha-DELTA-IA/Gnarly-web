@@ -129,7 +129,13 @@ function primeSelectedRecording(track,selection){
  // Never change the media source, identity or current playback promise.
  if(state.current!==track||playbackSelection!==selection||state.userPaused)return;
  tdr.mark(selection,'prewarm_requested');
- void selectedAudioWarmup.start(track).catch(()=>{});
+ // "requested" is not evidence that /fast-prepare accepted a job.
+ // Mark only the successful response without delaying native audio.play()
+ // or creating any additional status/network request.
+ void selectedAudioWarmup.start(track).then(accepted=>{
+  if(accepted&&state.current===track&&playbackSelection===selection&&
+     !state.userPaused)tdr.mark(selection,'prewarm_accepted');
+ }).catch(()=>{});
 }
 const queueAudioWarmup=new QueueAudioWarmup({
  // Optional prewarm should never create a burst when listeners skip quickly.
