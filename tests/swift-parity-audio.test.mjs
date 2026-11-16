@@ -67,16 +67,16 @@ test('120 Hz low shelf, reverb limited to 50% and compensated mastering headroom
  near(masteringLevels({bass:0,reverb:0}).wet,0);
 });
 
-test('Safari rate/pitch writes only when changed and preserves the next-song default',()=>{
+test('Safari rate/pitch writes once while load-time default stays neutral',()=>{
  const audio={muted:false,playbackRate:1,defaultPlaybackRate:1,preservesPitch:true};
  const engine=new WebAudioEngine(audio,{device:iPhone});
  engine.setSpeed(.8,false);
  near(audio.playbackRate,.8);assert.equal(audio.preservesPitch,false);
- assert.equal(audio.defaultPlaybackRate,.8);
+ assert.equal(audio.defaultPlaybackRate,1);
  engine.setSpeed(1.35,true,{persistDefault:false});
- assert.equal(audio.defaultPlaybackRate,.8,'during drag no second browser default-rate reset');
+ assert.equal(audio.defaultPlaybackRate,1,'drag never changes the native load-time rate');
  engine.setSpeed(1.35,true);
- assert.equal(audio.defaultPlaybackRate,1.35,'slider release saves rate for next song');
+ assert.equal(audio.defaultPlaybackRate,1,'creative rate must not persist as decoder default');
  engine.setSpeed(.8,true);
  near(audio.playbackRate,.8);assert.equal(audio.preservesPitch,true);
  assert.equal(engine.ctx,null,'native iOS playback must not claim the media source');
@@ -102,8 +102,11 @@ test('active desktop DSP changes the decoder once, never the default playback ra
   'applying the identical preset twice does not reconfigure the decoder');
  engine.setSpeed(1.25,false);
  assert.equal(writes.rate,2);assert.equal(writes.defaultRate,0);
- audio.paused=true;engine.setSpeed(1.25,false);
- assert.equal(writes.defaultRate,1,'update default only after player is paused');
+ internal.defaultRate=1.25; // Simulate an old stale browser default.
+ audio.paused=true;engine.setSpeed(1,false);
+ assert.equal(writes.defaultRate,1,'neutralize stale default only while paused');
+ assert.equal(internal.defaultRate,1);
+ assert.equal(internal.rate,1);
 });
 
 test('only one stable DSP graph and one original media source, no rebuild during presets',async()=>{
