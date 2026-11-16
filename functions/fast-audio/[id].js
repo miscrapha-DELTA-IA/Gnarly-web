@@ -64,6 +64,12 @@ function promoteCompleteStream({upstream,bucket,id,waitUntil}){
  const size=completeAudioLength(upstream);
  // Progressive bytes may be playable for a moment yet end with silence.
  // Only the trusted Render origin can certify a full local FFmpeg decode.
+ // Render has already queued its authenticated, fully decoded M4A for R2.
+ // A second Cloudflare tee/download/PUT would compete for the first audio
+ // bytes and write the same object twice. Preserve the original body stream
+ // and let Render finish its single ongoing promotion.
+ if(upstream.headers.get('X-Gnarly-R2-Promotion')==='origin-managed')
+  return upstream.body;
  if(!size||upstream.headers.get('X-Gnarly-Integrity')!=='decoded-v1'||
   !/^audio\/(?:mp4|x-m4a)(?:;|$)/i.test(upstream.headers.get('content-type')||'')||
   !upstream.body||!bucket||typeof bucket.put!=='function'||typeof waitUntil!=='function')
