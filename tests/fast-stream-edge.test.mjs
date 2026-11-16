@@ -108,6 +108,46 @@ test('unsupported progressive source falls back to existing full-download route'
  assert.equal(calls.length,2);
  assert.ok(calls[1].includes('/download?'));
 });
+test('shared backend preparation skips a redundant cooldown RTT and joins one download',async()=>{
+ const paths=[];
+ const result=await rawFastAudio({
+  request:request('/fast-audio/ABCDEFGHIJK'),env:{},
+  params:{id:'ABCDEFGHIJK'},originProbe:true
+ },async url=>{
+  const path=new URL(url).pathname;paths.push(path);
+  if(path==='/playback-status')return Response.json({
+   status:'ready',youtube_retry_after:0,pc_node_online:false
+  });
+  if(path==='/stream')return new Response('already preparing',{status:415,
+   headers:{'X-Download-Error':'shared_preparation'}});
+  if(path==='/download')return new Response(audio,{status:200,
+   headers:{'Content-Type':'audio/mp4','Content-Length':String(audio.length)}});
+  throw Error('Unexpected origin path '+path);
+ });
+ assert.equal(result.status,200);
+ assert.equal(result.headers.get('x-gnarly-playback-source'),'extraction-origin');
+ assert.deepEqual(paths,['/playback-status','/stream','/download'],
+  'never repeat /playback-status after a trusted exact-ID preparation handoff');
+});
+
+test('ordinary unsupported 415 still checks for newly activated upstream cooldown',async()=>{
+ const paths=[];
+ const result=await rawFastAudio({
+  request:request('/fast-audio/ABCDEFGHIJK'),env:{},
+  params:{id:'ABCDEFGHIJK'},originProbe:true
+ },async url=>{
+  const path=new URL(url).pathname;paths.push(path);
+  if(path==='/playback-status')return Response.json({
+   status:'ready',youtube_retry_after:paths.length>2?150:0,pc_node_online:false
+  });
+  if(path==='/stream')return new Response('unsupported format',{status:415});
+  throw Error('Should not start /download under confirmed rate limit');
+ });
+ assert.equal(result.status,429);
+ assert.equal(result.headers.get('retry-after'),'150');
+ assert.deepEqual(paths,['/playback-status','/stream','/playback-status']);
+});
+
 test('preparation endpoint carries one server-validated identity',async()=>{
  const calls=[];
  const result=await prepare({request:request('/fast-prepare/ABCDEFGHIJK',{method:'POST'}),
