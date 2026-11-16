@@ -349,10 +349,16 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
    return reply(status,'Audio source temporarily unavailable',headers);
   }
   if(!validAudioResponse(upstream)){
+   // Render deliberately sends 415 for a recording already being prepared.
+   // The next /download joins that exact in-flight extraction. Rechecking
+   // /playback-status here costs another origin RTT (up to 750 ms) without
+   // adding 429 protection: no new extraction starts during this handoff.
+   const sharedPreparation=upstream.status===415&&
+    upstream.headers.get('X-Download-Error')==='shared_preparation';
    discardAudioBody(upstream);
-   // Progressive lookup can mask a real 429 as 422. Check the circuit
-   // after that failed lookup, before opening a second extraction.
-   if(index===0&&originProbe&&!confirmedProviderLimit){
+   // Ordinary progressive failures can still mask a real upstream 429.
+   // Preserve the cooldown check for every other failure category.
+   if(index===0&&originProbe&&!confirmedProviderLimit&&!sharedPreparation){
     const limited=await originCooldown(fetcher,request.signal,{timeoutMs:750});
     if(limited?.retryAfter)return reply(429,'Audio origin rate limited',{
      'Retry-After':limited.retryAfter,'X-Gnarly-Playback-Source':'origin-rate-limited'});
