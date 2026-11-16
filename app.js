@@ -130,7 +130,7 @@ function primeSelectedRecording(track,selection){
  if(state.current!==track||playbackSelection!==selection||state.userPaused)return;
  tdr.mark(selection,'prewarm_requested');
  // "requested" is not evidence that /fast-prepare accepted a job.
- // Mark only the successful response without delaying native audio.play()
+ // Mark only the successful response, without delaying first native playback
  // or creating any additional status/network request.
  void selectedAudioWarmup.start(track).then(accepted=>{
   if(accepted&&state.current===track&&playbackSelection===selection&&
