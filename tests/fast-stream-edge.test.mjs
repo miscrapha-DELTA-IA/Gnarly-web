@@ -201,6 +201,39 @@ test('unverified progressive AAC is streamed but never promoted into shared R2',
  await Promise.all(pending);
  assert.equal(writes.length,0,'No backend decoder attestation: do not poison R2');
 });
+test('backend-managed R2 upload never triggers duplicate Cloudflare PUT or buffering',async()=>{
+ // Complete synthetic container: ftyp + moov + mdat, verified by trusted
+ // origin's full-decoder attestation. No actual media provider is contacted.
+ const bytes=new Uint8Array(4096).fill(0);
+ const view=new DataView(bytes.buffer);
+ const atom=(offset,size,name)=>{view.setUint32(offset,size);for(let i=0;i<4;i++)
+  bytes[offset+4+i]=name.charCodeAt(i);};
+ atom(0,24,'ftyp');atom(24,24,'moov');atom(48,4096-48,'mdat');
+ bytes.fill(0x55,56);
+ for(const managed of [true,false]){
+  const writes=[],background=[];
+  const bucket={
+   async get(){return null},
+   async head(){return null},
+   async put(key,content,metadata){writes.push({key,content,metadata})}
+  };
+  const result=await handleFastAudio({
+   request:request('/fast-audio/ABCDEFGHIJK'),
+   env:{GNARLY_AUDIO_R2:bucket},params:{id:'ABCDEFGHIJK'},
+   waitUntil:task=>background.push(task)
+  },async()=>new Response(bytes,{status:200,headers:{
+   'Content-Type':'audio/mp4','Content-Length':'4096',
+   'X-Gnarly-Integrity':'decoded-v1',
+   ...(managed?{'X-Gnarly-R2-Promotion':'origin-managed'}:{})
+  }}));
+  assert.equal(result.status,200);
+  assert.equal((await result.arrayBuffer()).byteLength,4096);
+  await Promise.all(background);
+  assert.equal(writes.length,managed?0:1,
+   managed?'Render promotes once; edge must not duplicate':'unmanaged remains write-through');
+ }
+});
+
 test('partial or oversized origin media is never promoted into a complete R2 object',async()=>{
  let writes=0;
  const bucket={async get(){return null},async put(){writes++}};
