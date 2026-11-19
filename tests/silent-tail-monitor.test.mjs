@@ -50,19 +50,37 @@ test('no waveform, mute, pause, seek, background and discontinuities never trigg
  for(let t=205;t<230;t++)sample(empty,t,0,t*1000);
  assert.equal(empty.confirmed,false,'cannot infer silence without prior observed audible signal');
 });
-test('only approximate 2x of a known remote song can be provisionally reconciled',()=>{
+test('only credible inflated durations from a known remote song can be provisionally reconciled',()=>{
  assert.equal(mediaTimeline({...track}).duration,192);
  for(const source of ['local','preview','audius','jamendo']){
   assert.equal(mediaTimeline({...track,source}).duration,390,source);
  }
  assert.equal(mediaTimeline({...track,offline:true}).duration,390);
- assert.equal(mediaTimeline({...track,mediaDuration:450}).duration,450);
+ assert.equal(mediaTimeline({...track,mediaDuration:450}).duration,192);
  assert.equal(mediaTimeline({...track,catalogDuration:0}).duration,390);
  assert.equal(mediaTimeline({...track,catalogDuration:12}).duration,390);
+});
+test('a genuinely longer 1.6x recording restores duration without being cut',()=>{
+ const props={...track,mediaDuration:310};
+ const guard=new SilentTailMonitor();
+ assert.equal(sample(guard,120,.06,1000,{mediaDuration:310}),false);
+ assert.equal(sample(guard,205,.05,2000,{mediaDuration:310}),false);
+ assert.equal(guard.audibleExtended,true);
+ assert.equal(mediaTimeline({...props,audibleExtended:guard.audibleExtended}).duration,310);
+ for(let t=206;t<=228;t++)sample(guard,t,0,(t-204)*1000,{mediaDuration:310});
+ assert.equal(guard.confirmed,false);
+});
+test('a non-doubled ghost tail requires genuine prior sound and sustained silence',()=>{
+ const guard=new SilentTailMonitor();
+ sample(guard,140,.06,1000,{mediaDuration:310});
+ for(let t=204;t<=215;t++)sample(guard,t,0,(t-202)*1000,{mediaDuration:310});
+ assert.equal(guard.confirmed,true);
+ assert.equal(shouldFinishGhostTail({...track,mediaDuration:310,currentTime:215,confirmedSilentTail:true}),true);
 });
 test('app uses measured waveform only when a WebAudio graph already exists',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(app,/\!\!engine\.mediaSource\&\&\!engine\.nativeTransport/);
+ assert.match(app,/const possiblyInflated=activeTimeline\(\)\.inflated/);
  assert.match(app,/silentTailMonitor\.read\(engine\.analyser\)/);
  assert.match(app,/recovering:!!recoveryOperation,confirmedSilentTail/);
  assert.match(app,/silentTailMonitor\.reset\(\)/);

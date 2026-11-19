@@ -88,6 +88,8 @@ window.gnarlyAudioDiagnostics=()=>({
  catalogueDuration:Number(state.current?.duration)||null,
  displayDuration:activeTimeline().duration,
  suspectedDouble:activeTimeline().suspectedDouble,
+ suspectedInflation:activeTimeline().inflated,
+ provisionalDuration:activeTimeline().provisional,
  requestedRate:engine.speed,
  actualRate:Number.isFinite(audio.playbackRate)?audio.playbackRate:null,
  defaultRate:Number.isFinite(audio.defaultPlaybackRate)?audio.defaultPlaybackRate:null,
@@ -3578,10 +3580,10 @@ async function runSearch(raw,{live=false}={}){
  else void fetchLiveSearch(page);
 }
 audio.addEventListener('play',()=>{if(state.userPaused){audio.pause();return}if(!state.current||audio.paused||audio.ended)return;updatePlayer()});audio.addEventListener('pause',()=>{lyricTransportSync.stop();engine.setTransportPaused(true);silentTailMonitor.cancelSilence();stems.pause();pads.stopLoop();playbackContinuity.resetClock();state.playing=false;if(state.userPaused||!['loading','recovering'].includes(state.audioState))coverCharge.hide();updatePlayer()});audio.addEventListener('timeupdate',()=>{
- const possiblyDoubled=activeTimeline().suspectedDouble;
+ const possiblyInflated=activeTimeline().inflated;
  // Never create/attach a WebAudio graph for this diagnosis. When native
  // playback owns the element (especially iOS), silence is UNOBSERVABLE.
- const canHear=possiblyDoubled&&!document.hidden&&
+ const canHear=possiblyInflated&&!document.hidden&&
   !!engine.mediaSource&&!engine.nativeTransport&&
   engine.ctx?.state==='running'&&engine.transportPaused===false&&
   !audio.paused&&!audio.seeking&&!audio.muted&&audio.volume>0&&
@@ -3601,8 +3603,8 @@ audio.addEventListener('play',()=>{if(state.userPaused){audio.pause();return}if(
   bufferedAhead:playableBufferAhead(audio),duration:activeTimeline().duration
  });
  if(stems.ready)stems.sync();updateProgress();syncLyrics();
- // Only finish if a credible catalog duration strongly contradicts the
- // decoded stream AND the actual clock passes the recording plus grace.
+ // A duration discrepancy is only provisional. Finish a suspected phantom
+ // tail after continuous decoded silence, never from the catalogue clock.
  if(state.current&&state.audioState==='playing'&&shouldFinishGhostTail({
   mediaDuration:audio.duration,catalogDuration:state.current.duration,
   source:state.current.source,offline:!!offlineAudio(state.current.id),
