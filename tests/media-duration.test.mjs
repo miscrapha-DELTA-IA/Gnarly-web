@@ -5,7 +5,7 @@ import {mediaTimeline,shouldFinishGhostTail} from '../lib/media-duration.js';
 import {mediaPosition} from '../lib/media-session-controller.js';
 
 const recorded={source:'youtube',catalogDuration:192,mediaDuration:390,currentTime:0};
-test('near-doubled M4A browser metadata uses provisional catalogue timeline, without clipping actual transport',()=>{
+test('inflated M4A browser metadata uses provisional catalogue timeline, without clipping actual transport',()=>{
  const t=mediaTimeline(recorded);
  assert.equal(t.inflated,true);
  assert.equal(t.duration,192);
@@ -17,12 +17,39 @@ test('near-doubled M4A browser metadata uses provisional catalogue timeline, wit
  assert.equal(mediaTimeline({...recorded,mediaDuration:192}).duration,192);
  assert.equal(mediaTimeline({...recorded,audibleExtended:true}).duration,390,
   'real decoded sound beyond nominal end restores the complete timeline');
- assert.equal(mediaTimeline({...recorded,mediaDuration:310}).duration,310,
-  'non-doubled longer versions must show native duration');
- assert.equal(mediaTimeline({...recorded,mediaDuration:470}).duration,470,
-  'a file far from the 2x fingerprint must not be masked');
+ assert.equal(mediaTimeline({...recorded,mediaDuration:310}).duration,192,
+  '1.6x inflation also uses the provisional catalogue duration');
+ assert.equal(mediaTimeline({...recorded,mediaDuration:470}).duration,192,
+  '2.45x inflation also uses the provisional catalogue duration');
+ assert.equal(mediaTimeline({...recorded,mediaDuration:310,audibleExtended:true}).duration,310,
+  'audible longer edits remain full length when evidence is available');
+ assert.equal(mediaTimeline({...recorded,mediaDuration:470,audibleExtended:true}).duration,470,
+  'large legitimate longer edits are never truncated');
  assert.equal(mediaTimeline({...recorded,mediaDuration:210}).duration,210,
   'small drift from a known recording must not cause early termination');
+});
+test('ordinary duration inflation from 1.3x upward is provisionally reconciled',()=>{
+ for(const nativeDuration of [250,288,310,470]){
+  const timeline=mediaTimeline({...recorded,mediaDuration:nativeDuration});
+  assert.equal(timeline.inflated,true);
+  assert.equal(timeline.duration,192);
+  assert.equal(timeline.transportDuration,nativeDuration);
+  assert.equal(timeline.provisional,true);
+  assert.equal(mediaTimeline({...recorded,mediaDuration:nativeDuration,audibleExtended:true}).duration,nativeDuration);
+ }
+ assert.equal(mediaTimeline({...recorded,mediaDuration:226}).duration,226,
+  'small drift remains the browser duration');
+ assert.equal(mediaTimeline({...recorded,catalogDuration:610,mediaDuration:950}).duration,950,
+  'long-form uploads are not provisionally reconciled');
+});
+test('non-doubled ghost tail also requires independently confirmed silence',()=>{
+ const track={...recorded,mediaDuration:310,currentTime:230};
+ const timing=mediaTimeline(track);
+ assert.equal(timing.suspectedDouble,false);
+ assert.equal(timing.inflated,true);
+ assert.equal(shouldFinishGhostTail(track),false);
+ assert.equal(shouldFinishGhostTail({...track,confirmedSilentTail:true}),true);
+ assert.equal(shouldFinishGhostTail({...track,confirmedSilentTail:true,paused:true}),false);
 });
 test('potential ghost tail never ends a healthy track unless independently confirmed',()=>{
  const t=mediaTimeline(recorded);
