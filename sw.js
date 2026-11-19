@@ -3,10 +3,12 @@
  * Artwork: bounded public image CDN responses, never APIs, signed media,
  * bearer credentials, music metadata responses, or remote audio.
  */
-const SHELL='gnarly-web-shell-20261104-offline-v1';
+const SHELL='gnarly-web-shell-20261119-artwork-v2';
 const PREFIX='gnarly-web-shell-';
 const ARTWORK_CACHE='gnarly-web-public-artwork-v1';
+const SAVED_ARTWORK_CACHE='gnarly-web-saved-artwork-v2';
 const ARTWORK_LIMIT=64;
+const SAVED_ARTWORK_LIMIT=192;
 const CORE=['/','/index.html','/app.js','/gnarly-ui.css','/mic.html','/mic.js',
  '/styles.css','/module-dock.css','/performance.css','/ipod-mode.css',
  '/cover-charge.css','/karaoke-art.css','/karaoke-art-refined.css',
@@ -42,30 +44,39 @@ function publicArtworkURL(source){
  }catch{return null}
 }
 const playableResponse=response=>response&&(response.ok||response.type==='opaque');
-async function storeArtwork(request,response){
+async function storeArtwork(request,response,{saved=false}={}){
  if(!playableResponse(response))return false;
- const cache=await caches.open(ARTWORK_CACHE);
+ const cache=await caches.open(saved?SAVED_ARTWORK_CACHE:ARTWORK_CACHE);
  if(await cache.match(request))return true;
  await cache.put(request,response.clone());
  const keys=await cache.keys();
- if(keys.length>ARTWORK_LIMIT){
-  // CacheStorage preserves insertion order. Evict the oldest, never R2/audio.
-  await Promise.all(keys.slice(0,keys.length-ARTWORK_LIMIT).map(key=>cache.delete(key)));
+ const limit=saved?SAVED_ARTWORK_LIMIT:ARTWORK_LIMIT;
+ if(keys.length>limit){
+  // CacheStorage preserves insertion order; user-saved artwork is isolated
+  // from ephemeral search results and cannot be evicted by normal browsing.
+  await Promise.all(keys.slice(0,keys.length-limit).map(key=>cache.delete(key)));
  }
  return true;
 }
 async function prefetchCovers(urls){
  if(!Array.isArray(urls))return;
- const unique=[...new Set(urls.slice(0,12).map(publicArtworkURL).filter(Boolean))].slice(0,8);
- for(const url of unique){
-  try{
-   const request=new Request(url,{mode:'no-cors',credentials:'omit'});
-   const cache=await caches.open(ARTWORK_CACHE);
-   if(await cache.match(request))continue;
-   const response=await fetch(request);
-   await storeArtwork(request,response);
-  }catch{/* CDNs may be unavailable or browser quotas may be exceeded. */}
- }
+ // One message has a small fixed cost. Large libraries are sent in batches.
+ const unique=[...new Set(urls.slice(0,24).map(publicArtworkURL).filter(Boolean))].slice(0,12);
+ let next=0;
+ await Promise.all([0,1].map(async()=>{
+  while(next<unique.length){
+   const url=unique[next++];
+   try{
+    const request=new Request(url,{mode:'no-cors',credentials:'omit'});
+    const pinned=await caches.open(SAVED_ARTWORK_CACHE);
+    if(await pinned.match(request))continue;
+    const normal=await caches.open(ARTWORK_CACHE);
+    const cached=await normal.match(request);
+    const response=cached||await fetch(request);
+    await storeArtwork(request,response,{saved:true});
+   }catch{/* Album CDNs may be unavailable or local storage exhausted. */}
+  }
+ }));
 }
 function offlineFallback(cache,request){
  return cache.match(request,{ignoreSearch:true});
@@ -175,8 +186,11 @@ self.addEventListener('fetch',event=>{
  // CacheStorage and can reappear without the original artwork CDN online.
  if(request.destination==='image'&&publicArtworkURL(request.url)){
   event.respondWith((async()=>{
-   const cache=await caches.open(ARTWORK_CACHE);
-   const cached=await cache.match(request);
+   const pinned=await caches.open(SAVED_ARTWORK_CACHE);
+   const normal=await caches.open(ARTWORK_CACHE);
+   const pinnedCached=await pinned.match(request);
+   const cached=(pinnedCached&&(request.mode!=='cors'||pinnedCached.type!=='opaque'))?
+    pinnedCached:await normal.match(request);
    if(cached&&(request.mode!=='cors'||cached.type!=='opaque'))return cached;
    try{
     const response=await fetch(request);
