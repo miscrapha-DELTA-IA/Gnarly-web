@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+import {canonicalOfflineArtwork,artworkForMode,offlineArtworkPrefetchURLs} from '../lib/offline-artwork.js';
 
 const workerSource=readFileSync(new URL('../sw.js',import.meta.url),'utf8');
 const appSource=readFileSync(new URL('../app.js',import.meta.url),'utf8');
@@ -119,7 +120,7 @@ test('only trusted public image requests get stored; an offline return retains t
   art,'https://evil.test/secret.jpg',
   'https://i.ytimg.com/vi/AAAAAAAAAAA/default.jpg?token=private'
  ]});
- const artStore=w.stores.get('gnarly-web-public-artwork-v1');
+ const artStore=w.stores.get('gnarly-web-saved-artwork-v2');
  assert.equal(artStore.size,1);
  w.offline();
  const offline=await w.request(image);
@@ -147,9 +148,38 @@ test('app persists covers for offline saved tracks without changing audio transp
  assert.match(appSource,/GNARLY_CACHE_COVERS/);
  assert.match(appSource,/await offlineLibrary\.save\(track,blob\);\s+registerOfflineURL\(track,blob\);\s+cacheSavedArtwork\(track\)/);
  assert.match(appSource,/if\(!source\|\|source===icon\|\|!navigator\.onLine\)return/);
- assert.match(appSource,/!navigator\.onLine\?tr\.artwork:artworkCandidates/);
+ assert.match(appSource,/!navigator\.onLine\?displayedArtwork\(tr\):artworkCandidates/);
+ assert.match(appSource,/cacheSavedArtwork\(entries\.filter\(record=>record\?\.track\)\.map\(record=>record\.track\)\)/);
  assert.match(appSource,/offlineAudio\(track\.id\)\|\|trackAudioURL/);
  assert.match(buildSource,/basic-pitch-worker\.js/);
  assert.match(workerSource,/request\.destination==='image'/);
  assert.doesNotMatch(workerSource,/audio\/mp4|\.mp3|\.m4a/);
+});
+
+test('saved YouTube covers remain cached after >64 unrelated online thumbnails',async()=>{
+ const w=harness();await w.install();await w.activate();
+ const saved='https://i.ytimg.com/vi/AAAAAAAAAAA/hqdefault.jpg';
+ await w.message({type:'GNARLY_CACHE_COVERS',urls:[saved]});
+ for(let i=0;i<74;i++){
+  const id=String(i).padStart(11,'0');
+  await w.request({method:'GET',destination:'image',mode:'no-cors',
+   url:'https://i.ytimg.com/vi/'+id+'/hqdefault.jpg'});
+ }
+ const normal=w.stores.get('gnarly-web-public-artwork-v1');
+ const pinned=w.stores.get('gnarly-web-saved-artwork-v2');
+ assert.ok(normal.size<=64,'search thumbnails should remain bounded');
+ assert.equal(pinned.size,1,'saved image is insulated from search cache eviction');
+ w.offline();
+ const restored=await w.request({method:'GET',destination:'image',mode:'no-cors',url:saved});
+ assert.equal(restored.status,200);
+ assert.equal((await restored.arrayBuffer()).byteLength,5000);
+});
+test('offline source remains deterministic after official album artwork changes',()=>{
+ const track={source:'youtube',id:'youtube:AAAAAAAAAAA',videoId:'AAAAAAAAAAA',
+  artwork:'https://is1-ssl.mzstatic.com/image/thumb/album/1200x1200bb.jpg'};
+ assert.equal(artworkForMode(track,{online:true}),track.artwork);
+ assert.equal(artworkForMode(track,{online:false}),canonicalOfflineArtwork(track));
+ assert.equal(canonicalOfflineArtwork(track),'https://i.ytimg.com/vi/AAAAAAAAAAA/hqdefault.jpg');
+ assert.deepEqual(offlineArtworkPrefetchURLs(track),[canonicalOfflineArtwork(track),track.artwork]);
+ assert.equal(artworkForMode({source:'local',artwork:'/assets/gnarly-icon.png'},{online:false}),'/assets/gnarly-icon.png');
 });
