@@ -121,6 +121,9 @@ function cancelSelectedWarmup(){
 function primeSelectedRecording(track,selection){
  const id=youtubeID(track);
  if(!id||!isGnarlyPagesHost(location.hostname)||isOffline(track.id)||
+    // R2-verified recordings already have the fast native edge route.
+    // A parallel POST adds network contention without making audio ready sooner.
+    track.playbackAvailability==='r2'||
     !navigator.onLine||navigator.connection?.saveData||
     selectedWarmupId===id)return;
  selectedWarmupId=id;
