@@ -26,12 +26,23 @@ try{
  // using the shipped library. No external album or audio fetches are made.
  const saved=await page.evaluate(async()=>{
   const {createOfflineLibrary}=await import('/lib/offline-library.js');
-  const track={id:'local:offline-acceptance',source:'local',
+  const local={id:'local:offline-acceptance',source:'local',
    title:'GNARLY OFFLINE SMOKE',artist:'Teste local',album:'Sem internet',
    artwork:'/assets/gnarly-icon.png',duration:10};
+  const remote={id:'youtube:AAAAAAAAAAA',videoId:'AAAAAAAAAAA',source:'youtube',
+   title:'GNARLY OFFLINE COVER',artist:'Teste remoto',album:'Sem internet',
+   artwork:'https://is1-ssl.mzstatic.com/image/thumb/test/1200x1200bb.jpg',
+   duration:12};
   const lib=createOfflineLibrary();
-  await lib.save(track,new Blob([new Uint8Array(4096)],{type:'audio/mp4'}));
-  return (await lib.list()).some(t=>t.track.id===track.id);
+  const blob=new Blob([new Uint8Array(4096)],{type:'audio/mp4'});
+  await lib.save(local,blob);await lib.save(remote,blob);
+  // Deterministic offline fixture: same CacheStorage as a real SW prefetch.
+  // The remote Apple URL is intentionally never cached.
+  const png=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/K6kAAAAASUVORK5CYII='),x=>x.charCodeAt(0));
+  const pinned=await caches.open('gnarly-web-saved-artwork-v2');
+  await pinned.put(new Request('https://i.ytimg.com/vi/AAAAAAAAAAA/hqdefault.jpg',{mode:'no-cors'}),
+   new Response(png,{headers:{'content-type':'image/png'}}));
+  return (await lib.list()).length===2;
  });
  assert.equal(saved,true);
 
@@ -44,8 +55,14 @@ try{
  await image.waitFor({timeout:5000});
  assert.ok(await image.evaluate(el=>el.complete&&el.naturalWidth>0),
   'Saved cover thumbnail must decode without internet');
+ const remote=page.locator('img[data-original-art*="mzstatic.com"]').first();
+ await remote.waitFor({timeout:5000});
+ assert.ok(await remote.evaluate(el=>el.complete&&el.naturalWidth>0),
+  'YouTube canonical thumbnail must decode from saved cache despite replaced album art');
+ assert.match(await remote.getAttribute('src'),/i\.ytimg\.com\/vi\/AAAAAAAAAAA\/hqdefault\.jpg/);
  const overview=await page.locator('#sheet-content').innerText();
  assert.match(overview,/GNARLY OFFLINE SMOKE/);
+ assert.match(overview,/GNARLY OFFLINE COVER/);
  assert.match(overview,/Áudio offline/);
 
  // A non-api internal navigation must also fall back to the cached shell.
