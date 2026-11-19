@@ -26,6 +26,7 @@ import {audioSourceCategory,recordStreamingMetric} from './lib/streaming-metrics
 import {TdrMonitor,tdrSourceForTrack} from './lib/tdr-metrics.js';
 import {renderTdrPanel,formatTdrDuration} from './ui/tdr-panel.js';
 import {createOfflineLibrary,fetchFullAudio,validAudioFile} from './lib/offline-library.js';
+import {artworkForMode,offlineArtworkPrefetchURLs} from './lib/offline-artwork.js';
 import {suggestedKnownQuery} from './lib/search-query-repair.js';
 import {fetchMusicSuggestions,credibleCorrection,mergeSearchSuggestions,localMusicSuggestions} from './lib/music-autocomplete.js';
 import {QueueAudioWarmup,canWarmNext,canWarmImmediately} from './lib/queue-audio-warmup.js';
@@ -120,6 +121,9 @@ function cancelSelectedWarmup(){
 function primeSelectedRecording(track,selection){
  const id=youtubeID(track);
  if(!id||!isGnarlyPagesHost(location.hostname)||isOffline(track.id)||
+    // R2-verified recordings already have the fast native edge route.
+    // A parallel POST adds network contention without making audio ready sooner.
+    track.playbackAvailability==='r2'||
     !navigator.onLine||navigator.connection?.saveData||
     selectedWarmupId===id)return;
  selectedWarmupId=id;
@@ -235,6 +239,7 @@ function cancelNextOfflinePrefetch(){
 // Subsequent clicks while loading join it rather than creating competing play().
 let playStartOperation=null,playbackIntentEpoch=0;
 const icon='/assets/gnarly-icon.png';
+const displayedArtwork=(track,background=false)=>artworkForMode(track,{online:navigator.onLine,background,icon});
 const artEnvironment=()=>({
  viewportWidth:window.innerWidth,viewportHeight:window.innerHeight,
  dpr:window.devicePixelRatio||1,
@@ -710,7 +715,7 @@ function ensureIPodHardware(){
 // resolveArtworkAsset below, not by shrinking the image based on device DPR.
 let ipodArtVersion=0;
 function updateIPodScreen(){
- const track=state.current,cover=track?.backgroundArtwork||track?.artwork||icon;
+ const track=state.current,cover=displayedArtwork(track,true);
  const image=$('#ipod-cover-image');
  if(image.dataset.source!==cover){
   image.dataset.source=cover;
@@ -747,7 +752,7 @@ function updatePlayer(){
  const track=state.current;
  $('#track-title').textContent=track?.title||'Sua música. Seu universo.';
  $('#track-artist').textContent=track?displayArtist(track):'Selecione uma música para começar';
- const cover=track?.artwork||icon,coverKey=cover+'|'+artPixels('cover');
+ const cover=displayedArtwork(track),coverKey=cover+'|'+artPixels('cover');
  if(lastCoverArt!==coverKey){
   lastCoverArt=coverKey;const version=++coverArtVersion;
   const image=$('#cover-image');image.decoding='async';image.src=cover;
@@ -775,7 +780,7 @@ function updatePlayer(){
   $('#youtube-next').disabled=!canAdvancePlayback();
   $('#youtube-player-title').textContent=track?.title||'Reprodução oficial';
   $('#youtube-player-artist').textContent=track?displayArtist(track):'';
-  $('#youtube-track-art').src=track?.artwork||icon;
+  $('#youtube-track-art').src=displayedArtwork(track);
  }
  $('#quick-playlist-button').disabled=!track;
  $('#duration-label').textContent=track?.source==='preview'?'PRÉVIA · 0:30':fmt(activeTimeline().duration);
@@ -803,7 +808,7 @@ function safeSurfaceArtwork(raw){
  return new URL(icon,location.href).href;
 }
 function updatePlayerSurfaceArtwork(){
- const raw=safeSurfaceArtwork(state.current?.artwork),pixels=artPixels('surface'),key=raw+'|'+pixels;
+ const raw=safeSurfaceArtwork(displayedArtwork(state.current)),pixels=artPixels('surface'),key=raw+'|'+pixels;
  if(lastSurfaceArt===key)return;
  lastSurfaceArt=key;const version=++surfaceArtVersion;
  const fallback=new URL(icon,location.href).href;
@@ -814,7 +819,7 @@ function updatePlayerSurfaceArtwork(){
  };
  apply(raw); // Never flash a missing 4K file over a usable thumbnail.
  if(raw!==fallback)void resolveArtworkAsset(raw,{...artworkViewport('surface'),pixels,minDimension:300}).then(asset=>{
-  if(version===surfaceArtVersion&&lastSurfaceArt===key&&safeSurfaceArtwork(state.current?.artwork)===raw){
+  if(version===surfaceArtVersion&&lastSurfaceArt===key&&safeSurfaceArtwork(displayedArtwork(state.current))===raw){
    for(const element of [$('#player-surface-artwork'),$('#player-surface-artwork-repeat')])applyArtworkQuality(element,asset,'surface');
    apply(asset.url||raw);
   }
@@ -851,7 +856,7 @@ function applyPlayerSurfaceMode(next,{persist=true}={}){
 }
 
 function applyBackground(){
- const cover=state.current?.backgroundArtwork||state.current?.artwork,mode=state.backgroundMode,photo=$('#photo-background');
+ const cover=state.current?displayedArtwork(state.current,true):'',mode=state.backgroundMode,photo=$('#photo-background');
  const ownPhoto=mode==='custom'&&!!state.backgroundURL;
  const coverPhoto=mode==='cover'&&!!cover;
  app.classList.toggle('custom-bg',ownPhoto);app.classList.toggle('cover-bg',coverPhoto);
@@ -883,7 +888,7 @@ function applyBackground(){
       });
      }catch{return}
      if(version!==backgroundArtVersion||lastBackgroundArt!==key||
-      state.backgroundMode!=='cover'||(state.current?.backgroundArtwork||state.current?.artwork)!==cover)return;
+      state.backgroundMode!=='cover'||displayedArtwork(state.current,true)!==cover)return;
      photo.style.backgroundImage='url('+JSON.stringify(candidate)+')';
      applyArtworkQuality(photo,asset,'background');
      background.classList.add('cover-art-ready');
@@ -902,7 +907,7 @@ function applyBackground(){
  app.style.backgroundImage='';
  visual.setPaused(ownPhoto||(coverPhoto&&background.classList.contains('cover-art-ready')));
 }
-async function loadArtworkHue(track){if(!track?.artwork||track.artwork===icon){state.artworkHue=.58;return}try{const img=new Image();img.crossOrigin='anonymous';img.src=track.artwork;await img.decode();if(state.current!==track)return;const cv=document.createElement('canvas');cv.width=cv.height=20;const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,20,20);const data=ctx.getImageData(0,0,20,20).data;let x=0,y=0;for(let i=0;i<data.length;i+=4){const r=data[i]/255,g=data[i+1]/255,b=data[i+2]/255,max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;let h=0;if(d>.08){if(max===r)h=((g-b)/d+6)%6/6;else if(max===g)h=((b-r)/d+2)/6;else h=((r-g)/d+4)/6}x+=Math.cos(h*2*Math.PI)*d;y+=Math.sin(h*2*Math.PI)*d}if(x||y)state.artworkHue=(Math.atan2(y,x)/(Math.PI*2)+1)%1;
+async function loadArtworkHue(track){if(!track?.artwork||track.artwork===icon){state.artworkHue=.58;return}try{const img=new Image();img.crossOrigin='anonymous';img.src=displayedArtwork(track);await img.decode();if(state.current!==track)return;const cv=document.createElement('canvas');cv.width=cv.height=20;const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,20,20);const data=ctx.getImageData(0,0,20,20).data;let x=0,y=0;for(let i=0;i<data.length;i+=4){const r=data[i]/255,g=data[i+1]/255,b=data[i+2]/255,max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;let h=0;if(d>.08){if(max===r)h=((g-b)/d+6)%6/6;else if(max===g)h=((b-r)/d+2)/6;else h=((r-g)/d+4)/6}x+=Math.cos(h*2*Math.PI)*d;y+=Math.sin(h*2*Math.PI)*d}if(x||y)state.artworkHue=(Math.atan2(y,x)/(Math.PI*2)+1)%1;
  const tint=Math.round(state.artworkHue*360)+'deg';
  background.style.setProperty('--gnarly-cover-hue',tint);
  app.style.setProperty('--gnarly-cover-hue',tint);
@@ -1883,11 +1888,24 @@ function addToQueue(track,{quiet=false}={}){
  */
 function cacheSavedArtwork(tracks){
  if(!navigator.onLine||!('serviceWorker' in navigator))return;
- const urls=[...new Set((Array.isArray(tracks)?tracks:[tracks])
-  .map(track=>track?.artwork).filter(url=>typeof url==='string'&&url.startsWith('https://')))].slice(0,8);
+ const urls=offlineArtworkPrefetchURLs(tracks).slice(0,240);
  if(!urls.length)return;
+ // Prioritize each saved song's deterministic small thumbnail. Batch larger
+ // libraries rather than fighting native audio for network bandwidth.
  void navigator.serviceWorker.ready.then(reg=>{
-  reg.active?.postMessage({type:'GNARLY_CACHE_COVERS',urls});
+  let offset=0;
+  const send=()=>{
+   if(!navigator.onLine||!reg.active)return;
+   // Full-library backfill must yield to an active song's first buffer.
+   if(urls.length>8&&(['loading','recovering'].includes(state.audioState)||
+     state.playing&&bufferedAudioAhead(audio)<12)){
+    setTimeout(send,1800);return;
+   }
+   reg.active.postMessage({type:'GNARLY_CACHE_COVERS',urls:urls.slice(offset,offset+8)});
+   offset+=8;
+   if(offset<urls.length)setTimeout(send,900);
+  };
+  send();
  }).catch(()=>{});
 }
 const offlineStatusText=()=>{
@@ -1913,7 +1931,7 @@ async function restoreOfflineLibrary(){
    registerOfflineURL(record.track,record.blob);
   }
   offlineLoaded=true;offlineStatus=offlineStatusText();
-  cacheSavedArtwork(entries.filter(record=>record?.track).slice(0,8).map(record=>record.track));
+  cacheSavedArtwork(entries.filter(record=>record?.track).map(record=>record.track));
  }catch(error){
   offlineLoaded=true;offlineStatus='Armazenamento offline indisponível neste navegador';
   console.warn('GNARLY offline storage:',error?.message);
@@ -2273,9 +2291,23 @@ function mediaList(tracks,context,startIndex=0){
        (offlinePending.has(tr.id)?' disabled':'')+
        ' aria-label="Baixar '+label+' para ouvir offline" title="Guardar offline">'+
        (offlinePending.has(tr.id)?'…':'↓')+'</button>':'';
-  return '<div class="media-item"><img src="'+safe((!navigator.onLine?tr.artwork:artworkCandidates(tr.artwork||icon,{pixels:artPixels('thumb')})[0])||icon)+'" data-original-art="'+safe(tr.artwork||icon)+'" data-art-context="'+safe(context)+'" data-art-index="'+(startIndex+i)+'" alt="" loading="lazy" decoding="async" /><div class="media-text"><strong>'+label+'</strong><small>'+safe(displayArtist(tr))+' · '+source+'</small></div>'+play+actions+offlineControl+'</div>';
+  return '<div class="media-item"><img src="'+safe((!navigator.onLine?displayedArtwork(tr):artworkCandidates(tr.artwork||icon,{pixels:artPixels('thumb')})[0])||icon)+'" data-original-art="'+safe(tr.artwork||icon)+'" data-art-context="'+safe(context)+'" data-art-index="'+(startIndex+i)+'" alt="" loading="lazy" decoding="async" /><div class="media-text"><strong>'+label+'</strong><small>'+safe(displayArtist(tr))+' · '+source+'</small></div>'+play+actions+offlineControl+'</div>';
  }).join('')+'</div>';
 }
+// A failed source must never leave a broken-image glyph in an offline library.
+document.addEventListener('error',event=>{
+ const image=event.target;
+ if(!(image instanceof HTMLImageElement)||
+   !image.matches('.media-item img[data-original-art],.native-queue-row img[data-original-art]'))return;
+ const fallback=image.dataset.originalArt;
+ const original=typeof fallback==='string'&&fallback.startsWith('https://')?fallback:'';
+ if(navigator.onLine&&!image.dataset.triedOriginal&&original&&image.src!==original){
+  image.dataset.triedOriginal='1';image.src=original;return;
+ }
+ if(!image.dataset.triedIcon){
+  image.dataset.triedIcon='1';image.src=icon;
+ }
+},true);
 // Only probe rows that can come into view. The old thumbnail path loaded the
 // first guessed CDN URL without checking naturalWidth/naturalHeight, so a
 // 120x90 'maxres' placeholder or tiny embedded art stayed on Retina screens.
@@ -2522,7 +2554,7 @@ function renderQueuePanel(){
  });
  const rows=state.queue.map((track,i)=>{
   const title=safe(track.title),artist=safe(displayArtist(track));
-  const art=safe((!navigator.onLine?track.artwork:artworkCandidates(track.artwork||icon,{pixels:artPixels('thumb')})[0])||icon);
+  const art=safe((!navigator.onLine?displayedArtwork(track):artworkCandidates(track.artwork||icon,{pixels:artPixels('thumb')})[0])||icon);
   const fallback=safe(track.artwork||icon);
   const attrs=' data-context="queue" data-index="'+i+'"';
   const offline=isOffline(track.id)?' <span class="native-queue-offline">✓ Offline</span>':'';
