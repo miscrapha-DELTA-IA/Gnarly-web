@@ -1896,9 +1896,14 @@ function cacheSavedArtwork(tracks){
   let offset=0;
   const send=()=>{
    if(!navigator.onLine||!reg.active)return;
+   // Full-library backfill must yield to an active song's first buffer.
+   if(urls.length>8&&(['loading','recovering'].includes(state.audioState)||
+     state.playing&&bufferedAudioAhead(audio)<12)){
+    setTimeout(send,1800);return;
+   }
    reg.active.postMessage({type:'GNARLY_CACHE_COVERS',urls:urls.slice(offset,offset+8)});
    offset+=8;
-   if(offset<urls.length)setTimeout(send,350);
+   if(offset<urls.length)setTimeout(send,900);
   };
   send();
  }).catch(()=>{});
