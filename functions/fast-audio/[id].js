@@ -3,8 +3,11 @@
  * No bucket listing, credentials, arbitrary URL proxying, or signed URL leaks.
  */
 import {fetchAudioHeaders,discardAudioBody,retryAfter,validAudioResponse} from '../_lib/origin-audio.js';
+import {PcOnlineHint} from '../_lib/pc-online-hint.js';
 const VIDEO_ID=/^[A-Za-z0-9_-]{11}$/;
 const RENDER='https://nightcorelab.onrender.com';
+// Per-isolate positive cache only; never cache provider cooldown as healthy.
+const pcOnlineHint=new PcOnlineHint({ttlMs:10000});
 const PASSTHROUGH=['content-length','content-range','accept-ranges','etag','last-modified'];
 
 const PROMOTION_MAX_BYTES=16*1024*1024;
@@ -196,7 +199,8 @@ export async function cachedRenderAudio({id,range=null,signal=null,bucket=null,w
 /** A cheap, read-only circuit check on uncached tracks. Never accesses
  * YouTube, extracts audio, or blocks R2 hits. Degrades open on network errors.
  */
-export async function originCooldown(fetcher,signal,{timeoutMs=1500,videoId=null}={}){
+export async function originCooldown(fetcher,signal,{timeoutMs=1500,videoId=null,hint=null}={}){
+ if(hint?.available())return {retryAfter:null,pcNodeOnline:true,positiveHint:true};
  const ctl=new AbortController(),abort=()=>ctl.abort();
  signal?.addEventListener('abort',abort,{once:true});
  const timer=setTimeout(abort,timeoutMs);
@@ -222,10 +226,13 @@ export async function originCooldown(fetcher,signal,{timeoutMs=1500,videoId=null
   // /stream first only adds a redundant 12s request and exposes a 503 as
   // a misleading browser MediaError 4.
   const pcNodeOnline=data?.pc_node_online===true;
-  if(Number.isFinite(seconds)&&seconds>0)return {
-   retryAfter:String(Math.max(1,Math.min(3600,Math.ceil(seconds)))),
-   pcNodeOnline
-  };
+  if(Number.isFinite(seconds)&&seconds>0){
+   hint?.invalidate();
+   return {retryAfter:String(Math.max(1,Math.min(3600,Math.ceil(seconds)))),
+    pcNodeOnline};
+  }
+  if(pcNodeOnline)hint?.markHealthy();
+  else hint?.invalidate();
   return pcNodeOnline?{retryAfter:null,pcNodeOnline:true}:null;
  }catch{
   // Render's global health endpoint can intermittently time out while the
@@ -246,7 +253,9 @@ export async function originCooldown(fetcher,signal,{timeoutMs=1500,videoId=null
     discardAudioBody(state);return null;
    }
    const job=await state.json();
-   return job?.node_online===true?{retryAfter:null,pcNodeOnline:true}:null;
+   if(job?.node_online===true){hint?.markHealthy();return {retryAfter:null,pcNodeOnline:true}}
+   hint?.invalidate();
+   return null;
   }catch{return null}
   finally{clearTimeout(retryTimer);signal?.removeEventListener('abort',stop)}
  }
@@ -289,7 +298,8 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
  if(originTimeoutMs<=0)return reply(504,'Audio origin timed out',{
   'Retry-After':'8','X-Gnarly-Playback-Source':'origin-timeout'});
  const cooldown=originProbe?await originCooldown(fetcher,request.signal,{
-  timeoutMs:Math.min(1500,originTimeoutMs),videoId:id}):null;
+  timeoutMs:Math.min(1500,originTimeoutMs),videoId:id,
+  hint:fetcher===globalThis.fetch?pcOnlineHint:null}):null;
  // During an upstream cooldown, a different cache layer (Render R2 or its
  // local LRU) may already contain this exact recording. Probe it using the
  // backend's explicit cache_only=1 path, which never extracts new media.
