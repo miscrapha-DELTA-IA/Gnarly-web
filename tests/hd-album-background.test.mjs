@@ -214,3 +214,25 @@ test('main thumbnail uses verified album master immediately and still probes for
  assert.match(app,/scheduleVisualArtwork\(track,\(\)=>void resolveHDAlbumBackground\(track,/,
   'defer only heavy wallpaper work to preserve TDR');
 });
+
+test('official HD lookup starts without waiting for slow 720p source probes',async()=>{
+ const storage=store(),events=[];
+ let releaseSource;
+ const slow=new Promise(resolve=>releaseSource=resolve);
+ const verified='https://is1-ssl.mzstatic.com/image/thumb/release/3200x3200bb.jpg';
+ const operation=resolveHDAlbumBackground(original,{
+  storage,viewport,
+  resolve:async url=>{
+   if(url.includes('ytimg')){events.push('thumbnail_started');await slow;return{url,width:1280,height:720}}
+   return {url,width:3200,height:3200};
+  },
+  lookup:async()=>{events.push('catalog_started');return{url:verified,provider:'apple'}},
+  onCandidate:asset=>events.push(asset.url)
+ });
+ await new Promise(resolve=>setTimeout(resolve,0));
+ assert.ok(events.includes('catalog_started'),
+  'verified full-resolution search must not wait for a thumbnail CDN timeout');
+ assert.ok(events.includes(verified));
+ releaseSource();
+ assert.equal((await operation).url,verified);
+});
