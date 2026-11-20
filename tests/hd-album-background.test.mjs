@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
  HD_ARTWORK_CACHE_KEY,artworkMemoryKey,rememberHDArtwork,storedHDArtwork,
- effectiveArtworkDensity,preferHDArtwork,coverDisplayMode,requestedWallpaperPixels,
+ effectiveArtworkDensity,preferHDArtwork,coverDisplayMode,usableCoverForPortraitWallpaper,requestedWallpaperPixels,
  resolveHDAlbumBackground
 } from '../lib/hd-album-background.js';
 import {artworkCandidates,resolveArtworkAsset,clearArtworkQualityCache} from '../lib/artwork-quality.js';
@@ -235,4 +235,57 @@ test('official HD lookup starts without waiting for slow 720p source probes',asy
  assert.ok(events.includes(verified));
  releaseSource();
  assert.equal((await operation).url,verified);
+});
+
+test('portrait wallpaper reuses a real square player cover, not a pixelated 720p video still',()=>{
+ assert.equal(usableCoverForPortraitWallpaper({url:original.artwork,width:1280,height:720}),false);
+ assert.equal(usableCoverForPortraitWallpaper({url:original.artwork,width:640,height:360}),false);
+ assert.equal(usableCoverForPortraitWallpaper({url:'https://lh3.googleusercontent.com/a=s1200-c',width:1200,height:1200}),true);
+ assert.equal(usableCoverForPortraitWallpaper({url:'https://is1-ssl.mzstatic.com/a.jpg',width:2400,height:2400}),true);
+ assert.equal(usableCoverForPortraitWallpaper({url:'https://is1-ssl.mzstatic.com/a.jpg',width:1000,height:1000}),false);
+ assert.equal(usableCoverForPortraitWallpaper({url:'',width:3200,height:3200}),false);
+});
+test('simultaneous lower-resolution probes cannot overwrite the real cached album master',()=>{
+ const storage=store(),master={url:'https://is1-ssl.mzstatic.com/image/thumb/demo/3200x3200bb.jpg',
+  width:3200,height:3200,provider:'apple'};
+ const weaker={url:'https://cdn-images.dzcdn.net/images/cover/demo/1200x1200.jpg',
+  width:1200,height:1200,provider:'deezer'};
+ assert.equal(rememberHDArtwork(original,master,storage),true);
+ assert.equal(rememberHDArtwork(original,weaker,storage),false);
+ assert.deepEqual(storedHDArtwork(original,storage)?.url,master.url);
+});
+test('verified high-resolution cache is offered before new slow network image probes',async()=>{
+ const storage=store(),seen=[];
+ const master={url:'https://is1-ssl.mzstatic.com/image/thumb/demo/2400x2400bb.jpg',
+  width:2400,height:2400,provider:'apple'};
+ rememberHDArtwork(original,master,storage);
+ let finish;
+ const barrier=new Promise(resolve=>finish=resolve);
+ const operation=resolveHDAlbumBackground(original,{
+  storage,viewport,
+  lookup:undefined,
+  resolve:async url=>{await barrier;return {...master,url}},
+  onCandidate:asset=>seen.push({url:asset.url,alreadyLoaded:asset.alreadyLoaded})
+ });
+ assert.equal(seen[0]?.url,master.url,'warm cached cover should be offered synchronously');
+ assert.equal(seen[0]?.alreadyLoaded,undefined,
+  'persisted artwork must still pass browser image availability check');
+ finish();
+ await operation;
+});
+test('browser handoff uses the already-loaded player image and preserves the best art across metadata updates',()=>{
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ assert.match(app,/function offerLoadedPlayerCoverToWallpaper\(track,image\)/);
+ assert.match(app,/if\(!usableCoverForPortraitWallpaper\(asset\)\)return/);
+ assert.match(app,/void accept\.offer\(\{\.\.\.asset,provider,alreadyLoaded:true\}\)/);
+ assert.match(app,/image\.onload=\(\)=>\{/);
+ assert.match(app,/let displayedAsset=backgroundDisplayedAsset/);
+ assert.match(app,/if\(!displayedAsset&&source&&photo\.style\.backgroundImage/);
+ assert.match(app,/if\(!asset\.alreadyLoaded\)\{/);
+ assert.match(app,/rememberHDArtwork\(track,asset,localStorage\)/);
+ assert.match(app,/backgroundArtAccept=\{track,offer:showCandidate\}/);
+ assert.match(app,/scheduleVisualArtwork\(track,\(\)=>void resolveHDAlbumBackground\(track,/,
+  'only heavy network search should wait for native audio playing');
+ const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
+ assert.match(css,/#gnarly-background\.cover-bg \.photo-background \{[\s\S]*?background-size:cover!important;/);
 });
