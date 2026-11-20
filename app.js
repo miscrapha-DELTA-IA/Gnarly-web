@@ -55,6 +55,7 @@ import {deviceLayout,themeAccent,attachEyeGestures,OFFICIAL_SUPPORT_URL} from '.
 import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel} from './ui/player-surface.js';
 import {createIPodSkinStore,ipodSourceLabel} from './ui/ipod-mode.js';
 import {artworkBudget,artworkCandidates,resolveArtworkAsset} from './lib/artwork-quality.js';
+import {createAlbumWallpaperPainter,WALLPAPER_MODES} from './lib/album-wallpaper-renderer.js';
 import {resolveHDAlbumBackground,preferHDArtwork,coverDisplayMode,effectiveArtworkDensity,storedHDArtwork,rememberHDArtwork,requestedWallpaperPixels,usableCoverForPortraitWallpaper} from './lib/hd-album-background.js';
 import {requestVerifiedAlbumArtwork} from './lib/album-artwork-client.js';
 import {createFullscreenController} from './lib/fullscreen-controller.js';
@@ -265,6 +266,17 @@ function applyArtworkQuality(element,asset,role){
 }
 let coverArtVersion=0,lastCoverArt='',surfaceArtVersion=0,lastSurfaceArt='',backgroundArtVersion=0,lastBackgroundArt='';
 let backgroundDisplayedTrack=null,backgroundDisplayedAsset=null,backgroundArtAccept=null;
+const wallpaperPainter=createAlbumWallpaperPainter($('#album-wallpaper-canvas'));
+// Repaint only after viewport changes; this is not a procedural animation.
+let wallpaperResizeFrame=0;
+window.addEventListener('resize',()=>{
+ if(wallpaperResizeFrame)cancelAnimationFrame(wallpaperResizeFrame);
+ wallpaperResizeFrame=requestAnimationFrame(()=>{
+  wallpaperResizeFrame=0;
+  if(state.backgroundMode==='cover')
+   wallpaperPainter.redraw({mode:state.coverPresentation,hue:state.artworkHue});
+ });
+},{passive:true});
 let wallpaperTiming={startedAt:0,firstVerifiedAt:0,lastUpgradeAt:0,upgrades:0};
 /** Read-only local diagnosis, no track IDs or external image URLs are exposed.
  * Pixel density below 1 means there is no authentic source resolution
@@ -288,7 +300,8 @@ window.gnarlyArtworkDiagnostics=()=>{
   firstVerifiedMs:wallpaperTiming.firstVerifiedAt?
    Math.round(wallpaperTiming.firstVerifiedAt-wallpaperTiming.startedAt):null,
   upgrades:wallpaperTiming.upgrades,
-  limited:density>0?density<.95:null
+  limited:density>0?density<.95:null,
+  ...wallpaperPainter.diagnostics()
  };
 };
 // The visible player cover has ALREADY been downloaded. If it's a verified
@@ -301,10 +314,16 @@ function offerLoadedPlayerCoverToWallpaper(track,image){
   state.current!==track||state.backgroundMode!=='cover')return;
  const url=image.currentSrc||image.src;
  const asset={url,width:image.naturalWidth,height:image.naturalHeight};
- if(!usableCoverForPortraitWallpaper(asset))return;
+ if(asset.width<320||asset.height<300)return;
  const remembered=storedHDArtwork(track,localStorage);
  const provider=remembered?.url===url?remembered.provider:track.artworkProvider||'';
- void accept.offer({...asset,provider,alreadyLoaded:true});
+ // Even a low-resolution still may seed a better full-screen composition.
+ // It is never promoted to the persistent HD cache without real pixels.
+ if(!usableCoverForPortraitWallpaper(asset)){
+  void accept.offer({...asset,provider,alreadyLoaded:true,image,provisional:true});
+  return;
+ }
+ void accept.offer({...asset,provider,alreadyLoaded:true,image});
 }
 /** Keep visual CDN upgrades off the critical path to native first playback.
  * Minimal current artwork is shown synchronously; additional image probes are
@@ -419,7 +438,9 @@ const state={
   pitch:getSetting('pitch','yes')!=='no',musicTab:'speedPitch',omniboxTab:getSetting('omniboxTab','search'),micRecorder:null,micStream:null,micChunks:[],exportStyle:'Clássica',
   favorites:parseJSON(getSetting('favorites','[]'),[]),preset:getSetting('preset','ORIGINAL'),
   audioState:'idle', playbackError:'',userPaused:false,
-  lyrics:[],plainLyrics:[],lyricsSource:null,lyricsSynced:false,lyricsInstrumental:false,lyricsLoading:false,lyricsAIWorking:false,lyricsStatus:'As letras aparecem automaticamente quando disponíveis.',lyricsAbort:null,sheet:null,backgroundURL:null,backgroundMode:getSetting('backgroundMode','visual'),photoZoom:Number(getSetting('photoZoom','1')),photoX:Number(getSetting('photoX','0')),photoY:Number(getSetting('photoY','0')),photoAdjust:false,artworkHue:.58,searchTimer:null,lastLyric:-2,searchLoading:false,searchError:'',searchTerm:omnibox.query,history:omnibox.history,searchGeneration:0
+  lyrics:[],plainLyrics:[],lyricsSource:null,lyricsSynced:false,lyricsInstrumental:false,lyricsLoading:false,lyricsAIWorking:false,lyricsStatus:'As letras aparecem automaticamente quando disponíveis.',lyricsAbort:null,sheet:null,backgroundURL:null,backgroundMode:getSetting('backgroundMode','visual'),coverPresentation:
+  WALLPAPER_MODES.includes(getSetting('coverPresentation','auto'))?
+   getSetting('coverPresentation','auto'):'auto',photoZoom:Number(getSetting('photoZoom','1')),photoX:Number(getSetting('photoX','0')),photoY:Number(getSetting('photoY','0')),photoAdjust:false,artworkHue:.58,searchTimer:null,lastLyric:-2,searchLoading:false,searchError:'',searchTerm:omnibox.query,history:omnibox.history,searchGeneration:0
 };
 // The browser equivalent of MPRemoteCommandCenter: hardware/lock-screen
 // events re-enter the SAME playback, queue and seek functions as onscreen UI.
@@ -991,6 +1012,7 @@ function applyBackground(){
  background.classList.toggle('custom-bg',ownPhoto);background.classList.toggle('cover-bg',coverPhoto);
  photo.hidden=!ownPhoto&&!coverPhoto;
  if(ownPhoto){
+  wallpaperPainter.clear();
   backgroundArtAccept=null;backgroundDisplayedAsset=null;backgroundDisplayedTrack=null;
   lastBackgroundArt='';++backgroundArtVersion;
   background.classList.remove('cover-art-ready');
@@ -1005,6 +1027,7 @@ function applyBackground(){
  }else if(coverPhoto){
   const track=state.current,source=safeSurfaceArtwork(cover),pixels=Math.max(2400,artPixels('background'));
   if(backgroundDisplayedTrack!==track){
+   wallpaperPainter.clear();
    backgroundDisplayedTrack=track;backgroundDisplayedAsset=null;
    wallpaperTiming={startedAt:performance.now(),firstVerifiedAt:0,
     lastUpgradeAt:0,upgrades:0};
@@ -1092,6 +1115,7 @@ function applyBackground(){
   }
   photo.style.transform='';
  }else{
+  wallpaperPainter.clear();
   backgroundArtAccept=null;backgroundDisplayedAsset=null;backgroundDisplayedTrack=null;
   lastBackgroundArt='';++backgroundArtVersion;
   background.classList.remove('cover-art-ready');
