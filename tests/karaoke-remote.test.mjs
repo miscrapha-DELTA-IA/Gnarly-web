@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {safeMicFrame,safePlaybackSync,ROOM_PATTERN,SECRET_PATTERN} from '../lib/karaoke-relay-protocol.js';
+import {safeMicFrame,safePlaybackSync,safeRTCSignal,ROOM_PATTERN,SECRET_PATTERN} from '../lib/karaoke-relay-protocol.js';
 import {KaraokeRoomCore as KaraokeRoom} from '../lib/karaoke-room-core.js';
 import {microphonePairingLink,KaraokeRemoteHost} from '../lib/karaoke-remote.js';
 
@@ -90,4 +90,73 @@ test('remote host never trusts stale, out-of-order microphone frames',()=>{
  host.socket.onmessage({data:f});
  assert.equal(received,1);
  host.stop();
+});
+
+test('SDP/ICE signaling is bounded and role-scoped; no microphone PCM enters relay',()=>{
+ const sdp='v=0\\r\\nm=audio 9 UDP/TLS/RTP/SAVPF 111\\r\\na=sendonly\\r\\n';
+ const offer=safeRTCSignal({type:'rtc-offer',sdp,pcm:'private'},'host');
+ assert.deepEqual(offer,{type:'rtc-offer',sdp});
+ assert.equal(safeRTCSignal({type:'rtc-offer',sdp},'mic'),null);
+ assert.equal(safeRTCSignal({type:'rtc-answer',sdp},'host'),null);
+ assert.equal(safeRTCSignal({type:'rtc-offer',sdp:'v=0\\r\\nm=video'},'host'),null);
+ assert.equal(safeRTCSignal({type:'rtc-offer',sdp:'v=0'+('x'.repeat(15000))+'m=audio'},'host'),null);
+ const c={candidate:'candidate:1 1 udp 2122260223 10.0.0.2 58821 typ host',sdpMid:'0',sdpMLineIndex:0,private:'ignore'};
+ assert.deepEqual(safeRTCSignal({type:'rtc-candidate',candidate:c},'mic'),
+  {type:'rtc-candidate',candidate:{candidate:c.candidate,sdpMid:'0',sdpMLineIndex:0}});
+ const {target,peer}=channel(),host=peer(),phone=peer();
+ target.webSocketMessage(host,JSON.stringify({type:'hello',role:'host',key:owner,invite}));
+ target.webSocketMessage(phone,JSON.stringify({type:'hello',role:'mic',key:invite}));
+ target.webSocketMessage(host,JSON.stringify({type:'rtc-offer',sdp,pcm:'raw-samples'}));
+ assert.deepEqual(phone.messages.at(-1),{type:'rtc-offer',sdp});
+ const count=phone.messages.length;
+ target.webSocketMessage(host,JSON.stringify({type:'rtc-answer',sdp}));
+ assert.equal(phone.messages.length,count,'host cannot forge a mic answer');
+ target.webSocketMessage(phone,JSON.stringify({type:'rtc-answer',sdp,pcm:'raw-samples'}));
+ assert.deepEqual(host.messages.at(-1),{type:'rtc-answer',sdp});
+ target.webSocketMessage(phone,JSON.stringify({type:'rtc-candidate',candidate:c}));
+ assert.deepEqual(host.messages.at(-1),
+  {type:'rtc-candidate',candidate:{candidate:c.candidate,sdpMid:'0',sdpMLineIndex:0}});
+});
+test('desktop negotiates received audio while keeping speaker monitoring opt-in',async()=>{
+ const rooms=[];
+ class FakePeer{
+  constructor(){this.signalingState='stable';this.connectionState='new';rooms.push(this)}
+  addTransceiver(kind,opts){assert.equal(kind,'audio');assert.equal(opts.direction,'recvonly')}
+  async createOffer(){return {type:'offer',sdp:'v=0\\r\\nm=audio 9 UDP/TLS/RTP/SAVPF 111\\r\\n'}}
+  async setLocalDescription(desc){this.localDescription=desc;this.signalingState='have-local-offer'}
+  async setRemoteDescription(desc){this.remoteDescription=desc;this.signalingState='stable'}
+  async addIceCandidate(){this.candidates=(this.candidates||0)+1}
+  close(){this.closed=true}
+ }
+ class FakeContext{
+  constructor(){this.state='suspended';this.destination={}}
+  createGain(){return {gain:{value:0},connect(){},disconnect(){}}}
+  createMediaStreamSource(){return {connect(){},disconnect(){}}}
+  async resume(){this.state='running'}
+  async close(){this.state='closed'}
+ }
+ class FakeWS{
+  constructor(){this.readyState=1;this.sent=[]}
+  send(value){this.sent.push(JSON.parse(value))}
+  close(){this.closed=true}
+ }
+ const host=new KaraokeRemoteHost({WebSocketClass:FakeWS,PeerConnectionClass:FakePeer,
+  AudioContextClass:FakeContext,cryptoObject:{randomUUID:()=>room,getRandomValues:a=>{a.fill(1);return a}},
+  origin:'https://gnarly-web-pages.pages.dev'});
+ host.start();host.socket.onopen();
+ host.socket.onmessage({data:JSON.stringify({type:'paired'})});
+ host.socket.onmessage({data:JSON.stringify({type:'mic-on'})});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(host.socket.sent.some(x=>x.type==='rtc-offer'),true);
+ assert.equal(host.monitorEnabled,false);
+ assert.equal(host.audioContext,null,'no autoplay or automatic vocal feedback');
+ host.socket.onmessage({data:JSON.stringify({type:'rtc-answer',sdp:'v=0\\r\\nm=audio 9 UDP/TLS/RTP/SAVPF 111\\r\\n'})});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(rooms[0].remoteDescription?.type,'answer');
+ assert.equal(host.setMonitor(true,.35),true);
+ assert.equal(host.gain.gain.value,.35);
+ host.socket.onmessage({data:JSON.stringify({type:'mic-off'})});
+ assert.equal(rooms[0].closed,true);
+ host.stop();
+ assert.equal(host.audioContext,null);
 });

@@ -13,24 +13,48 @@ export function karaokeStageMarkup(){
    <img id="karaoke-stage-art" src="./assets/gnarly-icon.png" alt="" class="karaoke-stage-art">
    <div class="karaoke-stage-song"><h2 id="karaoke-stage-heading">GNARLY · Karaokê</h2><p id="karaoke-stage-artist">Selecione uma música</p></div>
    <button type="button" class="karaoke-stage-transport" id="karaoke-stage-play" aria-label="Reproduzir música">▶</button>
-   <button type="button" class="karaoke-stage-fullscreen" id="karaoke-stage-fullscreen" aria-label="Ativar tela cheia" aria-pressed="false" title="Tela cheia"><span data-fullscreen-glyph aria-hidden="true">⛶</span></button>
+   <button type="button" class="karaoke-stage-gear" id="karaoke-stage-settings-toggle" aria-label="Configurações do karaokê" aria-controls="karaoke-stage-settings-menu" aria-expanded="false" title="Configurações"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M10 2h4l.6 2.1c.4.1.8.3 1.2.5l2-.8 2.8 2.8-.8 2c.2.4.4.8.5 1.2L22 10v4l-2.1.6c-.1.4-.3.8-.5 1.2l.8 2-2.8 2.8-2-.8c-.4.2-.8.4-1.2.5L14 22h-4l-.6-2.1c-.4-.1-.8-.3-1.2-.5l-2 .8-2.8-2.8.8-2c-.2-.4-.4-.8-.5-1.2L2 14v-4l2.1-.6c.1-.4.3-.8.5-1.2l-.8-2 2.8-2.8 2 .8c.4-.2.8-.4 1.2-.5Z"/><circle cx="12" cy="12" r="3"/></svg></button>
    <button type="button" class="karaoke-stage-close" id="karaoke-stage-close" aria-label="Recolher karaokê">✕</button>
   </header>
-  <nav class="karaoke-stage-actions" aria-label="Controles de karaokê">
-   <button type="button" id="karaoke-voice-toggle" aria-pressed="false">🎤 Ligar mic</button>
-   <button type="button" id="karaoke-remote-toggle" aria-expanded="false">📱 Usar celular como microfone</button>
-   <button type="button" id="karaoke-voice-record" disabled aria-pressed="false">● Gravar voz</button>
-   <button type="button" id="karaoke-caption-settings">Aa · Legenda</button><button type="button" id="karaoke-share-score">Compartilhar resultado</button>
-  </nav>
+  <nav class="karaoke-stage-actions karaoke-settings-menu" id="karaoke-stage-settings-menu" aria-label="Configurações do karaokê" hidden>
+   <div class="karaoke-settings-heading"><strong>Configurações</strong><span>Palco e microfone</span></div>
+   <div class="karaoke-settings-kicker">CAPTAÇÃO</div>
+   <div class="karaoke-settings-grid">
+   <button type="button" id="karaoke-voice-toggle" aria-pressed="false">Ativar microfone</button>
+   <button type="button" id="karaoke-remote-toggle" aria-expanded="false">Conectar celular</button>
+   <button type="button" id="karaoke-voice-record" disabled aria-pressed="false">Gravar voz</button>
+   </div>
+   <label class="karaoke-settings-device" for="karaoke-input-device">Entrada do microfone
+    <select id="karaoke-input-device"><option value="">Microfone padrão do sistema</option></select>
+   </label>
+   <p id="karaoke-input-advice" class="karaoke-settings-help">Nos fones Bluetooth, use outro microfone ou o celular para preservar o áudio estéreo.</p>
+   <div class="karaoke-settings-kicker">VISUAL</div>
+   <div class="karaoke-settings-segment" role="group" aria-label="Fundo do karaokê">
+    <button type="button" id="karaoke-background-cover" aria-pressed="true">Capa</button>
+    <button type="button" id="karaoke-background-ambient" aria-pressed="false">Ambiente</button>
+   </div>
+   <div class="karaoke-settings-grid">
+    <button type="button" id="karaoke-caption-settings">Estilo da letra</button>
+    <button type="button" id="karaoke-stage-fullscreen" aria-label="Ativar tela cheia" aria-pressed="false" title="Tela cheia"><span data-fullscreen-glyph aria-hidden="true">⛶</span> Tela cheia</button>
+   </div>
+   <div class="karaoke-settings-kicker">RESULTADO</div>
+   <button type="button" id="karaoke-share-score">Compartilhar resultado</button>
   <div class="karaoke-remote-panel" id="karaoke-remote-panel" hidden>
    <strong>Microfone sem fio · GNARLY</strong>
    <p id="karaoke-remote-status" role="status">Preparando conexão segura…</p>
    <label for="karaoke-remote-link">Abra este link no celular</label>
    <div class="karaoke-remote-link-row"><input id="karaoke-remote-link" type="text" readonly aria-label="Link de pareamento para o celular"><button id="karaoke-remote-copy" type="button">Copiar link</button></div>
-   <small>O desktop continua tocando e exibindo a letra. O celular envia somente dados da voz, não o áudio gravado.</small>
+   <p id="karaoke-remote-audio-status" role="status">Áudio ao vivo: aguardando microfone do celular.</p>
+   <div class="karaoke-remote-monitor-controls">
+    <label class="karaoke-remote-monitor-switch" for="karaoke-remote-hear"><input type="checkbox" id="karaoke-remote-hear"> Ouvir minha voz pelo PC</label>
+    <label for="karaoke-remote-volume">Volume da voz</label>
+    <input type="range" id="karaoke-remote-volume" min="0" max="100" value="55" aria-label="Volume do microfone do celular no PC">
+   </div>
+   <small>Voz enviada por WebRTC criptografado diretamente ao PC. O servidor faz apenas o pareamento e a pontuação usa os dados de voz existentes. Use fones para evitar microfonia. Em redes diferentes a conexão direta pode falhar.</small>
   </div>
-  <p class="karaoke-stage-feedback" id="karaoke-stage-feedback" role="status" aria-live="polite" hidden></p>
   <div class="karaoke-stage-font-menu" id="karaoke-stage-font-menu" aria-label="Escolher estilo da legenda" hidden></div>
+  </nav>
+  <p class="karaoke-stage-feedback" id="karaoke-stage-feedback" role="status" aria-live="polite" hidden></p>
   <section class="karaoke-score-card" aria-label="Pontuação do canto">
    <div><span class="karaoke-score-label" id="karaoke-score-label">MICROFONE INATIVO</span><strong class="karaoke-score-number" id="karaoke-score-number">0</strong></div>
    <div class="karaoke-score-right"><strong id="karaoke-score-combo">1× · 0 combo</strong><small id="karaoke-score-mode">Ritmo e presença · tom indisponível</small></div>
@@ -69,8 +93,11 @@ export class KaraokeStage {
   this.lastRemoteSync=0;
   this.remoteHost=new KaraokeRemoteHost({
    onFrame:frame=>this.receiveRemoteVoice(frame),
-   onStatus:status=>this.remoteStatus(status)
+   onStatus:status=>this.remoteStatus(status),
+   onAudioStatus:status=>this.remoteAudioStatus(status)
   });
+  this.backdrop='cover';try{if(globalThis.localStorage?.getItem('gnarly.karaoke.backdrop')==='ambient')this.backdrop='ambient'}catch{}
+  this.root.dataset.backdrop=this.backdrop;
   this.opened=false;this.follow=true;this.trackId=null;this.lineRef=null;this.currentIndex=-999;
   this.reducedMotion=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches||false;
   this.trigger=null;this.artworkSource='';this.artworkRequest=0;this.feedbackTimer=null;
@@ -105,6 +132,16 @@ export class KaraokeStage {
    this.updateScore();
   });
   this.root.addEventListener('click',e=>this.click(e));
+  this.root.addEventListener('change',e=>{
+   if(e.target?.id==='karaoke-remote-hear')
+    this.setRemoteMonitor();
+  });
+  this.root.addEventListener('input',e=>{
+   if(e.target?.id==='karaoke-remote-volume')this.setRemoteMonitor();
+  });
+  this.root.addEventListener('change',e=>{
+   if(e.target?.id==='karaoke-input-device')void this.changeInputDevice(e.target.value);
+  });
   this.root.addEventListener('wheel',()=>this.setFollowing(false),{passive:true});
   this.root.querySelector('#karaoke-reader').addEventListener('touchstart',()=>this.setFollowing(false),{passive:true});
   this.root.querySelector('#karaoke-reader').addEventListener('pointerdown',()=>this.setFollowing(false),{passive:true});
@@ -138,9 +175,76 @@ export class KaraokeStage {
   if(info)info.textContent=messages[status]||'';
   if(this.opened)this.updateScore();
  }
+ remoteAudioStatus(status){
+  const messages={
+   off:'Áudio ao vivo desligado · a pontuação continua disponível.',
+   connecting:'Estabelecendo canal de voz criptografado…',
+   connected:'Áudio conectado. Ative “Ouvir minha voz pelo PC” para escutar.',
+   unavailable:'Este navegador não oferece WebRTC de áudio. Pontuação ainda disponível.',
+   'network-error':'Não foi possível transportar áudio. Verifique se celular e PC estão no mesmo Wi-Fi.',
+   'audio-blocked':'O navegador bloqueou o retorno. Clique novamente em “Ouvir minha voz”.'
+  };
+  const info=this.query('karaoke-remote-audio-status');
+  if(info)info.textContent=messages[status]||'Áudio ao vivo indisponível.';
+ }
+ setRemoteMonitor(){
+  const hear=this.query('karaoke-remote-hear');
+  const volume=this.query('karaoke-remote-volume');
+  const okay=this.remoteHost.setMonitor(!!hear?.checked,Number(volume?.value||55)/100);
+  if(!okay&&hear)hear.checked=false;
+ }
+ setSettingsOpen(open,{restoreFocus=false}={}){
+  const menu=this.query('karaoke-stage-settings-menu');
+  menu.hidden=!open;
+  this.query('karaoke-stage-settings-toggle').setAttribute('aria-expanded',String(open));
+  if(!open){
+   this.query('karaoke-stage-font-menu').hidden=true;
+   if(restoreFocus)this.query('karaoke-stage-settings-toggle').focus({preventScroll:true});
+  }else void this.refreshInputDevices();
+ }
+ setBackdrop(mode){
+  if(!['cover','ambient'].includes(mode))return;
+  this.backdrop=mode;this.root.dataset.backdrop=mode;
+  this.query('karaoke-background-cover').setAttribute('aria-pressed',String(mode==='cover'));
+  this.query('karaoke-background-ambient').setAttribute('aria-pressed',String(mode==='ambient'));
+  try{globalThis.localStorage?.setItem('gnarly.karaoke.backdrop',mode)}catch{}
+ }
+ async refreshInputDevices(){
+  const api=this.mic.mediaDevices;
+  if(typeof api?.enumerateDevices!=='function')return;
+  try{
+   const inputs=(await api.enumerateDevices()).filter(x=>x.kind==='audioinput');
+   const select=this.query('karaoke-input-device');
+   const chosen=this.mic.inputDeviceId||'';
+   select.replaceChildren(new Option('Microfone padrão do sistema',''));
+   for(const device of inputs){
+    if(!device.deviceId||['default','communications'].includes(device.deviceId))continue;
+    select.add(new Option(device.label||'Microfone '+select.options.length,device.deviceId));
+   }
+   select.value=chosen;
+   if(select.selectedIndex<0)select.value='';
+   this.updateInputAdvice();
+  }catch{}
+ }
+ updateInputAdvice(){
+  const label=this.query('karaoke-input-device')?.selectedOptions?.[0]?.textContent||'';
+  const bluetooth=/bluetooth|airpods|hands.free|headset|hfp|mãos livres/i.test(label);
+  this.query('karaoke-input-advice').textContent=bluetooth?
+   'Esse microfone Bluetooth pode ativar o modo de chamada, reduzindo a qualidade da música. Prefira outro microfone ou o celular.':
+   'Para preservar áudio estéreo nos fones Bluetooth, prefira usar o celular ou um microfone diferente como entrada.';
+ }
+ async changeInputDevice(id){
+  this.mic.inputDeviceId=String(id||'');
+  this.updateInputAdvice();
+  if(this.mic.active){
+   this.mic.stop();this.scorer.stop();
+   void this.toggleMic();
+  }
+ }
  async toggleRemote(){
   if(this.remoteHost.socket){
-   this.remoteHost.stop();this.query('karaoke-remote-panel').hidden=true;this.updateScore();return;
+   this.remoteHost.stop();this.query('karaoke-remote-panel').hidden=true;
+   this.query('karaoke-remote-hear').checked=false;this.updateScore();return;
   }
   this.mic.stop();this.scorer.stop();
   this.query('karaoke-remote-panel').hidden=false;
@@ -162,6 +266,7 @@ export class KaraokeStage {
   this.savedDocumentScroll={x:window.scrollX||0,y:window.scrollY||0};
   this.root.hidden=false;this.query('karaoke-stage-font-menu').hidden=true;document.documentElement.classList.add('karaoke-stage-open');
   this.lineRef=null;this.currentIndex=-999;
+  this.setSettingsOpen(false);this.setBackdrop(this.backdrop);
   this.refresh(true);this.query('karaoke-stage-close').focus({preventScroll:true});
  }
  close(){
@@ -169,6 +274,8 @@ export class KaraokeStage {
   this.opened=false;this.root.hidden=true;this.query('karaoke-stage-font-menu').hidden=true;document.documentElement.classList.remove('karaoke-stage-open');
   clearTimeout(this.feedbackTimer);this.query('karaoke-stage-feedback').hidden=true;
   this.remoteHost.stop();this.query('karaoke-remote-panel').hidden=true;
+  this.query('karaoke-remote-hear').checked=false;
+  this.setSettingsOpen(false);
   this.mic.stop();this.scorer.stop();this.updateScore();
   // A pending image upgrade must be retried on reopen, not leave the stage
   // with a permanently stale wallpaper when it completed while hidden.
@@ -180,7 +287,7 @@ export class KaraokeStage {
   this.mic.stop();this.scorer.stop();this.trackId=null;this.lineRef=null;this.currentIndex=-999;
   if(this.opened)this.refresh(true);
  }
- setFollowing(enabled){this.follow=enabled;const btn=this.query('karaoke-follow-live');btn.classList.toggle('is-following',enabled);btn.setAttribute('aria-pressed',String(enabled))}
+ setFollowing(enabled){this.follow=enabled;const btn=this.query('karaoke-follow-live');btn.hidden=enabled;btn.classList.toggle('is-following',enabled);btn.setAttribute('aria-pressed',String(enabled))}
  refresh(force=false){
   if(!this.opened)return;
   const data=this.getState(),track=data.track,lines=Array.isArray(data.lines)?data.lines:[],plain=Array.isArray(data.plain)?data.plain:[];
@@ -309,12 +416,12 @@ export class KaraokeStage {
   const voice=remoteActive?this.remoteHost.lastFrame||SILENCE:this.mic.frameNow();
   const active=this.mic.active||remoteActive;
   this.query('karaoke-voice-toggle').disabled=!!this.mic.pending||this.mic.status==='requesting';
-  this.query('karaoke-voice-toggle').textContent=active?'🎤 Desligar mic':'🎤 Ligar mic';
+  this.query('karaoke-voice-toggle').textContent=active?'Desativar microfone':'Ativar microfone';
   this.query('karaoke-voice-toggle').setAttribute('aria-pressed',String(active));
-  const record=this.query('karaoke-voice-record');record.disabled=!this.mic.active;record.textContent=this.mic.recording?'■ Parar gravação':'● Gravar voz';
+  const record=this.query('karaoke-voice-record');record.disabled=!this.mic.active;record.textContent=this.mic.recording?'Encerrar gravação':'Gravar voz';
   record.setAttribute('aria-pressed',String(this.mic.recording));
   const remoteButton=this.query('karaoke-remote-toggle');
-  remoteButton.textContent=this.remoteHost.socket?'📱 Desconectar celular':'📱 Usar celular como microfone';
+  remoteButton.textContent=this.remoteHost.socket?'Desconectar celular':'Conectar celular';
   remoteButton.setAttribute('aria-expanded',String(!!this.remoteHost.socket));
   this.query('karaoke-score-label').textContent=remoteActive?'VOZ DO CELULAR':active?(result.mode==='presence'?'VOZ AO VIVO':result.active?'CANTO AO VIVO':'MICROFONE ATIVO'):'MICROFONE INATIVO';
   this.query('karaoke-score-number').textContent=String(result.score);
@@ -335,12 +442,14 @@ export class KaraokeStage {
   if(this.mic.active){this.mic.stop();this.scorer.finish();this.updateScore();return}
   if(this.remoteHost.socket)this.remoteHost.stop();
   this.query('karaoke-remote-panel').hidden=true;
+  this.query('karaoke-remote-hear').checked=false;
   if(this.onMicConflict()){this.onNotify('Pare outra gravação de voz antes de ativar o karaokê.');return}
   this.query('karaoke-voice-toggle').disabled=true;
   try{
    const activation=this.mic.start(),generation=this.mic.generation;
    const ok=await activation;
    if(!ok||this.mic.generation!==generation)return;
+   void this.refreshInputDevices();
    if(!this.isCaptureVisible()){this.mic.stop();return}
    const d=this.getState();this.trackId=d.track?.id??null;this.scoreLines=d.lines;this.scoreSynced=d.synced;
    if(d.synced&&Array.isArray(d.lines)&&d.lines.length)
@@ -354,8 +463,14 @@ export class KaraokeStage {
   }finally{this.query('karaoke-voice-toggle').disabled=false;this.updateScore()}
  }
  click(e){
-  const target=e.target.closest('button');if(!target)return;
+  const target=e.target.closest('button');
+  if(this.opened&&!e.target.closest('#karaoke-stage-settings-menu')&&
+   !e.target.closest('#karaoke-stage-settings-toggle'))this.setSettingsOpen(false);
+  if(!target)return;
   switch(target.id){
+   case 'karaoke-stage-settings-toggle':this.setSettingsOpen(this.query('karaoke-stage-settings-menu').hidden);break;
+   case 'karaoke-background-cover':this.setBackdrop('cover');break;
+   case 'karaoke-background-ambient':this.setBackdrop('ambient');break;
    case 'karaoke-stage-close':this.close();break;
    case 'karaoke-stage-play':
     // Playback belongs to the existing app audio graph, never a new player.
@@ -399,9 +514,15 @@ export class KaraokeStage {
   }
  }
  handleKey(e){
-  if(e.key==='Escape'){e.preventDefault();this.close();return}
+  if(e.key==='Escape'){
+   e.preventDefault();
+   if(!this.query('karaoke-stage-font-menu').hidden)this.query('karaoke-stage-font-menu').hidden=true;
+   else if(!this.query('karaoke-stage-settings-menu').hidden)this.setSettingsOpen(false,{restoreFocus:true});
+   else this.close();
+   return;
+  }
   if(e.key==='Tab'){
-   const focus=[...this.root.querySelectorAll('button:not(:disabled)')].filter(x=>x.offsetParent!==null);
+   const focus=[...this.root.querySelectorAll('button:not(:disabled),select:not(:disabled),input:not(:disabled)')].filter(x=>x.offsetParent!==null);
    const index=focus.indexOf(document.activeElement);
    if(!focus.length)return;
    if(e.shiftKey&&index<=0){e.preventDefault();focus[focus.length-1].focus()}

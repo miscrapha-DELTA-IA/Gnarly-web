@@ -636,6 +636,9 @@ assert.ok(stageGeometry.header.top>=0&&stageGeometry.header.bottom<stageGeometry
 for(const id of ['play','close','footer'])assert.ok(stageGeometry[id].top>=0&&stageGeometry[id].bottom<=stageGeometry.height,
  'Karaoke '+id+' must remain within the viewport: '+JSON.stringify(stageGeometry));
 assert.ok(stageGeometry.reader.bottom>stageGeometry.reader.top+50,'Karaoke lyric reader must have positive height');
+assert.equal(await karaokePage.locator('#karaoke-stage-settings-menu').isVisible(),false);
+await karaokePage.locator('#karaoke-stage-settings-toggle').click();
+assert.equal(await karaokePage.locator('#karaoke-stage-settings-menu').isVisible(),true);
 await karaokePage.locator('#karaoke-stage-fullscreen').click();
 assert.equal(await karaokePage.locator('#karaoke-stage-fullscreen').getAttribute('aria-pressed'),'true');
 await karaokePage.locator('#karaoke-stage-fullscreen').click();
@@ -648,7 +651,10 @@ assert.equal(await karaokePage.locator('#karaoke-stage-font-menu').isVisible(),t
 await karaokePage.locator('[data-stage-font="neon"]').click();
 assert.equal(await karaokePage.locator('#karaoke-stage').getAttribute('data-lyric-style'),'neon');
 assert.equal(await karaokePage.locator('#karaoke-stage').isVisible(),true);
+await karaokePage.locator('#karaoke-reader').dispatchEvent('pointerdown');
+assert.equal(await karaokePage.locator('#karaoke-follow-live').isVisible(),true);
 await karaokePage.locator('#karaoke-follow-live').click();
+await karaokePage.locator('#karaoke-stage-settings-toggle').click();
 // Microphone permission errors must be displayed INSIDE the expanded stage,
 // rather than behind its overlay in GNARLY's global toast layer.
 await karaokePage.evaluate(()=>{

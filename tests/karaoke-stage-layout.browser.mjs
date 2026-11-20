@@ -11,9 +11,10 @@ try{
   await page.evaluate(()=>window.scrollTo(0,550));
   await page.locator('#karaoke-expand-button').click();
   assert.equal(await page.locator('#karaoke-stage').isVisible(),true);
+  assert.equal(await page.locator('#karaoke-stage-settings-menu').isVisible(),false,'settings must start collapsed');
   const geometry=await page.evaluate(()=>{
-   const selectors={stage:'#karaoke-stage',header:'.karaoke-stage-header',play:'#karaoke-stage-play',full:'#karaoke-stage-fullscreen',
-    close:'#karaoke-stage-close',mic:'#karaoke-voice-toggle',caption:'#karaoke-caption-settings',score:'.karaoke-score-card',
+   const selectors={stage:'#karaoke-stage',header:'.karaoke-stage-header',play:'#karaoke-stage-play',gear:'#karaoke-stage-settings-toggle',
+    close:'#karaoke-stage-close',score:'.karaoke-score-card',
     reader:'#karaoke-reader',footer:'.karaoke-stage-footer'};
    return Object.fromEntries(Object.entries(selectors).map(([name,selector])=>{
     const el=document.querySelector(selector),r=el.getBoundingClientRect();
@@ -24,15 +25,28 @@ try{
   });
   const detail=JSON.stringify({viewport,geometry});
   assert.ok(geometry.header.y>=0&&geometry.header.bottom<=viewport.height/2,'Header visible '+detail);
-  for(const name of ['play','full','close','mic','caption','footer']){
+  for(const name of ['play','gear','close','footer']){
    const item=geometry[name];
    assert.ok(item.y>=0&&item.bottom<=viewport.height,name+' accessible and not clipped: '+detail);
   }
-  for(const name of ['play','full','close','mic','caption']){
+  for(const name of ['play','gear','close']){
    assert.ok(geometry[name].clickable,name+' accepts pointer events: '+detail);
   }
   assert.ok(geometry.reader.height>=40,'Reader scroll area: '+detail);
   assert.ok(geometry.score.bottom<=viewport.height,'Score fits: '+detail);
+  const backdrop=await page.locator('#karaoke-stage').evaluate(stage=>({
+   wallpaperZ:getComputedStyle(stage.querySelector('.karaoke-stage-wallpaper')).zIndex,
+   contentZ:getComputedStyle(stage.querySelector('.karaoke-stage-glass')).zIndex
+  }));
+  assert.equal(backdrop.wallpaperZ,'0','wallpaper must be in a visible stacking layer');
+  assert.equal(backdrop.contentZ,'2','controls must remain above the art');
+  await page.locator('#karaoke-stage-settings-toggle').click();
+  assert.equal(await page.locator('#karaoke-stage-settings-menu').isVisible(),true);
+  assert.equal(await page.locator('#karaoke-stage-settings-toggle').getAttribute('aria-expanded'),'true');
+  await page.locator('#karaoke-background-ambient').click();
+  assert.equal(await page.locator('#karaoke-stage').getAttribute('data-backdrop'),'ambient');
+  await page.locator('#karaoke-background-cover').click();
+  assert.equal(await page.locator('#karaoke-stage').getAttribute('data-backdrop'),'cover');
   await page.locator('#karaoke-stage-fullscreen').click();
   assert.equal(await page.locator('#karaoke-stage-fullscreen').getAttribute('aria-pressed'),'true');
   await page.locator('#karaoke-stage-fullscreen').click();
@@ -48,6 +62,8 @@ try{
   assert.equal(await page.locator('#karaoke-stage-font-menu').isVisible(),true);
   await page.locator('[data-stage-font="neon"]').click();
   assert.equal(await page.locator('#karaoke-stage').getAttribute('data-lyric-style'),'neon');
+  await page.locator('#karaoke-stage-settings-toggle').click();
+  assert.equal(await page.locator('#karaoke-stage-settings-menu').isVisible(),false);
   const isolated=await page.evaluate(async()=>{
    const reader=document.querySelector('#karaoke-reader'),holder=document.querySelector('#karaoke-reader-lines');
    reader.style.flex='0 0 140px';reader.style.height='140px';

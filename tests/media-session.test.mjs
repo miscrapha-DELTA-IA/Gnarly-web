@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createMediaSessionController,mediaPosition,configureBrowserAudioSession} from '../lib/media-session-controller.js';
+import {KaraokeMicrophone} from '../lib/karaoke-microphone.js';
 
 function setup(){
  const registered=new Map(),positionCalls=[],metadataCalls=[];
@@ -121,15 +122,19 @@ test('WebKit playback audio category is feature-detected and duplex for mic capt
  assert.equal(navigatorObject.audioSession.type,'play-and-record');
  assert.equal(configureBrowserAudioSession({navigatorObject:{}}),false);
 });
-test('the karaoke microphone restores playback policy instead of leaving music in recording mode',()=>{
+test('karaoke captures vocals without forcing voice-call mode for music playback',()=>{
  const microphone=readFileSync(new URL('../lib/karaoke-microphone.js',import.meta.url),'utf8');
- assert.match(microphone,/recording:true/);
+ assert.doesNotMatch(microphone,/recording:true/);
+ assert.match(microphone,/configureBrowserAudioSession\(\{navigatorObject:this\.navigatorObject,recording:false\}\)/);
+ assert.match(microphone,/echoCancellation:false,noiseSuppression:false,autoGainControl:false/);
+ assert.match(microphone,/deviceId:\{exact:this\.inputDeviceId\}/);
  assert.match(microphone,/configureBrowserAudioSession\(\{navigatorObject:this\.navigatorObject\}\)/);
 });
 test('headphone transport does not change the existing native playback source when backgrounded',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(app,/configureBrowserAudioSession\(\{navigatorObject:navigator/);
- assert.match(app,/recording:!!\(karaokeStage\.mic\.active\|\|state\.micStream\)/);
+ assert.match(app,/configureBrowserAudioSession\(\{navigatorObject:navigator,recording:false\}\)/);
+ assert.doesNotMatch(app,/recording:!!\(karaokeStage\.mic\.active\|\|state\.micStream\)/);
  assert.match(app,/nexttrack:\(\)=>\{void next\(\)\}/);
  assert.match(app,/previoustrack:\(\)=>\{if\(state\.current\)previous\(\)\}/);
  assert.doesNotMatch(app,/visibilitychange[^\n]*pause\(\)/);
@@ -158,4 +163,32 @@ test('MediaSession retries Next registration after a transient browser rejection
  registered.get('nexttrack')();
  assert.deepEqual(events,['next','next']);
  controller.destroy();
+});
+
+test('selected USB/phone microphone records without asking the browser for a voice-call session',async()=>{
+ let constraints;
+ const activeTrack={stop(){},addEventListener(){}};
+ const stream={active:true,getTracks:()=>[activeTrack]};
+ const navigatorObject={audioSession:{type:'auto'}};
+ class AudioContextFake{
+  state='running';sampleRate=48000;destination={};
+  createMediaStreamSource(){return {connect(){},disconnect(){}}}
+  createAnalyser(){return {fftSize:4096,connect(){},disconnect(){},getFloatTimeDomainData(){}}}
+  createGain(){return {gain:{value:1},connect(){},disconnect(){}}}
+  resume(){return Promise.resolve()}
+  close(){this.state='closed';return Promise.resolve()}
+ }
+ const mic=new KaraokeMicrophone({navigatorObject,
+  mediaDevices:{getUserMedia:async value=>(constraints=value,stream)},
+  AudioContextClass:AudioContextFake,WorkerClass:null});
+ mic.inputDeviceId='external-mic-123';
+ try{
+  assert.equal(await mic.start(),true);
+  assert.equal(constraints.audio.deviceId.exact,'external-mic-123');
+  assert.equal(constraints.audio.echoCancellation,false);
+  assert.equal(constraints.audio.noiseSuppression,false);
+  assert.equal(constraints.audio.autoGainControl,false);
+  assert.equal(navigatorObject.audioSession.type,'playback');
+ }finally{mic.stop()}
+ assert.equal(navigatorObject.audioSession.type,'playback');
 });
