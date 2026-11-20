@@ -2025,9 +2025,12 @@ async function play(){
  if(audio.paused||audio.readyState<3){coverCharge.show('loading');watchPlayback(track,selection);}
  else{coverCharge.hide();playbackStallGuard.clear();}
  try{
-  // Prefer the stereo music route even if a separate vocal microphone is active.
-  // A Bluetooth headset microphone may still force HFP at the OS level.
-  configureBrowserAudioSession({navigatorObject:navigator,recording:false});
+  // Do not force WebKit's playback-only category while a local microphone
+  // is active or requesting capture. It may reject getUserMedia, or mute an
+  // already-live track. Remote iPhone karaoke remains playback-only on PC.
+  const localVoiceCapture=karaokeStage.mic.active||
+   karaokeStage.mic.status==='requesting'||!!state.micStream;
+  configureBrowserAudioSession({navigatorObject:navigator,recording:localVoiceCapture});
   // Attach saved studio effects before the first play gesture can begin
   // decoding; do not reroute audio after it becomes audible.
   if(engine.nativeTransport&&audioEffectsRequested())void autoEnableStudioEffects();
