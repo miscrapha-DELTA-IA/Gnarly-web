@@ -38,6 +38,8 @@ jobs:
           node tests/stage72-browser.mjs
           node tests/header-viewport.browser.mjs
           node tests/dsp-combinations.browser.mjs
+      - name: Test karaoke gear, backdrop and viewport controls
+        run: node tests/karaoke-stage-layout.browser.mjs
       - name: Test desktop visual startup and GPU budget
         run: node tests/desktop-visual-runtime.browser.mjs
       - name: Test static album wallpaper art direction on Retina viewport
