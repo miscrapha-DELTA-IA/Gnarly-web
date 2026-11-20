@@ -138,16 +138,17 @@ test('GNARLY background wires HD resolver while leaving original-color CSS and p
  assert.doesNotMatch(app,/track\.url\s*=\s*asset\.url/);
 });
 
-test('portrait Retina never enlarges a 720p video still to fill the entire screen',()=>{
+test('Retina quality labels do not miniaturize the full-bleed wallpaper',()=>{
  const weak={url:original.artwork,width:1280,height:720,provider:'youtube'};
  const square={url:'https://is1-ssl.mzstatic.com/image/thumb/a/2400x2400bb.jpg',
   width:2400,height:2400,provider:'apple'};
- assert.equal(coverDisplayMode(weak,viewport),'contain');
+ assert.equal(coverDisplayMode(weak,viewport),'contain','a weak source is still identified as pixel-limited');
  assert.equal(coverDisplayMode(square,viewport),'cover');
  assert.equal(coverDisplayMode(null,viewport),'contain');
  const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
- assert.match(css,/#gnarly-background\.cover-bg \.photo-background\[data-art-layout="contain"\]\{[\s\S]*?background-size:min\(100%,var\(--gnarly-native-art-width,100%\)\) auto!important;/);
+ assert.match(css,/#gnarly-background\.cover-bg \.photo-background\[data-art-layout="cover"\]\{[\s\S]*?background-size:cover!important;/);
  assert.match(css,/#gnarly-background\.cover-bg \.photo-background \{[\s\S]*?filter:none;/);
+ assert.doesNotMatch(css,/--gnarly-native-art-width/);
 });
 test('HD search compares Apple and Deezer masters rather than trusting the first catalog',async()=>{
  const storage=store();
