@@ -3,7 +3,7 @@
  * Artwork: bounded public image CDN responses, never APIs, signed media,
  * bearer credentials, music metadata responses, or remote audio.
  */
-const SHELL='gnarly-web-shell-20261120-restored-cover-v8';
+const SHELL='gnarly-web-shell-20261120-caa-max-hd-v9';
 const PREFIX='gnarly-web-shell-';
 const ARTWORK_CACHE='gnarly-web-public-artwork-v1';
 const SAVED_ARTWORK_CACHE='gnarly-web-saved-artwork-v2';
