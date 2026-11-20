@@ -56,6 +56,7 @@ import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLab
 import {createIPodSkinStore,ipodSourceLabel} from './ui/ipod-mode.js';
 import {artworkBudget,artworkCandidates,resolveArtworkAsset} from './lib/artwork-quality.js';
 import {createAlbumWallpaperPainter,WALLPAPER_MODES} from './lib/album-wallpaper-renderer.js';
+import {createNativeCoverWallpaper} from './lib/native-cover-wallpaper.js';
 import {resolveHDAlbumBackground,preferHDArtwork,coverDisplayMode,effectiveArtworkDensity,storedHDArtwork,rememberHDArtwork,requestedWallpaperPixels,usableCoverForPortraitWallpaper} from './lib/hd-album-background.js';
 import {requestVerifiedAlbumArtwork} from './lib/album-artwork-client.js';
 import {createFullscreenController} from './lib/fullscreen-controller.js';
@@ -166,7 +167,30 @@ function bufferedAudioAhead(element){
  }catch{}
  return 0;
 }
+// Mirror the NightcoreLab disk/memory cache behavior for the next TWO songs.
+// Only warm known public image URLs after native audio has ample buffered
+// seconds. Never use Guardian audio endpoints or block the current track.
+let artworkWarmKey='',artworkWarmAt=0;
+function warmUpcomingAlbumArtwork(){
+ if(state.backgroundMode!=='cover'||!state.current||audio.paused||state.userPaused||
+  !navigator.onLine||navigator.connection?.saveData||bufferedAudioAhead(audio)<16)return;
+ const controller=navigator.serviceWorker?.controller;
+ if(!controller)return;
+ const urls=[];
+ for(const track of (state.queue||[]).slice(0,2)){
+  const saved=storedHDArtwork(track,localStorage)?.url;
+  for(const url of [saved,track?.backgroundArtwork,track?.artwork]){
+   if(typeof url==='string'&&url.startsWith('https://')&&!urls.includes(url))
+    urls.push(url);
+  }
+ }
+ const chosen=urls.slice(0,4),key=chosen.join('|'),now=Date.now();
+ if(!key||key===artworkWarmKey&&now-artworkWarmAt<90000)return;
+ artworkWarmKey=key;artworkWarmAt=now;
+ controller.postMessage({type:'GNARLY_WARM_ALBUM_COVERS',urls:chosen});
+}
 function prepareUpcomingAudio(){
+ warmUpcomingAlbumArtwork();
  const next=state.queue[0];
  if(!next||next.source!=='youtube'||isOffline(next.id)||audio.paused||
     state.userPaused||playbackCooldown.active()||!navigator.onLine)return;
@@ -267,16 +291,8 @@ function applyArtworkQuality(element,asset,role){
 let coverArtVersion=0,lastCoverArt='',surfaceArtVersion=0,lastSurfaceArt='',backgroundArtVersion=0,lastBackgroundArt='';
 let backgroundDisplayedTrack=null,backgroundDisplayedAsset=null,backgroundArtAccept=null;
 const wallpaperPainter=createAlbumWallpaperPainter($('#album-wallpaper-canvas'));
-// Repaint only after viewport changes; this is not a procedural animation.
-let wallpaperResizeFrame=0;
-window.addEventListener('resize',()=>{
- if(wallpaperResizeFrame)cancelAnimationFrame(wallpaperResizeFrame);
- wallpaperResizeFrame=requestAnimationFrame(()=>{
-  wallpaperResizeFrame=0;
-  if(state.backgroundMode==='cover')
-   wallpaperPainter.redraw({mode:state.coverPresentation,hue:state.artworkHue});
- });
-},{passive:true});
+const nativeCoverWallpaper=createNativeCoverWallpaper($('#photo-background'));
+// The native album image scales with CSS; resize never resamples to canvas.
 let wallpaperTiming={startedAt:0,firstVerifiedAt:0,lastUpgradeAt:0,upgrades:0};
 /** Read-only local diagnosis, no track IDs or external image URLs are exposed.
  * Pixel density below 1 means there is no authentic source resolution
@@ -301,7 +317,7 @@ window.gnarlyArtworkDiagnostics=()=>{
    Math.round(wallpaperTiming.firstVerifiedAt-wallpaperTiming.startedAt):null,
   upgrades:wallpaperTiming.upgrades,
   limited:density>0?density<.95:null,
-  ...wallpaperPainter.diagnostics()
+  ...wallpaperPainter.diagnostics(),...nativeCoverWallpaper.diagnostics()
  };
 };
 // The visible player cover has ALREADY been downloaded. If it's a verified
@@ -438,9 +454,7 @@ const state={
   pitch:getSetting('pitch','yes')!=='no',musicTab:'speedPitch',omniboxTab:getSetting('omniboxTab','search'),micRecorder:null,micStream:null,micChunks:[],exportStyle:'Clássica',
   favorites:parseJSON(getSetting('favorites','[]'),[]),preset:getSetting('preset','ORIGINAL'),
   audioState:'idle', playbackError:'',userPaused:false,
-  lyrics:[],plainLyrics:[],lyricsSource:null,lyricsSynced:false,lyricsInstrumental:false,lyricsLoading:false,lyricsAIWorking:false,lyricsStatus:'As letras aparecem automaticamente quando disponíveis.',lyricsAbort:null,sheet:null,backgroundURL:null,backgroundMode:getSetting('backgroundMode','visual'),coverPresentation:
-  WALLPAPER_MODES.includes(getSetting('coverPresentation','auto'))?
-   getSetting('coverPresentation','auto'):'auto',photoZoom:Number(getSetting('photoZoom','1')),photoX:Number(getSetting('photoX','0')),photoY:Number(getSetting('photoY','0')),photoAdjust:false,artworkHue:.58,searchTimer:null,lastLyric:-2,searchLoading:false,searchError:'',searchTerm:omnibox.query,history:omnibox.history,searchGeneration:0
+  lyrics:[],plainLyrics:[],lyricsSource:null,lyricsSynced:false,lyricsInstrumental:false,lyricsLoading:false,lyricsAIWorking:false,lyricsStatus:'As letras aparecem automaticamente quando disponíveis.',lyricsAbort:null,sheet:null,backgroundURL:null,backgroundMode:getSetting('backgroundMode','visual'),coverPresentation:'fill',photoZoom:Number(getSetting('photoZoom','1')),photoX:Number(getSetting('photoX','0')),photoY:Number(getSetting('photoY','0')),photoAdjust:false,artworkHue:.58,searchTimer:null,lastLyric:-2,searchLoading:false,searchError:'',searchTerm:omnibox.query,history:omnibox.history,searchGeneration:0
 };
 // The browser equivalent of MPRemoteCommandCenter: hardware/lock-screen
 // events re-enter the SAME playback, queue and seek functions as onscreen UI.
@@ -1030,7 +1044,7 @@ function applyBackground(){
  background.classList.toggle('custom-bg',ownPhoto);background.classList.toggle('cover-bg',coverPhoto);
  photo.hidden=!ownPhoto&&!coverPhoto;
  if(ownPhoto){
-  wallpaperPainter.clear();
+  nativeCoverWallpaper.clear();wallpaperPainter.clear();
   backgroundArtAccept=null;backgroundDisplayedAsset=null;backgroundDisplayedTrack=null;
   lastBackgroundArt='';++backgroundArtVersion;
   background.classList.remove('cover-art-ready');
@@ -1043,8 +1057,11 @@ function applyBackground(){
   if(photo.style.backgroundImage!==layer)photo.style.backgroundImage=layer;
   photo.style.transform=`translate3d(${state.photoX}%,${state.photoY}%,0) scale(${state.photoZoom})`;
  }else if(coverPhoto){
+  // Native pixels only: no extra CSS background download or compositor raster.
+  if(photo.style.backgroundImage)photo.style.backgroundImage='';
   const track=state.current,source=safeSurfaceArtwork(cover),pixels=Math.max(2400,artPixels('background'));
   if(backgroundDisplayedTrack!==track){
+   // Retain the previous <img> on screen during the next artwork request.
    wallpaperPainter.clear();
    backgroundDisplayedTrack=track;backgroundDisplayedAsset=null;
    wallpaperTiming={startedAt:performance.now(),firstVerifiedAt:0,
@@ -1057,63 +1074,50 @@ function applyBackground(){
    // The currently decoded image remains in place while verified HD sources
    // load. A slow previous candidate must never overwrite a sharper result.
    if(!photo.style.backgroundImage)background.classList.remove('cover-art-ready');
-   const showCandidate=async asset=>{
-    if(!asset?.url)return;
-    // Reuse the actual already-loaded <img> when available. Otherwise decode
-    // once, even if a previous resolver only supplied dimensions. Never treat
-    // the URL's claimed "3200" as the physical pixels drawn.
-    let decoded=asset.image?.naturalWidth>0?asset.image:null;
-    if(!decoded){
-     const img=new Image();
-     img.decoding='async';img.src=asset.url;
-     try{
-      if(img.decode)await img.decode();
-      else await new Promise((resolve,reject)=>{
-       img.onload=resolve;img.onerror=reject;
-       if(img.complete&&img.naturalWidth)resolve();
-      });
-      decoded=img;
-     }catch{return}
-    }
-    if(version!==backgroundArtVersion||lastBackgroundArt!==key||
-     state.backgroundMode!=='cover'||state.current!==track)return;
-    const real={...asset,width:decoded.naturalWidth,height:decoded.naturalHeight};
-    if(displayedAsset&&!preferHDArtwork(real,displayedAsset,viewport))return;
-    asset=real;
-    displayedAsset=real;
-    const now=performance.now();
-    if(!wallpaperTiming.firstVerifiedAt)wallpaperTiming.firstVerifiedAt=now;
-    wallpaperTiming.lastUpgradeAt=now;wallpaperTiming.upgrades++;
-    backgroundDisplayedTrack=track;backgroundDisplayedAsset=asset;
-    photo.style.backgroundImage='url('+JSON.stringify(asset.url)+')';
-    // Render once at the REAL viewport resolution, using high-quality
-    // resampling; weak sources receive vector ambience and a large focal
-    // album cover instead of a jagged full-viewport enlargement.
+   const showCandidate=asset=>{
+    if(!asset?.url)return Promise.resolve(false);
     const assetProvider=asset.provider||
      (/\bytimg\.com\b/.test(asset.url)?'youtube':
       /mzstatic\.com/.test(asset.url)?'apple':
       /dzcdn\.net/.test(asset.url)?'deezer':
       /coverartarchive\.org/.test(asset.url)?'musicbrainz':'original');
-    wallpaperPainter.paint(decoded,{
-     mode:state.coverPresentation,hue:state.artworkHue,
-     provider:assetProvider
+    // The real source is displayed by a native <img>; the previous layer
+    // remains visible until the new image has loaded. No duplicated
+    // decode(), no canvas raster, no visible HD verification gate.
+    return nativeCoverWallpaper.show(asset.url,{
+     priority:displayedAsset?'low':'high',
+     shouldCommit:decoded=>{
+      if(version!==backgroundArtVersion||lastBackgroundArt!==key||
+       state.backgroundMode!=='cover'||state.current!==track)return false;
+      const real={...asset,width:decoded.naturalWidth,height:decoded.naturalHeight,provider:assetProvider};
+      return !displayedAsset||displayedAsset.url===real.url||
+       preferHDArtwork(real,displayedAsset,viewport);
+     },
+     onCommit:decoded=>{
+      const real={...asset,width:decoded.naturalWidth,height:decoded.naturalHeight,provider:assetProvider};
+      const repeated=displayedAsset?.url===real.url;
+      displayedAsset=real;backgroundDisplayedTrack=track;backgroundDisplayedAsset=real;
+      const now=performance.now();
+      if(!wallpaperTiming.firstVerifiedAt)wallpaperTiming.firstVerifiedAt=now;
+      if(!repeated){wallpaperTiming.lastUpgradeAt=now;wallpaperTiming.upgrades++}
+      // Once the native image is ready, clear the temporary CSS fallback.
+      // Prevents a prior low-resolution background bitmap from lingering.
+      photo.style.backgroundImage='';
+      const sourceQuality=coverDisplayMode(real,viewport);
+      const density=effectiveArtworkDensity(real,viewport);
+      photo.dataset.artLayout='cover';
+      photo.dataset.artSourceLimited=String(sourceQuality==='contain');
+      photo.dataset.artProvider=assetProvider;
+      photo.dataset.artDensity=Number.isFinite(density)?density.toFixed(2):'';
+      applyArtworkQuality(photo,{...real,quality:sourceQuality==='contain'?'low':asset.quality},'background');
+      background.classList.add('cover-art-ready');
+      visual.setPaused(true);
+      if(real.width>=1200&&real.height>=1200){
+       rememberHDArtwork(track,real,localStorage);
+       if(track.backgroundArtwork!==real.url)track.backgroundArtwork=real.url;
+      }
+     }
     });
-    const sourceQuality=coverDisplayMode(asset,viewport);
-    const density=effectiveArtworkDensity(asset,viewport);
-    // Source fidelity affects which image we pick, not how large it appears.
-    photo.dataset.artLayout='cover';
-    photo.dataset.artSourceLimited=String(sourceQuality==='contain');
-    photo.dataset.artProvider=assetProvider;
-    photo.dataset.artDensity=Number.isFinite(density)?density.toFixed(2):'';
-    applyArtworkQuality(photo,{...asset,quality:sourceQuality==='contain'?'low':asset.quality},'background');
-    background.classList.add('cover-art-ready');
-    visual.setPaused(true);
-    // Preserve the strongest decoded image across source changes and
-    // later metadata enrichments; weaker concurrent work cannot overwrite it.
-    if(asset.width>=1200&&asset.height>=1200){
-     rememberHDArtwork(track,asset,localStorage);
-     if(track.backgroundArtwork!==asset.url)track.backgroundArtwork=asset.url;
-    }
    };
    const viewport=artworkViewport('background');
    backgroundArtAccept={track,offer:showCandidate};
@@ -1122,18 +1126,27 @@ function applyBackground(){
    const playerCover=$('#cover-image');
    if(playerCover.complete&&playerCover.naturalWidth>0)
     offerLoadedPlayerCoverToWallpaper(track,playerCover);
+   // Fast path: the thumbnail for this track was normally fetched for search
+   // or the player already. Offer it without waiting for HD catalogue work.
+   // A verified master already on disk may upgrade it independently; stale
+   // and lower-density images are rejected after the actual load event.
+   const fastSource=safeSurfaceArtwork(track.artwork||source);
+   if(!(playerCover.complete&&playerCover.naturalWidth>0))
+    void showCandidate({url:fastSource,provider:track.artworkProvider||'',provisional:true});
+   if(source!==fastSource)void showCandidate({
+    url:source,provider:storedHDArtwork(track,localStorage)?.provider||track.artworkProvider||''
+   });
    if(navigator.onLine){
     // Show the selected cover immediately; HD probes wait for native audio.
     // This is a single existing image URL, not an extra speculative download.
-    if(!displayedAsset&&source&&photo.style.backgroundImage!=='url('+JSON.stringify(source)+')'){
-     // Restore full-bleed framing immediately and clear stale metadata
-     // from the previous song; real HD alternatives load after audio starts.
+    // The image is loaded directly by nativeCoverWallpaper.show(), not
+    // by a second full-screen CSS background-image request.
+    if(!displayedAsset){
      photo.dataset.artLayout='cover';
      photo.dataset.artSourceLimited='unknown';
      photo.dataset.artQuality='unknown';
      photo.dataset.artProvider='';
      photo.dataset.artPixels='';
-     photo.style.backgroundImage='url('+JSON.stringify(source)+')';
     }
     scheduleVisualArtwork(track,()=>void resolveHDAlbumBackground(track,{
      resolve:resolveArtworkAsset,lookup:requestVerifiedAlbumArtwork,
@@ -1151,7 +1164,7 @@ function applyBackground(){
   }
   photo.style.transform='';
  }else{
-  wallpaperPainter.clear();
+  nativeCoverWallpaper.clear();wallpaperPainter.clear();
   backgroundArtAccept=null;backgroundDisplayedAsset=null;backgroundDisplayedTrack=null;
   lastBackgroundArt='';++backgroundArtVersion;
   background.classList.remove('cover-art-ready');
@@ -1173,8 +1186,7 @@ async function loadArtworkHue(track){if(!track?.artwork||track.artwork===icon){s
  const tint=Math.round(state.artworkHue*360)+'deg';
  background.style.setProperty('--gnarly-cover-hue',tint);
  app.style.setProperty('--gnarly-cover-hue',tint);
- if(state.backgroundMode==='cover')
-  wallpaperPainter.redraw({mode:state.coverPresentation,hue:state.artworkHue});
+ // Native cover pixels never change when palette hue changes.
  }catch{/* third-party artwork might be CORS protected; deterministic fallback */}}
 let lyricsAIAutoSession=false;
 const lyricsAIOnce=new Set();
@@ -2977,12 +2989,7 @@ function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet)
  case 'lyric-style':content.innerHTML=renderLyricStylePanel(state.lyricStyle,{scope:lyricScope,track:state.current,resolution:lyricFonts.selected(state.current),recents:lyricFonts.recents,group:lyricGroup,previewText:state.lyrics[lyricIndex(state.lyrics,audio.currentTime||0)]?.text||'TUA VOZ ME LEVA'});break;
   case 'karaoke':content.innerHTML=`${karaokeInputMarkup(`<div class="karaoke-sheet-secondary"><div class="karaoke-settings-kicker">LETRAS E SINCRONIZAÇÃO</div>${btn('Importar letra .lrc','load-lrc')}<div class="lyrics-actions">${btn('Aa · Estilo da legenda','go-lyric-style','alt')}${state.current&&!state.lyricsLoading&&!state.lyricsAIWorking?btn('Buscar letras novamente','retry-lyrics','alt'):''}${state.current&&!state.lyrics.length?btn(state.lyricsAIWorking?'Transcrevendo…':state.plainLyrics.length?'Transcrever com IA para obter tempos':'Transcrever meu áudio com IA','lyrics-ai','alt'):''}</div>${lyricSyncControls()}<label class="section-note lyrics-ai-consent"><input id="lyrics-ai-autofallback" type="checkbox" ${lyricsAIAutoSession?'checked':''} /> Tentar sincronizar meus arquivos locais com IA nesta sessão quando faltar LRC (envia o áudio com consentimento).</label><p class="section-note">Transcrição por IA é experimental. Para músicas de catálogo, selecione manualmente um áudio da mesma gravação que você tenha autorização para processar.</p></div>`)}<div class="card-help">O GNARLY procura letras primeiro no LRCLIB, com conferência de artista, título e duração. Quando só existe letra simples, ela aparece sem tempos inventados. A transcrição por IA usa apenas áudio que você escolher enviar.</div><p class="status-text" id="lyrics-status">${safe(state.lyricsStatus)}</p><div class="section-head">${state.lyricsSynced?'Letra sincronizada':state.plainLyrics.length?'Letra sem sincronização':'Letra'}</div>${state.lyrics.length?`<div class="lyrics-box">${state.lyrics.map((line,i)=>{const active=i===lyricIndex(state.lyrics,audio.currentTime);return `<div class="lyric-line ${active?'active':''}" data-lyric-index="${i}" data-lyric-time="${line.time}">${active?renderLyricArtwork(line.text,state.lyricStyle,{lineId:i,active:true}):safe(line.text)}</div>`}).join('')}</div>`:state.plainLyrics.length?`<div class="lyrics-box lyrics-unsynced">${state.plainLyrics.map(line=>`<div class="lyric-line">${safe(line)}</div>`).join('')}</div>`:'<p class="section-note">Nenhuma letra confirmada. Você pode importar .lrc ou transcrever seu arquivo de áudio autorizado.</p>'}`;break;
  case 'background':content.innerHTML=`<div class="background-menu"><button class="background-menu-row" data-command="show-visual">✦ <span>Tema visual</span><b>${state.backgroundMode==='visual'?'✓':''}</b></button><button class="background-menu-row" data-command="show-cover">▧ <span>Capa do álbum</span><b>${state.backgroundMode==='cover'?'✓':''}</b></button><button class="background-menu-row" data-command="load-background">▣ <span>Minha foto · escolher / trocar</span></button><button class="background-menu-row" data-command="use-photo" ${state.backgroundURL?'':'disabled'}>✓ <span>Usar minha foto</span><b>${state.backgroundMode==='custom'?'✓':''}</b></button><button class="background-menu-row" data-command="adjust-photo" ${state.backgroundURL?'':'disabled'}>☷ <span>Ajustar foto</span></button><button class="background-menu-row danger" data-command="remove-background">× <span>Remover foto</span></button></div>${state.backgroundMode==='cover'?`<div class="section-head">APRESENTAÇÃO DA CAPA</div>
-<div class="cover-presentation-choices" role="group" aria-label="Apresentação de capa do álbum">
-<button type="button" class="action-button alt" data-command="cover-presentation-auto" aria-pressed="${state.coverPresentation==='auto'}">Inteligente</button>
-<button type="button" class="action-button alt" data-command="cover-presentation-editorial" aria-pressed="${state.coverPresentation==='editorial'}">Editorial</button>
-<button type="button" class="action-button alt" data-command="cover-presentation-fill" aria-pressed="${state.coverPresentation==='fill'}">Preencher</button>
-</div><p class="section-note">Inteligente mantém a imagem em tela cheia quando há definição suficiente; caso contrário, compõe um fundo da capa sem ampliar agressivamente seus pixels. Editorial mantém a composição; Preencher amplia a imagem inteira.</p>
-<button type="button" class="action-button alt" data-command="copy-art-diagnostics">Copiar diagnóstico de resolução</button>`:''}${state.backgroundMode==='cover'&&state.current?.artwork?`<p class="section-note" id="artwork-quality-info">Resolução carregada: ${safe($('#photo-background').dataset.artPixels||'verificando…')}. Fonte: ${safe(({apple:'Apple Music',deezer:'Deezer',musicbrainz:'Cover Art Archive',youtube:'YouTube',original:'Imagem da faixa'})[$('#photo-background').dataset.artProvider]||'verificando…')}. ${$('#photo-background').dataset.artSourceLimited==='true'?'A fonte disponível tem pixels insuficientes para a tela; o modo Inteligente usa uma composição adaptativa.':$('#photo-background').dataset.artQuality==='low'?'Tentando recuperar uma capa oficial HD.':'Melhor capa verificada disponível; use Editorial se o arquivo original ainda estiver visualmente degradado.'}</p>`:''}${state.photoAdjust&&state.backgroundURL?`<div class="photo-editor"><p class="section-note">Ajustes locais · a imagem não é enviada ao servidor</p><label for="photo-zoom">Zoom <output id="photo-zoom-value">${Math.round(state.photoZoom*100)}%</output></label><input type="range" id="photo-zoom" data-photo-parameter="photoZoom" min="1" max="2.5" step=".025" value="${state.photoZoom}" /><label for="photo-x">Posição horizontal</label><input type="range" id="photo-x" data-photo-parameter="photoX" min="-40" max="40" step="1" value="${state.photoX}"/><label for="photo-y">Posição vertical</label><input type="range" id="photo-y" data-photo-parameter="photoY" min="-40" max="40" step="1" value="${state.photoY}"/><button class="action-button" data-command="done-photo">Concluído</button></div>`:''}`;break;
+<p class="section-note">Tela cheia nativa sem filtros nem canvas. A imagem disponível aparece de imediato; capas melhores são carregadas em segundo plano.</p> <button type="button" class="action-button alt" data-command="copy-art-diagnostics">Copiar diagnóstico de resolução</button>`:''}${state.backgroundMode==='cover'&&state.current?.artwork?`<p class="section-note" id="artwork-quality-info">Resolução carregada: ${safe($('#photo-background').dataset.artPixels||'verificando…')}. Fonte: ${safe(({apple:'Apple Music',deezer:'Deezer',musicbrainz:'Cover Art Archive',youtube:'YouTube',original:'Imagem da faixa'})[$('#photo-background').dataset.artProvider]||'verificando…')}. ${$('#photo-background').dataset.artSourceLimited==='true'?'A fonte disponível tem menos pixels do que a tela exige; nenhuma interpolação artificial é usada.':$('#photo-background').dataset.artQuality==='low'?'Tentando recuperar uma capa oficial HD.':'Melhor fonte encontrada até agora; a nitidez depende da imagem original.'}</p>`:''}${state.photoAdjust&&state.backgroundURL?`<div class="photo-editor"><p class="section-note">Ajustes locais · a imagem não é enviada ao servidor</p><label for="photo-zoom">Zoom <output id="photo-zoom-value">${Math.round(state.photoZoom*100)}%</output></label><input type="range" id="photo-zoom" data-photo-parameter="photoZoom" min="1" max="2.5" step=".025" value="${state.photoZoom}" /><label for="photo-x">Posição horizontal</label><input type="range" id="photo-x" data-photo-parameter="photoX" min="-40" max="40" step="1" value="${state.photoX}"/><label for="photo-y">Posição vertical</label><input type="range" id="photo-y" data-photo-parameter="photoY" min="-40" max="40" step="1" value="${state.photoY}"/><button class="action-button" data-command="done-photo">Concluído</button></div>`:''}`;break;
  default:content.textContent='';
  }}
 /** Keep the existing menu DOM and scroll position on a simple theme/experience
@@ -3132,8 +3139,8 @@ function handleCommand(command){switch(command){
  case 'cover-presentation-auto':case 'cover-presentation-editorial':case 'cover-presentation-fill':{
   const chosen=command.slice('cover-presentation-'.length);
   if(!WALLPAPER_MODES.includes(chosen))break;
-  state.coverPresentation=chosen;setSetting('coverPresentation',chosen);
-  wallpaperPainter.redraw({mode:chosen,hue:state.artworkHue});
+  // Old tabs cannot reactivate editorial/composited cover modes.
+  state.coverPresentation='fill';setSetting('coverPresentation','fill');
   renderSheet();break;
  }
  case 'copy-art-diagnostics':{

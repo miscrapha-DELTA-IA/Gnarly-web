@@ -723,6 +723,23 @@ body{position:relative;min-height:100dvh;background:#05090a}
   filter:none;
   box-shadow:none;
 }
+/* NightcoreLab-style native full-screen cover. Real browser-decoded pixels
+   bypass 2D canvas scaling, editorial filters and CSS background snapshots.
+   Only the outgoing copy lives briefly for continuity between tracks. */
+#gnarly-background.cover-bg .photo-background>.gnarly-native-album-image {
+ position:absolute;inset:0;width:100%;height:100%;display:block;
+ object-fit:cover;object-position:center center;
+ opacity:1;image-rendering:auto;
+ filter:none!important;-webkit-filter:none!important;
+ transform:none!important;will-change:auto;
+ pointer-events:none;
+}
+#gnarly-background.cover-bg .photo-background>.gnarly-native-album-outgoing {
+ opacity:0;transition:opacity .16s linear;
+}
+@media(prefers-reduced-motion:reduce){
+ #gnarly-background.cover-bg .photo-background>.gnarly-native-album-outgoing{transition:none}
+}
 /* Always retain the full-bleed album-wallpaper composition. Asset
    quality informs provider selection and the diagnostic UI, never geometry.
    Do not shrink a low-resolution source into a small centered square. */

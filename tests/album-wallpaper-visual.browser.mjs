@@ -1,70 +1,63 @@
-/** Render the exact static artwork compositor in Chromium/iPhone Retina sizing.
- * Pure synthetic self-owned graphics, no remote artwork or personal track data.
+/** Verify the real Nightcore-style native album image at Retina size.
+ * Synthetic self-owned SVG cover, no remote credentials, APIs or user tracks.
  */
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {chromium} from 'playwright';
+
 const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
 const page=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:3});
 try{
- const source=readFileSync(new URL('../lib/album-wallpaper-renderer.js',import.meta.url),'utf8')
+ const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
+ const source=readFileSync(new URL('../lib/native-cover-wallpaper.js',import.meta.url),'utf8')
   .replace(/^export /gm,'');
  await page.setContent('<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"/>'+
-  '<style>html,body{margin:0;height:100%;overflow:hidden;background:#080c12}'+
-  '#background{position:fixed;inset:0;width:100vw;height:100vh}'+
-  '#photo-background{position:absolute;inset:0;background-size:cover;background-position:center}'+
-  '#album-wallpaper-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}'+
-  '#album-wallpaper-canvas[hidden]{display:none!important}</style>'+
-  '<div id="background"><div id="photo-background"></div><canvas id="album-wallpaper-canvas"></canvas></div>');
- await page.addScriptTag({content:source+'\nwindow.__wallpaperQA={createAlbumWallpaperPainter,albumWallpaperPlan};'});
- const measured=await page.evaluate(async()=>{
-  const fixture=document.createElement('canvas');
-  fixture.width=fixture.height=640;
-  const ctx=fixture.getContext('2d');
-  ctx.fillStyle='#0d284d';ctx.fillRect(0,0,640,640);
-  ctx.fillStyle='#f3b45c';ctx.fillRect(90,90,460,460);
-  ctx.fillStyle='#174252';ctx.fillRect(155,160,330,320);
-  const image=new Image();
-  image.src=fixture.toDataURL('image/png');await image.decode();
-  const canvas=document.querySelector('#album-wallpaper-canvas');
-  document.querySelector('#photo-background').style.backgroundImage='url('+JSON.stringify(image.src)+')';
-  const painter=__wallpaperQA.createAlbumWallpaperPainter(canvas);
-  const painted=painter.paint(image,{mode:'auto',dpr:3,hue:.61});
-  const diag=painter.diagnostics();
-  const bounds=canvas.getBoundingClientRect();
-  const dctx=canvas.getContext('2d',{willReadFrequently:true});
-  const center=dctx.getImageData(Math.round(canvas.width/2),Math.round(canvas.height/2),1,1).data;
-  const corner=dctx.getImageData(4,4,1,1).data;
-  window.__wallpaperPainter=painter;
-  return {painted,diag,bounds:{width:bounds.width,height:bounds.height},
-   viewport:{width:innerWidth,height:innerHeight},center:[...center],corner:[...corner]};
+  '<div id="gnarly-background" class="cover-bg cover-art-ready">'+
+  '<div id="photo-background" class="photo-background"></div>'+
+  '<canvas id="album-wallpaper-canvas" aria-hidden="true" hidden></canvas>'+
+  '<div class="visual-dim"></div></div><div class="app-shell"></div>');
+ await page.addStyleTag({content:css});
+ await page.addScriptTag({content:source+'\nwindow.__createNativeCoverWallpaper=createNativeCoverWallpaper;'});
+ const data=await page.evaluate(async()=>{
+  const make=(edge,accent)=>'data:image/svg+xml;charset=utf-8,'+
+   encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="'+edge+
+    '" height="'+edge+'" viewBox="0 0 100 100"><rect width="100" height="100" fill="#102532"/>'+
+    '<path d="M0 49H100M50 0V100" stroke="'+accent+'" stroke-width=".20"/>'+
+    '<circle cx="50" cy="50" r="34" fill="none" stroke="'+accent+'" stroke-width=".25"/>'+
+    '<path d="M10 10L90 90M90 10L10 90" stroke="'+accent+'" stroke-width=".16"/></svg>');
+  const photo=document.getElementById('photo-background');
+  const surface=__createNativeCoverWallpaper(photo);
+  const first=await surface.show(make(3000,'#ffb774'));
+  const one=photo.querySelector('.gnarly-native-album-image');
+  const style=getComputedStyle(one),bounds=one.getBoundingClientRect();
+  const measured={first,render:surface.diagnostics(),sourcePixels:[one.naturalWidth,one.naturalHeight],
+   sourceSrc:one.src.slice(0,15),fit:style.objectFit,filter:style.filter,
+   transform:style.transform,rendering:style.imageRendering,
+   width:bounds.width,height:bounds.height,canvasHidden:document.getElementById('album-wallpaper-canvas').hidden};
+  const next=await surface.show(make(3200,'#77d0ff'));
+  measured.next=next;measured.nextPixels=surface.diagnostics().activePixels;
+  measured.nextVisible=photo.querySelectorAll('.gnarly-native-album-image').length>0;
+  return measured;
  });
- assert.equal(measured.painted,true);
- assert.equal(measured.diag.presentation,'editorial');
- assert.ok(measured.diag.focusCssPixels>=300,
-  'mobile artwork must not become a tiny Retina stamp '+JSON.stringify(measured));
- assert.ok(measured.diag.rasterPixels<=5800000*1.01);
- assert.ok(Math.abs(measured.bounds.width-measured.viewport.width)<2);
- assert.ok(Math.abs(measured.bounds.height-measured.viewport.height)<2);
- assert.notDeepEqual(measured.center,measured.corner,
-  'the editorial artwork should still be visually present against vector ambience');
- await page.screenshot({path:'album-wallpaper-editorial-browser.png',fullPage:false});
- const mode=await page.evaluate(()=>{
-  window.__wallpaperPainter.redraw({mode:'fill'});
-  return {
-   ...window.__wallpaperPainter.diagnostics(),
-   canvasHidden:document.querySelector('#album-wallpaper-canvas').hidden,
-   rawImageActive:getComputedStyle(document.querySelector('#photo-background')).backgroundImage.includes('data:image/png'),
-   backingWidth:document.querySelector('#album-wallpaper-canvas').width
-  };
- });
- assert.equal(mode.presentation,'fill');
- assert.equal(mode.focusCssPixels,null);
- assert.equal(mode.renderPath,'native-css-image');
- assert.equal(mode.rasterPixels,0);
- assert.equal(mode.canvasHidden,true);
- assert.equal(mode.rawImageActive,true,'browser CSS must display the actual decoded source');
- assert.equal(mode.backingWidth,1,'intermediate canvas must not consume GPU pixels');
+ assert.equal(data.first,true);
+ assert.equal(data.render.renderPath,'native-img-scaled-to-fill');
+ assert.deepEqual(data.sourcePixels,[3000,3000]);
+ assert.equal(data.fit,'cover');
+ assert.equal(data.filter,'none');
+ assert.equal(data.transform,'none');
+ assert.equal(data.rendering,'auto');
+ assert.ok(Math.abs(data.width-390)<1&&Math.abs(data.height-844)<1);
+ assert.equal(data.canvasHidden,true);
+ assert.equal(data.next,true);
+ assert.equal(data.nextPixels,'3200x3200');
+ assert.equal(data.nextVisible,true);
  await page.screenshot({path:'album-wallpaper-fullbleed-browser.png',fullPage:false});
- console.log('ALBUM WALLPAPER RETINA',JSON.stringify({measured,mode}));
+ await page.setViewportSize({width:1920,height:1080});
+ const resized=await page.evaluate(()=>{
+  const img=document.querySelector('#photo-background>.gnarly-native-album-image:not(.gnarly-native-album-outgoing)');
+  const r=img.getBoundingClientRect(),s=getComputedStyle(img);
+  return {width:r.width,height:r.height,fit:s.objectFit,filter:s.filter,transform:s.transform};
+ });
+ assert.deepEqual(resized,{width:1920,height:1080,fit:'cover',filter:'none',transform:'none'});
+ console.log('GNARLY native full-bleed album cover · Retina and desktop',JSON.stringify({data,resized}));
 }finally{await browser.close()}

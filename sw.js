@@ -58,7 +58,7 @@ async function storeArtwork(request,response,{saved=false}={}){
  }
  return true;
 }
-async function prefetchCovers(urls){
+async function prefetchCovers(urls,{saved=true}={}){
  if(!Array.isArray(urls))return;
  // One message has a small fixed cost. Large libraries are sent in batches.
  const unique=[...new Set(urls.slice(0,24).map(publicArtworkURL).filter(Boolean))].slice(0,12);
@@ -72,8 +72,14 @@ async function prefetchCovers(urls){
     if(await pinned.match(request))continue;
     const normal=await caches.open(ARTWORK_CACHE);
     const cached=await normal.match(request);
-    const response=cached||await fetch(request);
-    await storeArtwork(request,response,{saved:true});
+    // Explicitly saved offline tracks must be promoted from transient
+    // cache into the pinned cache; speculative queue artwork stays transient.
+    if(cached){
+     if(saved)await storeArtwork(request,cached,{saved:true});
+     continue;
+    }
+    const response=await fetch(request);
+    await storeArtwork(request,response,{saved});
    }catch{/* Album CDNs may be unavailable or local storage exhausted. */}
   }
  }));
@@ -149,7 +155,10 @@ self.addEventListener('message',event=>{
  if(event.data?.type==='GNARLY_WARM_SHELL'){
   event.waitUntil(warmShell());
  }else if(event.data?.type==='GNARLY_CACHE_COVERS'){
-  event.waitUntil(prefetchCovers(event.data.urls));
+  event.waitUntil(prefetchCovers(event.data.urls,{saved:true}));
+ }else if(event.data?.type==='GNARLY_WARM_ALBUM_COVERS'){
+  // Queue speculation is transient; it never evicts a saved offline cover.
+  event.waitUntil(prefetchCovers(event.data.urls?.slice(0,4),{saved:false}));
  }
 });
 self.addEventListener('activate',event=>{

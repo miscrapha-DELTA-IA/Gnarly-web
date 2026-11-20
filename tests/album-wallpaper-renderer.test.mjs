@@ -109,12 +109,13 @@ test('one-shot wallpaper layer is independent from playback and WebGL and fills 
  assert.match(css,/#gnarly-background #album-wallpaper-canvas\[hidden\]/);
  assert.match(css,/width:100%;height:100%;z-index:2/);
  assert.match(app,/const wallpaperPainter=createAlbumWallpaperPainter/);
- assert.match(app,/wallpaperPainter.paint\(decoded,\{/);
+ assert.match(app,/nativeCoverWallpaper.show\(asset.url/);
+ assert.doesNotMatch(app,/wallpaperPainter.paint\(/);
  assert.match(app,/wallpaperPainter.clear\(\)/);
  assert.match(app,/window.gnarlyArtworkDiagnostics=\(\)=>\{/);
  assert.match(app,/\.\.\.wallpaperPainter.diagnostics\(\)/);
  assert.match(app,/case 'cover-presentation-auto':case 'cover-presentation-editorial':case 'cover-presentation-fill'/);
- assert.match(app,/setSetting\('coverPresentation',chosen\)/);
+ assert.match(app,/setSetting\('coverPresentation','fill'\)/);
  assert.match(css,/#gnarly-background.cover-bg .photo-background \{[\s\S]*?background-size:cover!important;/);
  assert.doesNotMatch(app,/track\.url\s*=\s*asset\.url/);
 });

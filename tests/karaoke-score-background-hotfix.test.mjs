@@ -68,6 +68,7 @@ test('all album artwork compositions remain full bleed regardless of quality fla
  assert.match(stage,/\.karaoke-stage-wallpaper img\[data-art-quality="low"\][\s\S]*?object-fit:cover;width:100%/);
  assert.doesNotMatch(stage,/object-fit:contain;width:min/);
  assert.match(app,/background\.classList\.add\('cover-art-ready'\)/);
- assert.match(app,/if\(img\.decode\)await img\.decode\(\)/);
+ assert.match(app,/nativeCoverWallpaper.show\(asset.url/);
+ assert.doesNotMatch(app,/wallpaperPainter.paint\(/);
  assert.doesNotMatch(app,/const apply=url=>\{photo\.style\.backgroundImage/,'never eagerly swap a non-decoded image');
 });
