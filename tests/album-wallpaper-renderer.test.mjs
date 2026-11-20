@@ -37,6 +37,19 @@ test('sufficient genuine pixels keep the original full-screen album artwork',()=
  });
  assert.equal(editorial.mode,'editorial','user can intentionally prefer an editorial composition');
  assert.deepEqual(WALLPAPER_MODES,['auto','editorial','fill']);
+ const catalog=albumWallpaperPlan({
+  sourceWidth:3200,sourceHeight:3200,width:390,height:844,
+  dpr:3,mode:'auto',provider:'apple'
+ });
+ assert.equal(catalog.mode,'editorial',
+  'a catalog 3200px URL may have been resampled from a low-detail master');
+ assert.equal(catalog.catalogResampleRisk,true);
+ const archive=albumWallpaperPlan({
+  sourceWidth:3200,sourceHeight:3200,width:390,height:844,
+  dpr:3,mode:'auto',provider:'musicbrainz'
+ });
+ assert.equal(archive.mode,'fill',
+  'a genuinely large original archival image may occupy the whole viewport');
 });
 function createFakeCanvas(width=1920,height=1080){
  const calls=[];
