@@ -1072,7 +1072,8 @@ function applyBackground(){
     // resampling; weak sources receive vector ambience and a large focal
     // album cover instead of a jagged full-viewport enlargement.
     wallpaperPainter.paint(decoded,{
-     mode:state.coverPresentation,hue:state.artworkHue
+     mode:state.coverPresentation,hue:state.artworkHue,
+     provider:asset.provider||''
     });
     const sourceQuality=coverDisplayMode(asset,viewport);
     const density=effectiveArtworkDensity(asset,viewport);
