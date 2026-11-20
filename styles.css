@@ -706,14 +706,12 @@ body{position:relative;min-height:100dvh;background:#05090a}
   filter:none;
   box-shadow:none;
 }
-/* A low-res still cannot become 4K by requesting a larger URL. Preserve
-   its native detail with a centered, uncropped presentation instead of
-   upscaling and cropping it to fill a tall Retina viewport. */
-#gnarly-background.cover-bg .photo-background[data-art-layout="contain"]{
-  /* Real source pixel ceiling: 640px originals stay ~213 CSS px on 3x
-     Retina instead of being stretched to a jagged full-screen texture. */
-  background-size:min(100%,var(--gnarly-native-art-width,100%)) auto!important;
-  background-color:#080b10;
+/* Always retain the full-bleed album-wallpaper composition. Asset
+   quality informs provider selection and the diagnostic UI, never geometry.
+   Do not shrink a low-resolution source into a small centered square. */
+#gnarly-background.cover-bg .photo-background[data-art-layout="cover"]{
+  background-size:cover!important;
+  background-position:center center!important;
 }
 #gnarly-background.cover-bg .visual-dim {
   background:transparent;
