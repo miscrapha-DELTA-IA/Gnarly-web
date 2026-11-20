@@ -1057,6 +1057,8 @@ function applyBackground(){
   if(photo.style.backgroundImage!==layer)photo.style.backgroundImage=layer;
   photo.style.transform=`translate3d(${state.photoX}%,${state.photoY}%,0) scale(${state.photoZoom})`;
  }else if(coverPhoto){
+  // Native pixels only: no extra CSS background download or compositor raster.
+  if(photo.style.backgroundImage)photo.style.backgroundImage='';
   const track=state.current,source=safeSurfaceArtwork(cover),pixels=Math.max(2400,artPixels('background'));
   if(backgroundDisplayedTrack!==track){
    // Retain the previous <img> on screen during the next artwork request.
@@ -1137,15 +1139,14 @@ function applyBackground(){
    if(navigator.onLine){
     // Show the selected cover immediately; HD probes wait for native audio.
     // This is a single existing image URL, not an extra speculative download.
-    if(!displayedAsset&&source&&photo.style.backgroundImage!=='url('+JSON.stringify(source)+')'){
-     // Restore full-bleed framing immediately and clear stale metadata
-     // from the previous song; real HD alternatives load after audio starts.
+    // The image is loaded directly by nativeCoverWallpaper.show(), not
+    // by a second full-screen CSS background-image request.
+    if(!displayedAsset){
      photo.dataset.artLayout='cover';
      photo.dataset.artSourceLimited='unknown';
      photo.dataset.artQuality='unknown';
      photo.dataset.artProvider='';
      photo.dataset.artPixels='';
-     photo.style.backgroundImage='url('+JSON.stringify(source)+')';
     }
     scheduleVisualArtwork(track,()=>void resolveHDAlbumBackground(track,{
      resolve:resolveArtworkAsset,lookup:requestVerifiedAlbumArtwork,
