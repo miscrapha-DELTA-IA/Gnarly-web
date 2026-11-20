@@ -29,6 +29,7 @@ try{
  await page.evaluate(()=>{const q=__shareQA;q.visual.stopLoop();q.smartOff();q.selectTrack({id:'youtube:AAAAAAAAAAA',videoId:'AAAAAAAAAAA',source:'youtube',title:'Synthetic original',artist:'GNARLY QA',duration:60,artwork:'/assets/gnarly-icon.png'})});
  await page.waitForFunction(()=>!__shareQA.audio.paused&&__shareQA.audio.readyState>=2);
  await page.evaluate(()=>{const q=__shareQA;q.state.lyrics=[{time:0,text:'Sing with GNARLY'},{time:20,text:'Second line'}];q.state.lyricsSynced=true;q.openSheet('karaoke');q.karaokeStage.updateScore()});
+ await page.locator('.karaoke-sheet-settings summary').click();
  await page.locator('[data-command="karaoke-mic"]').click();
  await page.waitForFunction(()=>__shareQA.karaokeStage.mic.active);
  await page.waitForFunction(()=>__shareQA.karaokeStage.scorer.snapshot().score>10,{},{timeout:15000});
@@ -40,11 +41,12 @@ try{
  // Moving between tab and expanded view must reuse the same capture track.
  await page.evaluate(()=>globalThis.captureTrack=__shareQA.karaokeStage.mic.stream.getTracks()[0]);
  await page.locator('[data-command="karaoke-expand"]').click();assert.ok(await page.evaluate(()=>__shareQA.karaokeStage.mic.stream.getTracks()[0]===captureTrack));
+ await page.locator('#karaoke-stage-settings-toggle').click();
  const downloadEvent=page.waitForEvent('download');await page.locator('#karaoke-voice-record').click();await page.waitForTimeout(450);await page.locator('#karaoke-voice-record').click();const voice=await downloadEvent;await voice.saveAs(path.join(out,'voice'+(voice.suggestedFilename().endsWith('m4a')?'.m4a':'.webm')));
  await page.locator('#karaoke-stage-close').click();assert.equal(await page.evaluate(()=>captureTrack.readyState),'ended');assert.equal(await page.locator('audio').count(),1);results.push({name:'pause holds score, expand reuses capture, recording and release',passed:true});
  // Permission failure is visible inline and retryable; it cannot stop the song.
  await page.evaluate(()=>{__shareQA.openSheet('karaoke');globalThis.originalGUM=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);navigator.mediaDevices.getUserMedia=()=>Promise.reject(new DOMException('Denied','NotAllowedError'))});
- const playingSource=await page.evaluate(()=>__shareQA.audio.currentSrc);await page.locator('[data-command="karaoke-mic"]').click();await page.waitForFunction(()=>__shareQA.karaokeStage.mic.status==='error');assert.match(await page.locator('[data-karaoke-input-state]').innerText(),/permissões/);assert.equal(await page.evaluate(()=>__shareQA.audio.currentSrc),playingSource);
+ const playingSource=await page.evaluate(()=>__shareQA.audio.currentSrc);await page.locator('.karaoke-sheet-settings summary').click();await page.locator('[data-command="karaoke-mic"]').click();await page.waitForFunction(()=>__shareQA.karaokeStage.mic.status==='error');assert.match(await page.locator('[data-karaoke-input-state]').innerText(),/permissões/);assert.equal(await page.evaluate(()=>__shareQA.audio.currentSrc),playingSource);
  await page.evaluate(()=>{navigator.mediaDevices.getUserMedia=originalGUM;__shareQA.closeSheet()});
  async function exportOne(format,name,{audio=false}={}){
   console.log('EXPORT',name);
