@@ -1152,7 +1152,7 @@ async function verifiedAlbumAsset(track,role='background'){
  if(!official)return null;
  const viewport=artworkViewport(role),fullScreen=role==='background';
  const asset=await resolveArtworkAsset(official.url,{
-  ...viewport,pixels:fullScreen?Math.max(2400,viewport.pixels):Math.max(1200,viewport.pixels),
+  ...viewport,pixels:fullScreen?Math.max(3200,viewport.pixels):Math.max(1200,viewport.pixels),
   minDimension:fullScreen?900:460
  });
  if(asset.width<(fullScreen?900:460)||asset.height<(fullScreen?900:460))return null;
