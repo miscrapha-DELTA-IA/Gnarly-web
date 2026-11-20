@@ -293,3 +293,11 @@ html.karaoke-stage-open,html.karaoke-stage-open body{overflow:hidden;overscroll-
  width:35px;height:35px;flex:0 0 35px;
  border-color:color-mix(in srgb,var(--acid,#46ff12) 55%,#ffffff38);
 }
+
+/* Karaoke Connect: monitoring is explicitly enabled, never automatic. */
+.karaoke-remote-monitor-controls{display:flex;flex-wrap:wrap;align-items:center;gap:7px 12px;
+ padding:8px 10px;border-radius:12px;border:1px solid #ffffff2c;background:#ffffff08}
+.karaoke-remote-monitor-switch{display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-weight:700}
+.karaoke-remote-monitor-switch input{width:19px;height:19px;accent-color:var(--acid,#46ff12)}
+#karaoke-remote-volume{flex:1;min-width:85px;max-width:170px;accent-color:var(--acid,#46ff12)}
+#karaoke-remote-audio-status{font-size:11px;color:#c7e6cd}
