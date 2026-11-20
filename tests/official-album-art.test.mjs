@@ -330,7 +330,7 @@ test('matching the deluxe suffix still refuses a different version of Rare Creat
  };
  try{
   const params=new URLSearchParams({title:'rare creature',artist:'Ken Carson',
-   duration:'143',album:'xperiment - cartunez',mode:'archive'});
+   duration:'144' // use distinct cache key from prior accepted 143s recording,album:'xperiment - cartunez',mode:'archive'});
   const result=await serveAlbumArtwork(new Request('https://gnarly.test/api/artwork?'+params));
   const body=await result.json();
   assert.equal(body.artwork,null);
