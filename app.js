@@ -55,6 +55,7 @@ import {deviceLayout,themeAccent,attachEyeGestures,OFFICIAL_SUPPORT_URL} from '.
 import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel} from './ui/player-surface.js';
 import {createIPodSkinStore,ipodSourceLabel} from './ui/ipod-mode.js';
 import {artworkBudget,artworkCandidates,resolveArtworkAsset} from './lib/artwork-quality.js';
+import {resolveHDAlbumBackground} from './lib/hd-album-background.js';
 import {requestVerifiedAlbumArtwork} from './lib/album-artwork-client.js';
 import {createFullscreenController} from './lib/fullscreen-controller.js';
 import {karaokeStageMarkup,KaraokeStage} from './ui/karaoke-stage.js';
@@ -870,30 +871,52 @@ function applyBackground(){
   if(photo.style.backgroundImage!==layer)photo.style.backgroundImage=layer;
   photo.style.transform=`translate3d(${state.photoX}%,${state.photoY}%,0) scale(${state.photoZoom})`;
  }else if(coverPhoto){
-  const source=safeSurfaceArtwork(cover),pixels=Math.max(2400,artPixels('background')),key=source+'|'+pixels;
+  const track=state.current,source=safeSurfaceArtwork(cover),pixels=Math.max(2400,artPixels('background'));
+  const key=[track.id,track.title,track.artist,track.album,Math.round(Number(track.duration)||0),source,pixels].join('|');
   if(lastBackgroundArt!==key){
    lastBackgroundArt=key;const version=++backgroundArtVersion;
-   // Do not replace the visible cover with an un-decoded HTTP asset. Keeping
-   // the previous cover (or the last shader frame) prevents iOS black flashes.
+   let candidateVersion=0;
+   // The currently decoded image remains in place while verified HD sources
+   // load. A slow previous candidate must never overwrite a sharper result.
    if(!photo.style.backgroundImage)background.classList.remove('cover-art-ready');
-   void resolveArtworkAsset(source,{...artworkViewport('background'),pixels,minDimension:900})
-    .then(async asset=>{
-     const candidate=asset.url||source,img=new Image();
-     img.src=candidate;
-     try{
-      if(img.decode)await img.decode();
-      else await new Promise((resolve,reject)=>{
-       img.onload=resolve;img.onerror=reject;
-       if(img.complete&&img.naturalWidth)resolve();
-      });
-     }catch{return}
-     if(version!==backgroundArtVersion||lastBackgroundArt!==key||
-      state.backgroundMode!=='cover'||displayedArtwork(state.current,true)!==cover)return;
-     photo.style.backgroundImage='url('+JSON.stringify(candidate)+')';
-     applyArtworkQuality(photo,asset,'background');
-     background.classList.add('cover-art-ready');
-     visual.setPaused(true);
-    }).catch(()=>{/* preserve decoded previous image and player */});
+   const showCandidate=async asset=>{
+    if(!asset?.url)return;
+    const sequence=++candidateVersion,img=new Image();
+    img.decoding='async';img.src=asset.url;
+    try{
+     if(img.decode)await img.decode();
+     else await new Promise((resolve,reject)=>{
+      img.onload=resolve;img.onerror=reject;
+      if(img.complete&&img.naturalWidth)resolve();
+     });
+    }catch{return}
+    if(version!==backgroundArtVersion||lastBackgroundArt!==key||sequence!==candidateVersion||
+     state.backgroundMode!=='cover'||state.current!==track)return;
+    photo.style.backgroundImage='url('+JSON.stringify(asset.url)+')';
+    applyArtworkQuality(photo,asset,'background');
+    background.classList.add('cover-art-ready');
+    visual.setPaused(true);
+    // Only persist genuine HD images, never a resized video placeholder.
+    if(asset.width>=1200&&asset.height>=1200&&track.backgroundArtwork!==asset.url)
+     track.backgroundArtwork=asset.url;
+   };
+   const viewport=artworkViewport('background');
+   if(navigator.onLine){
+    void resolveHDAlbumBackground(track,{
+     resolve:resolveArtworkAsset,lookup:requestVerifiedAlbumArtwork,
+     viewport,storage:localStorage,saveData:!!navigator.connection?.saveData,
+     deviceMemory:Number(navigator.deviceMemory)||8,
+     onCandidate:showCandidate
+    }).then(asset=>{
+     if(!asset)void showCandidate({url:source,width:0,height:0,quality:'unknown'});
+    }).catch(()=>{/* Preserve a previously decoded image. */});
+   }else{
+    // Offline is read-only: previously cached artwork may still decode
+    // through the service worker, with the canonical thumbnail as fallback.
+    void resolveArtworkAsset(source,{...viewport,pixels,minDimension:900})
+     .then(asset=>showCandidate({...asset,url:asset.url||source}))
+     .catch(()=>{});
+   }
   }
   photo.style.transform='';
  }else{
