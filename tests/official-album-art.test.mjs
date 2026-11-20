@@ -149,17 +149,19 @@ test('generic artist can be recovered only when artist/title credits are explici
  const trackWithCredit={...track,title:'Daft Punk - Get Lucky',artist:'Artista não identificado',album:'',source:'youtube'};
  assert.equal(shouldLookupAlbumArtwork(trackWithCredit,{forBackground:true}),true);
  const previous=globalThis.fetch;
- let query;
+ const queries=[];
  globalThis.fetch=async url=>{
-  query=new URL(String(url),'https://gnarly.example');
+  const query=new URL(String(url),'https://gnarly.example');queries.push(query);
+  if(query.searchParams.get('mode')==='archive')return Response.json({artwork:null});
   return Response.json({artwork:'https://is1-ssl.mzstatic.com/image/thumb/demo/2400x2400bb.jpg',
    provider:'apple',candidates:[{artwork:'https://is1-ssl.mzstatic.com/image/thumb/demo/2400x2400bb.jpg',provider:'apple'}]});
  };
  try{
   const result=await requestVerifiedAlbumArtwork(trackWithCredit,{forBackground:true});
-  assert.equal(query.searchParams.get('title'),'Get Lucky');
-  assert.equal(query.searchParams.get('artist'),'Daft Punk');
-  assert.equal(query.searchParams.get('mode'),'hd');
+  assert.equal(queries[0].searchParams.get('title'),'Get Lucky');
+  assert.equal(queries[0].searchParams.get('artist'),'Daft Punk');
+  assert.equal(queries[0].searchParams.get('mode'),'catalog');
+  assert.equal(queries[1].searchParams.get('mode'),'archive');
   assert.equal(result.alternatives.length,1);
  }finally{globalThis.fetch=previous}
 });
@@ -222,4 +224,58 @@ test('Brazil storefront rescues a verified album not present in the US catalog',
   assert.ok(seen.some(x=>x.includes('country=US')));
   assert.ok(seen.some(x=>x.includes('country=BR')));
  }finally{globalThis.fetch=old}
+});
+
+test('catalog-only mode responds before MusicBrainz when a storefront has a verified cover',async()=>{
+ const previous=globalThis.fetch,calls=[];
+ globalThis.fetch=async url=>{
+  const source=String(url);calls.push(source);
+  if(source.includes('itunes.apple.com'))return Response.json({results:apple});
+  if(source.includes('api.deezer.com'))return Response.json({data:[]});
+  throw Error('Unexpected slow source '+source);
+ };
+ try{
+  const p=new URLSearchParams({title:track.title,artist:track.artist,
+   album:track.album,duration:'254',mode:'catalog'});
+  const response=await serveAlbumArtwork(new Request('https://gnarly.example/api/artwork?'+p));
+  const body=await response.json();
+  assert.equal(body.provider,'apple');
+  assert.deepEqual(body.candidates.map(item=>item.provider),['apple']);
+  assert.ok(!calls.some(url=>url.includes('musicbrainz.org')));
+ }finally{globalThis.fetch=previous}
+});
+test('browser streams the official catalog image before the archival lookup settles',async()=>{
+ const previous=globalThis.fetch,seen=[],queries=[];
+ let finishArchive;
+ const archiveWait=new Promise(resolve=>finishArchive=resolve);
+ const newTrack={...track,title:'Digital Lights 2047',duration:212,album:'Demo EP'};
+ const fast='https://is1-ssl.mzstatic.com/image/thumb/fast/2400x2400bb.jpg';
+ const original='https://coverartarchive.org/release/11111111-2222-3333-4444-555555555555/front';
+ globalThis.fetch=async url=>{
+  const query=new URL(String(url),'https://gnarly.example');
+  const mode=query.searchParams.get('mode');queries.push(mode);
+  if(mode==='catalog')return Response.json({
+   artwork:fast,provider:'apple',candidates:[{artwork:fast,provider:'apple'}]
+  });
+  if(mode==='archive'){
+   await archiveWait;
+   return Response.json({artwork:original,provider:'musicbrainz'});
+  }
+  throw Error('Unexpected mode '+mode);
+ };
+ try{
+  let completed=false;
+  const operation=requestVerifiedAlbumArtwork(newTrack,{
+   forBackground:true,onCandidate:value=>seen.push(value.url)
+  }).then(value=>{completed=true;return value});
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.deepEqual(seen,[fast]);
+  assert.equal(completed,false,'archival verification remains pending');
+  finishArchive();
+  const result=await operation;
+  assert.deepEqual(seen,[fast,original]);
+  assert.equal(result.provider,'apple');
+  assert.ok(result.alternatives.some(item=>item.url===original));
+  assert.deepEqual(queries,['catalog','archive']);
+ }finally{globalThis.fetch=previous}
 });
