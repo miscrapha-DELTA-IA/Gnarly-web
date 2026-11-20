@@ -502,7 +502,24 @@ const karaokeStage=new KaraokeStage({
   karaokeStage.refresh(true);
  }
 });
-function karaokeInputMarkup(){return `<section class="karaoke-input-panel" aria-label="Microfone e pontuação"><div class="lyrics-actions"><button class="action-button" data-command="karaoke-mic" aria-pressed="${karaokeStage.mic.active}">🎤 <span data-karaoke-mic-label>Ativar microfone</span></button><button class="action-button alt" data-command="karaoke-expand">Expandir karaokê</button><button class="action-button alt" data-command="karaoke-record">Gravar voz</button><button class="action-button alt" data-command="karaoke-share-score">Compartilhar resultado</button></div><p class="section-note">O microfone analisa sua voz neste aparelho. Use fones para evitar que a música entre na pontuação.</p><p role="status" data-karaoke-input-state></p><div class="karaoke-score-meter" aria-label="Nível da voz"><span data-karaoke-meter></span></div><p><strong data-karaoke-score>0</strong> pontos · <span data-karaoke-result>Ritmo e presença</span></p><p role="status" data-karaoke-feedback></p></section>`}
+function karaokeInputMarkup(){return `<section class="karaoke-input-panel" aria-label="Microfone e pontuação">
+ <div class="karaoke-sheet-quickbar">
+  <button type="button" class="action-button karaoke-sheet-expand" data-command="karaoke-expand">Abrir palco</button>
+  <details class="karaoke-sheet-settings">
+   <summary aria-label="Ajustes do karaokê"><span aria-hidden="true">⚙</span> Ajustes</summary>
+   <div class="karaoke-sheet-settings-body">
+    <button class="action-button" data-command="karaoke-mic" aria-pressed="${karaokeStage.mic.active}"><span data-karaoke-mic-label>Ativar microfone</span></button>
+    <button class="action-button alt" data-command="karaoke-record">Gravar voz</button>
+    <button class="action-button alt" data-command="karaoke-share-score">Compartilhar resultado</button>
+   </div>
+  </details>
+ </div>
+ <p class="section-note">A pontuação analisa sua voz localmente. Fones Bluetooth podem usar o perfil de chamada quando o próprio microfone deles é ativado; para preservar o som estéreo, use o celular como microfone no palco.</p>
+ <p role="status" data-karaoke-input-state></p>
+ <div class="karaoke-score-meter" aria-label="Nível da voz"><span data-karaoke-meter></span></div>
+ <p><strong data-karaoke-score>0</strong> pontos · <span data-karaoke-result>Ritmo e presença</span></p>
+ <p role="status" data-karaoke-feedback></p>
+ </section>`}
 function syncKaraokeControls(snapshot){
  if(!snapshot)return;const {score,voice,active,pending,error,recording}=snapshot;
  for(const root of document.querySelectorAll('.karaoke-input-panel')){
