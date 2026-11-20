@@ -580,7 +580,10 @@ visual.setGnarly2Locks({colors:state.gnarly2LockColors,experience:state.gnarly2L
 // compiles its first fragment program. Photos and album-cover backgrounds
 // do not initialize GPU at all until the procedural surface is needed.
 const beginVisual=()=>{
- if(!document.hidden&&!visual.paused)visual.startLoop();
+ // Never resurrect a loop deliberately stopped for preview, export,
+ // static artwork or test capture while this idle callback was pending.
+ if(!document.hidden&&!visual.paused&&visual.loopEpoch===0&&!visual.rendererReady)
+  visual.startLoop();
 };
 if(typeof requestIdleCallback==='function')
  requestIdleCallback(beginVisual,{timeout:1500});
