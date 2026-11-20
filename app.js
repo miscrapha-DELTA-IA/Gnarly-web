@@ -55,7 +55,7 @@ import {deviceLayout,themeAccent,attachEyeGestures,OFFICIAL_SUPPORT_URL} from '.
 import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel} from './ui/player-surface.js';
 import {createIPodSkinStore,ipodSourceLabel} from './ui/ipod-mode.js';
 import {artworkBudget,artworkCandidates,resolveArtworkAsset} from './lib/artwork-quality.js';
-import {resolveHDAlbumBackground,preferHDArtwork,coverDisplayMode,effectiveArtworkDensity} from './lib/hd-album-background.js';
+import {resolveHDAlbumBackground,preferHDArtwork,coverDisplayMode,effectiveArtworkDensity,nativeArtworkWidth,storedHDArtwork} from './lib/hd-album-background.js';
 import {requestVerifiedAlbumArtwork} from './lib/album-artwork-client.js';
 import {createFullscreenController} from './lib/fullscreen-controller.js';
 import {karaokeStageMarkup,KaraokeStage} from './ui/karaoke-stage.js';
@@ -264,6 +264,33 @@ function applyArtworkQuality(element,asset,role){
  if(role==='background')background.dataset.coverQuality=asset.quality||'unknown';
 }
 let coverArtVersion=0,lastCoverArt='',surfaceArtVersion=0,lastSurfaceArt='',backgroundArtVersion=0,lastBackgroundArt='';
+/** Keep visual CDN upgrades off the critical path to native first playback.
+ * Minimal current artwork is shown synchronously; additional image probes are
+ * coalesced until native playing or a bounded 6.5-second fallback.
+ */
+let pendingArtworkTasks=[],pendingArtworkTimer=null;
+function flushPendingArtwork(){
+ if(pendingArtworkTimer!==null)clearTimeout(pendingArtworkTimer);
+ pendingArtworkTimer=null;
+ const tasks=pendingArtworkTasks;pendingArtworkTasks=[];
+ for(const task of tasks){
+  if(task.selection!==playbackSelection||state.current!==task.track)continue;
+  try{task.run()}catch{/* optional visual lookup */}
+ }
+}
+function discardPendingArtwork(){
+ if(pendingArtworkTimer!==null)clearTimeout(pendingArtworkTimer);
+ pendingArtworkTimer=null;pendingArtworkTasks=[];
+}
+function scheduleVisualArtwork(track,run){
+ if(!track||typeof run!=='function'||state.current!==track)return;
+ if(state.playing||state.userPaused||!['loading','recovering'].includes(state.audioState)){
+  run();return;
+ }
+ pendingArtworkTasks.push({track,selection:playbackSelection,run});
+ if(pendingArtworkTimer===null)pendingArtworkTimer=setTimeout(flushPendingArtwork,6500);
+}
+
 const fullscreen=createFullscreenController(document,{
  onChange:active=>{
   for(const button of ['fullscreen-button','karaoke-stage-fullscreen']){
@@ -628,7 +655,10 @@ function updateBadges(){
 // Do not start an external player or load a file picker as an implicit fallback.
 function prepareNativeAudio(track,attempt=0){
  const source=offlineAudio(track.id)||trackAudioURL(track,{
-  attempt,prepared:attempt===0&&selectedPreparedId===youtubeID(track)
+  attempt,prepared:attempt===0&&selectedPreparedId===youtubeID(track),
+  // The backend /download is cache/PC-aware and enforces its own cooldown.
+  // Reusing an observed limit avoids an extra status/stream roundtrip.
+  pcFirst:attempt===0&&playbackCooldown.active()
  });
  if(!source)return false;
  // HTMLMediaElement.src is absolute, including when assigned /fast-audio/… .
@@ -759,12 +789,14 @@ function updatePlayer(){
   lastCoverArt=coverKey;const version=++coverArtVersion;
   const image=$('#cover-image');image.decoding='async';image.src=cover;
   image.onerror=()=>{if(version!==coverArtVersion)return;image.onerror=null;image.src=icon};
-  if(cover!==icon&&navigator.onLine)void resolveArtworkAsset(cover,{...artworkViewport('cover'),minDimension:260}).then(asset=>{
+  if(cover!==icon&&navigator.onLine)scheduleVisualArtwork(track,()=>void resolveArtworkAsset(cover,{
+   ...artworkViewport('cover'),minDimension:260
+  }).then(asset=>{
    if(version===coverArtVersion&&lastCoverArt===coverKey){
     applyArtworkQuality(image,asset,'cover');
     if(asset.url!==cover&&asset.url)image.src=asset.url
    }
-  });
+  }));
  }
  updatePlayerSurfaceArtwork();
  updateIPodScreen();
@@ -820,12 +852,14 @@ function updatePlayerSurfaceArtwork(){
   $('#player-surface-artwork-repeat').style.backgroundImage=layers;
  };
  apply(raw); // Never flash a missing 4K file over a usable thumbnail.
- if(raw!==fallback)void resolveArtworkAsset(raw,{...artworkViewport('surface'),pixels,minDimension:300}).then(asset=>{
+ if(raw!==fallback)scheduleVisualArtwork(state.current,()=>void resolveArtworkAsset(raw,{
+  ...artworkViewport('surface'),pixels,minDimension:300
+ }).then(asset=>{
   if(version===surfaceArtVersion&&lastSurfaceArt===key&&safeSurfaceArtwork(displayedArtwork(state.current))===raw){
    for(const element of [$('#player-surface-artwork'),$('#player-surface-artwork-repeat')])applyArtworkQuality(element,asset,'surface');
    apply(asset.url||raw);
   }
- });
+ }));
 }
 function closePlayerSurfaceMenu(restoreFocus=false){
  const menu=$('#player-surface-menu');
@@ -871,6 +905,7 @@ function applyBackground(){
   delete photo.dataset.artLayout;
   delete photo.dataset.artProvider;
   delete photo.dataset.artDensity;
+  photo.style.removeProperty('--gnarly-native-art-width');
   const layer='url('+JSON.stringify(state.backgroundURL)+')';
   if(photo.style.backgroundImage!==layer)photo.style.backgroundImage=layer;
   photo.style.transform=`translate3d(${state.photoX}%,${state.photoY}%,0) scale(${state.photoZoom})`;
@@ -901,6 +936,9 @@ function applyBackground(){
     photo.style.backgroundImage='url('+JSON.stringify(asset.url)+')';
     const layout=coverDisplayMode(asset,viewport);
     const density=effectiveArtworkDensity(asset,viewport);
+    const nativeWidth=nativeArtworkWidth(asset,viewport);
+    if(nativeWidth>0)photo.style.setProperty('--gnarly-native-art-width',nativeWidth+'px');
+    else photo.style.removeProperty('--gnarly-native-art-width');
     photo.dataset.artLayout=layout;
     photo.dataset.artProvider=asset.provider||
      (/\bytimg\.com\b/.test(asset.url)?'youtube':
@@ -917,14 +955,26 @@ function applyBackground(){
    };
    const viewport=artworkViewport('background');
    if(navigator.onLine){
-    void resolveHDAlbumBackground(track,{
+    // Show the selected cover immediately; HD probes wait for native audio.
+    // This is a single existing image URL, not an extra speculative download.
+    if(source&&photo.style.backgroundImage!=='url('+JSON.stringify(source)+')'){
+     // Until genuine dimensions are decoded, never stretch an unknown still
+     // edge-to-edge or inherit the previous song's resolution classification.
+     photo.dataset.artLayout='contain';
+     photo.dataset.artQuality='unknown';
+     photo.dataset.artProvider='';
+     photo.dataset.artPixels='';
+     photo.style.removeProperty('--gnarly-native-art-width');
+     photo.style.backgroundImage='url('+JSON.stringify(source)+')';
+    }
+    scheduleVisualArtwork(track,()=>void resolveHDAlbumBackground(track,{
      resolve:resolveArtworkAsset,lookup:requestVerifiedAlbumArtwork,
      viewport,storage:localStorage,saveData:!!navigator.connection?.saveData,
      deviceMemory:Number(navigator.deviceMemory)||8,
      onCandidate:showCandidate
     }).then(asset=>{
      if(!asset)void showCandidate({url:source,width:0,height:0,quality:'unknown'});
-    }).catch(()=>{/* Preserve a previously decoded image. */});
+    }).catch(()=>{/* Preserve a previously decoded image. */}));
    }else{
     // Offline is read-only: previously cached artwork may still decode
     // through the service worker, with the canonical thumbnail as fallback.
@@ -942,6 +992,7 @@ function applyBackground(){
   delete photo.dataset.artLayout;
   delete photo.dataset.artProvider;
   delete photo.dataset.artDensity;
+  photo.style.removeProperty('--gnarly-native-art-width');
   photo.style.removeProperty('--gnarly-art-safe-width');
   photo.style.transform='';
  }
@@ -1177,16 +1228,20 @@ async function verifiedAlbumAsset(track,role='background'){
 function applyOfficialArtwork(track,official){
  if(!track||!official?.asset)return;
  const selected=state.current?.id===track.id?state.current:null;
- for(const item of [track,selected])if(item){
+ const applyTo=item=>{
   item.artwork=official.asset.url;item.artworkProvider=official.provider;
-  if(official.asset.width>=900&&official.asset.height>=900)item.backgroundArtwork=official.asset.url;
- }
+  if(official.asset.width<900||official.asset.height<900)return;
+  // Ordinary catalog enrichment must NEVER downgrade a sharper wallpaper
+  // already selected by the multi-provider HD resolver.
+  const remembered=storedHDArtwork(item,localStorage);
+  const proposed={...official.asset,provider:official.provider};
+  if(remembered?preferHDArtwork(proposed,remembered,artworkViewport('background')):
+    !item.backgroundArtwork)item.backgroundArtwork=official.asset.url;
+ };
+ for(const item of [track,selected])if(item)applyTo(item);
  for(const collection of [state.history,state.favorites,state.queue,state.searchResults]){
   if(!Array.isArray(collection))continue;
-  for(const item of collection)if(item?.id===track.id){
-   item.artwork=official.asset.url;item.artworkProvider=official.provider;
-  if(official.asset.width>=900&&official.asset.height>=900)item.backgroundArtwork=official.asset.url;
-  }
+  for(const item of collection)if(item?.id===track.id)applyTo(item);
  }
  omnibox.updateMetadata(track);
  if(selected){updatePlayer();void loadArtworkHue(selected);karaokeStage.refresh();}
@@ -1220,7 +1275,9 @@ async function enrichSelectedTrack(track,knownDuration=0){
   for(const favorite of state.favorites)if(favorite.id===track.id){
    for(const key of ['title','artist','album','artwork'])favorite[key]=track[key];
   }
-  updatePlayer();void loadArtworkHue(track);void enrichOfficialAlbumArt(track);
+  updatePlayer();scheduleVisualArtwork(track,()=>{
+   void loadArtworkHue(track);void enrichOfficialAlbumArt(track)
+  });
   // Re-attempt automatic Mix after an initially generic catalog artist is
   // resolved; the same media source, queue and playback clock are preserved.
   if(state.playing&&state.queue.length<2&&!isGenericArtist(track.artist))
@@ -1245,6 +1302,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false,tdrH
   playbackBackstack.push(state.current);
   if(playbackBackstack.length>30)playbackBackstack.shift();
  }
+ discardPendingArtwork();
  playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();playbackIntentEpoch++;playStartOperation=null;cancelNextOfflinePrefetch();playbackContinuity.select(playbackSelection);silentTailMonitor.reset();
  tdr.select(playbackSelection,{at:selectedAt,autoplay,
   source:tdrSourceForTrack(track,{offline:!!offlineAudio(track.id)}),
@@ -1327,7 +1385,9 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false,tdrH
  // artwork, lyric, metadata and surface work blocks the transition.
  engine.restoreSpeed();reportAudioStatus('');state.lastLyric=-2;
  if(autoplay)void play();
- updatePlayer();void loadArtworkHue(track);void enrichOfficialAlbumArt(track);void loadAutoLyrics(track);prefetchNextLyrics();
+ updatePlayer();
+ scheduleVisualArtwork(track,()=>{void loadArtworkHue(track);void enrichOfficialAlbumArt(track)});
+ void loadAutoLyrics(track);prefetchNextLyrics();
  karaokeStage.refresh(true);
  if(track.source==='youtube')void enrichSelectedTrack(track);omnibox.record(track);state.history=omnibox.history;
  if(isModuleOpen('performance'))void pads.prepareSong(track);
@@ -3784,7 +3844,7 @@ audio.addEventListener('stalled',()=>{
  tdr.mark(playbackSelection,'stalled');
  playbackContinuity.transportEvent('stalled');visual.prioritizeAudio('stalled');
  updateBufferingCue();
-});audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;tdr.playing(playbackSelection,{position:audio.currentTime||0,route:audioSourceCategory(audio.currentSrc||audio.src)});refreshTdrPanel();hideOptionalOfficialSource();coverCharge.hide();rebufferWatch=null;engine.setTransportPaused(false);sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
+});audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;tdr.playing(playbackSelection,{position:audio.currentTime||0,route:audioSourceCategory(audio.currentSrc||audio.src)});refreshTdrPanel();hideOptionalOfficialSource();coverCharge.hide();if(pendingArtworkTasks.length)setTimeout(flushPendingArtwork,250);rebufferWatch=null;engine.setTransportPaused(false);sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
   const ms=Math.round(performance.now()-playbackStartedAt);
   const origin=audio.currentSrc.startsWith('blob:')?'offline':audio.currentSrc.includes('/fast-audio/')?'fast-edge':audio.currentSrc.includes('/audius-audio/')?'audius':audio.currentSrc.includes('/jamendo-audio/')?'jamendo':'render';
   console.debug('GNARLY startup ms',ms,'origin',origin);

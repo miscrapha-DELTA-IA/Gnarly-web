@@ -303,7 +303,8 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
  // checks Render R2/local/PC queue and enforces the provider cooldown.
  // This is only a route hint; anyone may request it and it grants no access.
  const prepared=new URL(request.url).searchParams.get('prepared')==='1';
- const cooldown=originProbe&&!prepared?await originCooldown(fetcher,request.signal,{
+ const pcFirst=prepared||new URL(request.url).searchParams.get('pc-first')==='1';
+ const cooldown=originProbe&&!pcFirst?await originCooldown(fetcher,request.signal,{
   timeoutMs:Math.min(1500,originTimeoutMs),videoId:id,
   hint:fetcher===globalThis.fetch?pcOnlineHint:null}):null;
  // During an upstream cooldown, a different cache layer (Render R2 or its
@@ -318,7 +319,7 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
  // Therefore allow exactly ONE PC-aware request when the Render YouTube
  // origin is limited; never call /stream or initiate a second extraction.
  const pcOrigin=new URL('/download?delivery=browser&url='+encodeURIComponent(youtube),RENDER);
- const candidates=prepared||cooldown?.pcNodeOnline?[pcOrigin]:
+ const candidates=pcFirst||cooldown?.pcNodeOnline?[pcOrigin]:
   cooldown?[cachedOrigin]:[
    new URL('/stream?url='+encodeURIComponent(youtube),RENDER),pcOrigin
   ];
@@ -389,7 +390,7 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
   }
   // The first candidate may now be PC-aware /download, not /stream.
   // Label transport according to the actual selected route for diagnostics.
-  const progressive=index===0&&!prepared&&!cooldown?.pcNodeOnline;
+  const progressive=index===0&&!pcFirst&&!cooldown?.pcNodeOnline;
   const headers=audioHeaders(confirmedProviderLimit?'cached-render-origin':
    progressive?'progressive-origin':'extraction-origin',
    {'Content-Type':upstream.headers.get('Content-Type'),'Cache-Control':'no-store','Server-Timing':

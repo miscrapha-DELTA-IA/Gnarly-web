@@ -710,7 +710,9 @@ body{position:relative;min-height:100dvh;background:#05090a}
    its native detail with a centered, uncropped presentation instead of
    upscaling and cropping it to fill a tall Retina viewport. */
 #gnarly-background.cover-bg .photo-background[data-art-layout="contain"]{
-  background-size:contain!important;
+  /* Real source pixel ceiling: 640px originals stay ~213 CSS px on 3x
+     Retina instead of being stretched to a jagged full-screen texture. */
+  background-size:min(100%,var(--gnarly-native-art-width,100%)) auto!important;
   background-color:#080b10;
 }
 #gnarly-background.cover-bg .visual-dim {

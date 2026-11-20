@@ -50,3 +50,16 @@ test('prepared route hint is scoped to GNARLY Pages and never changes the canoni
   assert.equal(retry.searchParams.get('url'),'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
  }finally{if(previous===undefined)delete globalThis.location;else globalThis.location=previous}
 });
+
+test('only first-party first-attempt playback can request the bounded PC-first cache route',()=>{
+ const saved=globalThis.location;
+ globalThis.location={hostname:'gnarly-web-pages.pages.dev'};
+ try{
+  assert.equal(trackAudioURL(youtube,{pcFirst:true}),'/fast-audio/dQw4w9WgXcQ?pc-first=1');
+  assert.equal(trackAudioURL(youtube,{prepared:true,pcFirst:true}),'/fast-audio/dQw4w9WgXcQ?prepared=1');
+  assert.equal(trackAudioURL(youtube,{pcFirst:true,cacheOnly:true}),'/fast-audio/dQw4w9WgXcQ?cached-only=1');
+  assert.equal(new URL(trackAudioURL(youtube,{pcFirst:true,attempt:1})).searchParams.has('pc-first'),false);
+  globalThis.location={hostname:'localhost'};
+  assert.equal(new URL(trackAudioURL(youtube,{pcFirst:true})).searchParams.has('pc-first'),false);
+ }finally{if(saved===undefined)delete globalThis.location;else globalThis.location=saved}
+});

@@ -121,12 +121,12 @@ test('stale browser cooldown cannot keep a recovered origin unavailable',async()
  assert.ok(play.indexOf('void resolvePlaybackCooldown(playbackCooldown)')<
   play.indexOf('const start=audio.play()'));
  const edge=readFileSync(new URL('../functions/fast-audio/[id].js',import.meta.url),'utf8');
- assert.match(edge,/const cooldown=originProbe&&!prepared\?await originCooldown/);
- assert.match(edge,/const candidates=prepared\|\|cooldown\?\.pcNodeOnline\?\[pcOrigin\]/);
+ assert.match(edge,/const cooldown=originProbe&&!pcFirst\?await originCooldown/);
+ assert.match(edge,/const candidates=pcFirst\|\|cooldown\?\.pcNodeOnline\?\[pcOrigin\]/);
  assert.match(edge,/cache_only=1/);
  assert.doesNotMatch(edge,/if\(cooldown\)return reply\(429/);
  assert.match(edge,/if\(env\?\.GNARLY_AUDIO_R2\)/);
- assert.ok(edge.indexOf('if(env?.GNARLY_AUDIO_R2)')<edge.indexOf('const cooldown=originProbe&&!prepared'));
+ assert.ok(edge.indexOf('if(env?.GNARLY_AUDIO_R2)')<edge.indexOf('const cooldown=originProbe&&!pcFirst'));
 });
 
 test('no rate-limited upstream response body or prompt leaks into public error messages',()=>{
