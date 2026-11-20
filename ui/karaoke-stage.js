@@ -27,7 +27,13 @@ export function karaokeStageMarkup(){
    <p id="karaoke-remote-status" role="status">Preparando conexão segura…</p>
    <label for="karaoke-remote-link">Abra este link no celular</label>
    <div class="karaoke-remote-link-row"><input id="karaoke-remote-link" type="text" readonly aria-label="Link de pareamento para o celular"><button id="karaoke-remote-copy" type="button">Copiar link</button></div>
-   <small>O desktop continua tocando e exibindo a letra. O celular envia somente dados da voz, não o áudio gravado.</small>
+   <p id="karaoke-remote-audio-status" role="status">Áudio ao vivo: aguardando microfone do celular.</p>
+   <div class="karaoke-remote-monitor-controls">
+    <label class="karaoke-remote-monitor-switch" for="karaoke-remote-hear"><input type="checkbox" id="karaoke-remote-hear"> Ouvir minha voz pelo PC</label>
+    <label for="karaoke-remote-volume">Volume da voz</label>
+    <input type="range" id="karaoke-remote-volume" min="0" max="100" value="55" aria-label="Volume do microfone do celular no PC">
+   </div>
+   <small>Voz enviada por WebRTC criptografado diretamente ao PC. O servidor faz apenas o pareamento e a pontuação usa os dados de voz existentes. Use fones para evitar microfonia. Em redes diferentes a conexão direta pode falhar.</small>
   </div>
   <p class="karaoke-stage-feedback" id="karaoke-stage-feedback" role="status" aria-live="polite" hidden></p>
   <div class="karaoke-stage-font-menu" id="karaoke-stage-font-menu" aria-label="Escolher estilo da legenda" hidden></div>
@@ -69,7 +75,8 @@ export class KaraokeStage {
   this.lastRemoteSync=0;
   this.remoteHost=new KaraokeRemoteHost({
    onFrame:frame=>this.receiveRemoteVoice(frame),
-   onStatus:status=>this.remoteStatus(status)
+   onStatus:status=>this.remoteStatus(status),
+   onAudioStatus:status=>this.remoteAudioStatus(status)
   });
   this.opened=false;this.follow=true;this.trackId=null;this.lineRef=null;this.currentIndex=-999;
   this.reducedMotion=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches||false;
@@ -105,6 +112,13 @@ export class KaraokeStage {
    this.updateScore();
   });
   this.root.addEventListener('click',e=>this.click(e));
+  this.root.addEventListener('change',e=>{
+   if(e.target?.id==='karaoke-remote-hear')
+    this.setRemoteMonitor();
+  });
+  this.root.addEventListener('input',e=>{
+   if(e.target?.id==='karaoke-remote-volume')this.setRemoteMonitor();
+  });
   this.root.addEventListener('wheel',()=>this.setFollowing(false),{passive:true});
   this.root.querySelector('#karaoke-reader').addEventListener('touchstart',()=>this.setFollowing(false),{passive:true});
   this.root.querySelector('#karaoke-reader').addEventListener('pointerdown',()=>this.setFollowing(false),{passive:true});
@@ -138,9 +152,28 @@ export class KaraokeStage {
   if(info)info.textContent=messages[status]||'';
   if(this.opened)this.updateScore();
  }
+ remoteAudioStatus(status){
+  const messages={
+   off:'Áudio ao vivo desligado · a pontuação continua disponível.',
+   connecting:'Estabelecendo canal de voz criptografado…',
+   connected:'Áudio conectado. Ative “Ouvir minha voz pelo PC” para escutar.',
+   unavailable:'Este navegador não oferece WebRTC de áudio. Pontuação ainda disponível.',
+   'network-error':'Não foi possível transportar áudio. Verifique se celular e PC estão no mesmo Wi-Fi.',
+   'audio-blocked':'O navegador bloqueou o retorno. Clique novamente em “Ouvir minha voz”.'
+  };
+  const info=this.query('karaoke-remote-audio-status');
+  if(info)info.textContent=messages[status]||'Áudio ao vivo indisponível.';
+ }
+ setRemoteMonitor(){
+  const hear=this.query('karaoke-remote-hear');
+  const volume=this.query('karaoke-remote-volume');
+  const okay=this.remoteHost.setMonitor(!!hear?.checked,Number(volume?.value||55)/100);
+  if(!okay&&hear)hear.checked=false;
+ }
  async toggleRemote(){
   if(this.remoteHost.socket){
-   this.remoteHost.stop();this.query('karaoke-remote-panel').hidden=true;this.updateScore();return;
+   this.remoteHost.stop();this.query('karaoke-remote-panel').hidden=true;
+   this.query('karaoke-remote-hear').checked=false;this.updateScore();return;
   }
   this.mic.stop();this.scorer.stop();
   this.query('karaoke-remote-panel').hidden=false;
@@ -169,6 +202,7 @@ export class KaraokeStage {
   this.opened=false;this.root.hidden=true;this.query('karaoke-stage-font-menu').hidden=true;document.documentElement.classList.remove('karaoke-stage-open');
   clearTimeout(this.feedbackTimer);this.query('karaoke-stage-feedback').hidden=true;
   this.remoteHost.stop();this.query('karaoke-remote-panel').hidden=true;
+  this.query('karaoke-remote-hear').checked=false;
   this.mic.stop();this.scorer.stop();this.updateScore();
   // A pending image upgrade must be retried on reopen, not leave the stage
   // with a permanently stale wallpaper when it completed while hidden.
@@ -335,6 +369,7 @@ export class KaraokeStage {
   if(this.mic.active){this.mic.stop();this.scorer.finish();this.updateScore();return}
   if(this.remoteHost.socket)this.remoteHost.stop();
   this.query('karaoke-remote-panel').hidden=true;
+  this.query('karaoke-remote-hear').checked=false;
   if(this.onMicConflict()){this.onNotify('Pare outra gravação de voz antes de ativar o karaokê.');return}
   this.query('karaoke-voice-toggle').disabled=true;
   try{
