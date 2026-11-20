@@ -55,7 +55,7 @@ import {deviceLayout,themeAccent,attachEyeGestures,OFFICIAL_SUPPORT_URL} from '.
 import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel} from './ui/player-surface.js';
 import {createIPodSkinStore,ipodSourceLabel} from './ui/ipod-mode.js';
 import {artworkBudget,artworkCandidates,resolveArtworkAsset} from './lib/artwork-quality.js';
-import {resolveHDAlbumBackground,preferHDArtwork,coverDisplayMode,effectiveArtworkDensity,storedHDArtwork} from './lib/hd-album-background.js';
+import {resolveHDAlbumBackground,preferHDArtwork,coverDisplayMode,effectiveArtworkDensity,storedHDArtwork,usableCoverForPortraitWallpaper} from './lib/hd-album-background.js';
 import {requestVerifiedAlbumArtwork} from './lib/album-artwork-client.js';
 import {createFullscreenController} from './lib/fullscreen-controller.js';
 import {karaokeStageMarkup,KaraokeStage} from './ui/karaoke-stage.js';
@@ -264,6 +264,22 @@ function applyArtworkQuality(element,asset,role){
  if(role==='background')background.dataset.coverQuality=asset.quality||'unknown';
 }
 let coverArtVersion=0,lastCoverArt='',surfaceArtVersion=0,lastSurfaceArt='',backgroundArtVersion=0,lastBackgroundArt='';
+let backgroundDisplayedTrack=null,backgroundDisplayedAsset=null,backgroundArtAccept=null;
+// The visible player cover has ALREADY been downloaded. If it's a verified
+// square image, share those decoded source pixels with the full-screen
+// background immediately instead of waiting for a separate 3K CDN probe
+// or another MusicBrainz lookup. Landscape video stills are not promoted.
+function offerLoadedPlayerCoverToWallpaper(track,image){
+ const accept=backgroundArtAccept;
+ if(!track||!accept||accept.track!==track||
+  state.current!==track||state.backgroundMode!=='cover')return;
+ const url=image.currentSrc||image.src;
+ const asset={url,width:image.naturalWidth,height:image.naturalHeight};
+ if(!usableCoverForPortraitWallpaper(asset))return;
+ const remembered=storedHDArtwork(track,localStorage);
+ const provider=remembered?.url===url?remembered.provider:track.artworkProvider||'';
+ void accept.offer({...asset,provider,alreadyLoaded:true});
+}
 /** Keep visual CDN upgrades off the critical path to native first playback.
  * Minimal current artwork is shown synchronously; additional image probes are
  * coalesced until native playing or a bounded 6.5-second fallback.
@@ -808,6 +824,10 @@ function updatePlayer(){
   lastCoverArt=coverKey;const version=++coverArtVersion;
   const image=$('#cover-image');image.decoding='async';
   image.fetchPriority='low';
+  image.onload=()=>{
+   if(version===coverArtVersion&&state.current===track)
+    offerLoadedPlayerCoverToWallpaper(track,image);
+  };
   image.onerror=()=>{
    if(version!==coverArtVersion)return;
    const fallback=new URL(cover,location.href).href;
@@ -824,6 +844,8 @@ function updatePlayer(){
    if(version===coverArtVersion&&lastCoverArt===coverKey){
     applyArtworkQuality(image,asset,'cover');
     if(asset.url&&asset.url!==image.src)image.src=asset.url;
+    else if(image.complete&&image.naturalWidth>0)
+     offerLoadedPlayerCoverToWallpaper(track,image);
    }
   }).catch(()=>{/* Preserve visible cover and native player. */});
  }
@@ -929,6 +951,7 @@ function applyBackground(){
  background.classList.toggle('custom-bg',ownPhoto);background.classList.toggle('cover-bg',coverPhoto);
  photo.hidden=!ownPhoto&&!coverPhoto;
  if(ownPhoto){
+  backgroundArtAccept=null;backgroundDisplayedAsset=null;backgroundDisplayedTrack=null;
   lastBackgroundArt='';++backgroundArtVersion;
   background.classList.remove('cover-art-ready');
   delete photo.dataset.artQuality;
@@ -941,28 +964,36 @@ function applyBackground(){
   photo.style.transform=`translate3d(${state.photoX}%,${state.photoY}%,0) scale(${state.photoZoom})`;
  }else if(coverPhoto){
   const track=state.current,source=safeSurfaceArtwork(cover),pixels=Math.max(2400,artPixels('background'));
+  if(backgroundDisplayedTrack!==track){
+   backgroundDisplayedTrack=track;backgroundDisplayedAsset=null;
+  }
   const key=[track.id,track.title,track.artist,track.album,Math.round(Number(track.duration)||0),source,pixels].join('|');
   if(lastBackgroundArt!==key){
    lastBackgroundArt=key;const version=++backgroundArtVersion;
-   let displayedAsset=null;
+   let displayedAsset=backgroundDisplayedAsset;
    // The currently decoded image remains in place while verified HD sources
    // load. A slow previous candidate must never overwrite a sharper result.
    if(!photo.style.backgroundImage)background.classList.remove('cover-art-ready');
    const showCandidate=async asset=>{
     if(!asset?.url)return;
-    const img=new Image();
-    img.decoding='async';img.src=asset.url;
-    try{
-     if(img.decode)await img.decode();
-     else await new Promise((resolve,reject)=>{
-      img.onload=resolve;img.onerror=reject;
-      if(img.complete&&img.naturalWidth)resolve();
-     });
-    }catch{return}
+    // A decoded player cover or a verified source from artwork-quality.js
+    // is already loaded by the browser. Do not decode the same 3K JPEG twice.
+    if(!asset.alreadyLoaded){
+     const img=new Image();
+     img.decoding='async';img.src=asset.url;
+     try{
+      if(img.decode)await img.decode();
+      else await new Promise((resolve,reject)=>{
+       img.onload=resolve;img.onerror=reject;
+       if(img.complete&&img.naturalWidth)resolve();
+      });
+     }catch{return}
+    }
     if(version!==backgroundArtVersion||lastBackgroundArt!==key||
      state.backgroundMode!=='cover'||state.current!==track)return;
     if(displayedAsset&&!preferHDArtwork(asset,displayedAsset,viewport))return;
     displayedAsset=asset;
+    backgroundDisplayedTrack=track;backgroundDisplayedAsset=asset;
     photo.style.backgroundImage='url('+JSON.stringify(asset.url)+')';
     const sourceQuality=coverDisplayMode(asset,viewport);
     const density=effectiveArtworkDensity(asset,viewport);
@@ -983,10 +1014,11 @@ function applyBackground(){
      track.backgroundArtwork=asset.url;
    };
    const viewport=artworkViewport('background');
+   backgroundArtAccept={track,offer:showCandidate};
    if(navigator.onLine){
     // Show the selected cover immediately; HD probes wait for native audio.
     // This is a single existing image URL, not an extra speculative download.
-    if(source&&photo.style.backgroundImage!=='url('+JSON.stringify(source)+')'){
+    if(!displayedAsset&&source&&photo.style.backgroundImage!=='url('+JSON.stringify(source)+')'){
      // Restore full-bleed framing immediately and clear stale metadata
      // from the previous song; real HD alternatives load after audio starts.
      photo.dataset.artLayout='cover';
@@ -1014,6 +1046,7 @@ function applyBackground(){
   }
   photo.style.transform='';
  }else{
+  backgroundArtAccept=null;backgroundDisplayedAsset=null;backgroundDisplayedTrack=null;
   lastBackgroundArt='';++backgroundArtVersion;
   background.classList.remove('cover-art-ready');
   if(photo.style.backgroundImage)photo.style.backgroundImage='';
