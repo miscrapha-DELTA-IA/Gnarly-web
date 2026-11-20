@@ -180,3 +180,21 @@ test('search rows lazily inspect real decoded thumbnails rather than trust the f
  assert.match(app,/upgradeMediaArtwork\((?:resultsEl|list)\)/);
  assert.match(app,/function renderSheet\(\)[^\n]*upgradeMediaArtwork\(\)/);
 });
+
+test('album-cover backdrop retains HD detail and custom photo mode stays untouched',()=>{
+ const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
+ const cover=css.match(/#gnarly-background\.cover-bg \.photo-background \{([\s\S]*?)\}/)?.[1];
+ const dim=css.match(/#gnarly-background\.cover-bg \.visual-dim \{([\s\S]*?)\}/)?.[1];
+ assert.ok(cover,'cover mode has its own non-destructive backdrop styling');
+ assert.match(cover,/blur\(clamp\(4px,\.65vw,7px\)\)/,'preserve detail; no 15px blanket blur');
+ assert.match(cover,/saturate\(1\.03\) contrast\(1\.04\)/);
+ assert.match(cover,/background-size:cover!important/,'cover remains edge-to-edge');
+ assert.doesNotMatch(cover,/blur\(15px\)/);
+ assert.ok(dim&&dim.includes('rgba(0,0,0,.08)'),'center of artwork remains visible');
+ assert.match(css,/#gnarly-background\.cover-bg \.photo-background\[data-art-quality="low"\]::before/);
+ const custom=css.match(/\.photo-background\{([^}]*)\}/)?.[1]||'';
+ assert.doesNotMatch(custom,/blur\(/,'the custom photo does not inherit album-mode blur');
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ assert.match(app,/resolveArtworkAsset\(source,\{\.\.\.artworkViewport\('background'\),pixels,minDimension:900\}\)/,
+  'full viewport cover still requests quality-probed artwork, not an arbitrary low-res preview');
+});

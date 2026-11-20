@@ -693,21 +693,30 @@ body{position:relative;min-height:100dvh;background:#05090a}
 #gnarly-background.cover-bg:not(.cover-art-ready) #fluid-canvas{opacity:1}
 #gnarly-background.cover-bg.cover-art-ready #fluid-canvas{opacity:0}
 
-/* Swift CoverFill parity: original image scales to fill the entire viewport,
-   with intentional 15pt-equivalent blur. The image stays edge-to-edge even
-   when the provider has no verified album master. Custom uploaded photos and
-   animated themes remain untouched. */
+/* Full-viewport album cover: retain decoded HD pixels and natural texture.
+   Restrict the softening to a subtle ambient edge, not a 15px fog over the
+   image. Only affects Capa do álbum; custom photos and shaders are untouched. */
 #gnarly-background.cover-bg .photo-background {
-  inset:-22px;
-  width:calc(100% + 44px);
-  height:calc(100% + 44px);
+  inset:-10px;
+  width:calc(100% + 20px);
+  height:calc(100% + 20px);
   background-size:cover!important;
   background-position:center center!important;
-  filter:blur(15px) saturate(1.06);
-  -webkit-filter:blur(15px) saturate(1.06);
+  filter:blur(clamp(4px,.65vw,7px)) saturate(1.03) contrast(1.04);
+  -webkit-filter:blur(clamp(4px,.65vw,7px)) saturate(1.03) contrast(1.04);
 }
 #gnarly-background.cover-bg .visual-dim {
-  background:linear-gradient(180deg,rgba(0,0,0,.27),rgba(0,0,0,.17) 42%,rgba(0,0,0,.3));
+  background:linear-gradient(180deg,rgba(0,0,0,.16),rgba(0,0,0,.08) 42%,rgba(0,0,0,.2));
+}
+/* The low-resolution fallback can add a second artificial color/black wash.
+   Tone it down in cover mode, without weakening the controls' own glass. */
+#gnarly-background.cover-bg .photo-background[data-art-quality="low"]::before,
+#gnarly-background.cover-bg .photo-background[data-art-quality="unknown"]::before{
+  opacity:.42;
+}
+#gnarly-background.cover-bg .photo-background[data-art-quality="low"]::after,
+#gnarly-background.cover-bg .photo-background[data-art-quality="unknown"]::after{
+  opacity:.48;
 }
 
 /* Responsive GNARLY Shell · iOS and desktop receive appropriate controls.
