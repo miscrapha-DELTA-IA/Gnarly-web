@@ -655,7 +655,10 @@ function updateBadges(){
 // Do not start an external player or load a file picker as an implicit fallback.
 function prepareNativeAudio(track,attempt=0){
  const source=offlineAudio(track.id)||trackAudioURL(track,{
-  attempt,prepared:attempt===0&&selectedPreparedId===youtubeID(track)
+  attempt,prepared:attempt===0&&selectedPreparedId===youtubeID(track),
+  // The backend /download is cache/PC-aware and enforces its own cooldown.
+  // Reusing an observed limit avoids an extra status/stream roundtrip.
+  pcFirst:attempt===0&&playbackCooldown.active()
  });
  if(!source)return false;
  // HTMLMediaElement.src is absolute, including when assigned /fast-audio/… .
