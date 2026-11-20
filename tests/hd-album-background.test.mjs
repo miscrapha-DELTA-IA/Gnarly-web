@@ -40,6 +40,16 @@ test('portrait DPR considers real height; official album art beats low-res video
  assert.equal(preferHDArtwork(video,official,viewport),false);
  assert.equal(preferHDArtwork({...video,width:120,height:90},video,viewport),false);
 });
+test('portrait official 1200px album cover may replace a 1080p landscape video still on desktop',()=>{
+ const desktop={displayWidth:1920,displayHeight:1080,dpr:1};
+ const video={url:original.artwork,width:1920,height:1080,provider:'youtube'};
+ const official={url:'https://is1-ssl.mzstatic.com/image/thumb/a/1200x1200bb.jpg',
+  width:1200,height:1200,provider:'apple'};
+ assert.equal(preferHDArtwork(official,video,desktop),true,
+  'verified square album artwork should beat a landscape video if the adaptive painter avoids huge enlargement');
+ assert.equal(preferHDArtwork(video,official,desktop),false,
+  'do not reinstate a video placeholder over the verified album cover');
+});
 test('pixel demand supports 3K Retina while honoring Save Data and 2GB memory devices',()=>{
  assert.ok(requestedWallpaperPixels({viewport})>=2900);
  assert.equal(requestedWallpaperPixels({viewport,saveData:true}),1400);
@@ -133,7 +143,7 @@ test('GNARLY background wires HD resolver while leaving original-color CSS and p
  assert.match(app,/resolveHDAlbumBackground\(track,/);
  assert.match(app,/lookup:requestVerifiedAlbumArtwork/);
  assert.match(app,/backgroundArtVersion/);
- assert.match(app,/preferHDArtwork\(asset,displayedAsset,viewport\)/);
+ assert.match(app,/preferHDArtwork\(real,displayedAsset,viewport\)/);
  assert.match(css,/#gnarly-background\.cover-bg \.photo-background \{[\s\S]*?filter:none;/);
  assert.doesNotMatch(app,/track\.url\s*=\s*asset\.url/);
 });
@@ -173,7 +183,7 @@ test('the background UI keeps full-bleed framing even for a pixel-limited origin
  assert.match(app,/photo\.dataset\.artLayout='cover'/);
  assert.match(app,/photo\.dataset\.artSourceLimited=String\(sourceQuality==='contain'\)/);
  assert.match(app,/Resolução carregada:/);
- assert.match(app,/A capa está em tela cheia, mas o arquivo disponível tem resolução insuficiente/);
+ assert.match(app,/A fonte disponível tem pixels insuficientes para a tela/);
  assert.match(css,/#gnarly-background\.cover-bg \.photo-background \{[\s\S]*?background-size:cover!important;/);
  assert.doesNotMatch(css,/--gnarly-native-art-width|background-size:min\(100%,var\(/);
  assert.doesNotMatch(app,/nativeArtworkWidth|--gnarly-native-art-width/);
@@ -276,12 +286,13 @@ test('verified high-resolution cache is offered before new slow network image pr
 test('browser handoff uses the already-loaded player image and preserves the best art across metadata updates',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(app,/function offerLoadedPlayerCoverToWallpaper\(track,image\)/);
- assert.match(app,/if\(!usableCoverForPortraitWallpaper\(asset\)\)return/);
- assert.match(app,/void accept\.offer\(\{\.\.\.asset,provider,alreadyLoaded:true\}\)/);
+ assert.match(app,/if\(!usableCoverForPortraitWallpaper\(asset\)\)\{/);
+ assert.match(app,/void accept\.offer\(\{\.\.\.asset,provider,alreadyLoaded:true,image\}\)/);
+ assert.match(app,/void accept\.offer\(\{\.\.\.asset,provider,alreadyLoaded:true,image,provisional:true\}\)/);
  assert.match(app,/image\.onload=\(\)=>\{/);
  assert.match(app,/let displayedAsset=backgroundDisplayedAsset/);
  assert.match(app,/if\(!displayedAsset&&source&&photo\.style\.backgroundImage/);
- assert.match(app,/if\(!asset\.alreadyLoaded\)\{/);
+ assert.match(app,/let decoded=asset\.image\?\.naturalWidth>0\?asset\.image:null/);
  assert.match(app,/rememberHDArtwork\(track,asset,localStorage\)/);
  assert.match(app,/backgroundArtAccept=\{track,offer:showCandidate\}/);
  assert.match(app,/scheduleVisualArtwork\(track,\(\)=>void resolveHDAlbumBackground\(track,/,
