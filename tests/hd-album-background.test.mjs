@@ -183,7 +183,7 @@ test('the background UI keeps full-bleed framing even for a pixel-limited origin
  assert.match(app,/photo\.dataset\.artLayout='cover'/);
  assert.match(app,/photo\.dataset\.artSourceLimited=String\(sourceQuality==='contain'\)/);
  assert.match(app,/Resolução carregada:/);
- assert.match(app,/A fonte disponível tem pixels insuficientes para a tela/);
+ assert.match(app,/A fonte disponível tem menos pixels do que a tela exige/);
  assert.match(css,/#gnarly-background\.cover-bg \.photo-background \{[\s\S]*?background-size:cover!important;/);
  assert.doesNotMatch(css,/--gnarly-native-art-width|background-size:min\(100%,var\(/);
  assert.doesNotMatch(app,/nativeArtworkWidth|--gnarly-native-art-width/);
@@ -292,8 +292,9 @@ test('browser handoff uses the already-loaded player image and preserves the bes
  assert.match(app,/image\.onload=\(\)=>\{/);
  assert.match(app,/let displayedAsset=backgroundDisplayedAsset/);
  assert.match(app,/if\(!displayedAsset&&source&&photo\.style\.backgroundImage/);
- assert.match(app,/let decoded=asset\.image\?\.naturalWidth>0\?asset\.image:null/);
- assert.match(app,/rememberHDArtwork\(track,asset,localStorage\)/);
+ assert.match(app,/nativeCoverWallpaper.show\(asset.url/);
+ assert.doesNotMatch(app,/if\(img\.decode\)await img\.decode\(\)/);
+ assert.match(app,/rememberHDArtwork\(track,real,localStorage\)/);
  assert.match(app,/backgroundArtAccept=\{track,offer:showCandidate\}/);
  assert.match(app,/scheduleVisualArtwork\(track,\(\)=>void resolveHDAlbumBackground\(track,/,
   'only heavy network search should wait for native audio playing');
