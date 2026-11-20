@@ -28,7 +28,7 @@ test('Apple Music cover URLs upgrade to real higher-resolution endpoint without 
 test('Adaptive resolution respects memory, data saver, DPR and role',()=>{
  const big={viewportWidth:1440,viewportHeight:900,dpr:2,deviceMemory:8};
  const bg=artworkBudget({role:'background',...big});
- assert.equal(bg,2400);
+ assert.equal(bg,2880,'Retina desktop wallpaper must request its native long edge up to 3200');
  assert.equal(artworkBudget({role:'background',...big,deviceMemory:2}),1120);
  assert.equal(artworkBudget({role:'background',...big,saveData:true}),800);
  assert.ok(artworkBudget({role:'thumb',...big})<=400);
@@ -201,4 +201,53 @@ test('album-cover backdrop displays source pixels without image filters or scrim
   'the viewport uses progressive HD artwork resolution');
  assert.match(app,/resolve:resolveArtworkAsset,lookup:requestVerifiedAlbumArtwork/,
   'the browser verifies real pixels and asks for a matched album master');
+});
+
+test('real 2400px cover appears before a slow 3200px candidate finishes',async()=>{
+ clearArtworkQualityCache();
+ const originalImage=globalThis.Image;
+ let finishUltra,ultraFinished=false;
+ class DelayedImage{
+  naturalWidth=0;naturalHeight=0;onload=null;onerror=null;
+  set src(url){
+   if(url.includes('/3200x3200bb.')){
+    finishUltra=()=>{
+     this.naturalWidth=this.naturalHeight=3200;ultraFinished=true;
+     this.onload?.()
+    };
+   }else if(url.includes('/2400x2400bb.')){
+    this.naturalWidth=this.naturalHeight=2400;
+    queueMicrotask(()=>this.onload?.())
+   }else queueMicrotask(()=>this.onerror?.())
+  }
+ }
+ globalThis.Image=DelayedImage;
+ try{
+  const url='https://is1-ssl.mzstatic.com/image/thumb/demo/100x100bb.jpg';
+  const shown=[];
+  let completed=false;
+  const pending=resolveArtworkAsset(url,{
+   pixels:3200,displayWidth:1440,displayHeight:900,dpr:2,
+   minDimension:1200,minHeight:1000,
+   onCandidate:asset=>shown.push(asset)
+  }).then(value=>{completed=true;return value});
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(shown[0]?.width,2400,
+   'the real 2400px CDN image must reach the fullscreen compositor immediately');
+  assert.equal(completed,false,'unrelated slow 3200px CDN probe may still be pending');
+  assert.equal(ultraFinished,false);
+  finishUltra();
+  const chosen=await pending;
+  assert.equal(chosen.width,3200);
+  assert.ok(shown.some(asset=>asset.width===3200));
+ }finally{globalThis.Image=originalImage;clearArtworkQualityCache()}
+});
+test('fullscreen cover avoids artificially forced low-resolution compositor layers',()=>{
+ const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
+ const match=css.match(/#gnarly-background\.cover-bg \.photo-background \{([\s\S]*?)\}/)?.[1];
+ assert.ok(match);
+ assert.match(match,/will-change:auto/);
+ assert.match(match,/transform:none!important/);
+ assert.match(match,/image-rendering:auto/);
+ assert.match(match,/background-size:cover!important/);
 });
