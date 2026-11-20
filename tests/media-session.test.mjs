@@ -122,10 +122,10 @@ test('WebKit playback audio category is feature-detected and duplex for mic capt
  assert.equal(navigatorObject.audioSession.type,'play-and-record');
  assert.equal(configureBrowserAudioSession({navigatorObject:{}}),false);
 });
-test('karaoke captures vocals without forcing voice-call mode for music playback',()=>{
+test('karaoke requests a capture-compatible WebKit audio category throughout getUserMedia',()=>{
  const microphone=readFileSync(new URL('../lib/karaoke-microphone.js',import.meta.url),'utf8');
- assert.doesNotMatch(microphone,/recording:true/);
- assert.match(microphone,/configureBrowserAudioSession\(\{navigatorObject:this\.navigatorObject,recording:false\}\)/);
+ assert.match(microphone,/navigatorObject:this\.navigatorObject,recording:true/);
+ assert.doesNotMatch(microphone,/recording:false/);
  assert.match(microphone,/echoCancellation:false,noiseSuppression:false,autoGainControl:false/);
  assert.match(microphone,/deviceId:\{exact:this\.inputDeviceId\}/);
  assert.match(microphone,/configureBrowserAudioSession\(\{navigatorObject:this\.navigatorObject\}\)/);
@@ -133,8 +133,9 @@ test('karaoke captures vocals without forcing voice-call mode for music playback
 test('headphone transport does not change the existing native playback source when backgrounded',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(app,/configureBrowserAudioSession\(\{navigatorObject:navigator/);
- assert.match(app,/configureBrowserAudioSession\(\{navigatorObject:navigator,recording:false\}\)/);
- assert.doesNotMatch(app,/recording:!!\(karaokeStage\.mic\.active\|\|state\.micStream\)/);
+ assert.match(app,/const localVoiceCapture=karaokeStage\.mic\.active\|\|/);
+ assert.match(app,/karaokeStage\.mic\.status==='requesting'\|\|!!state\.micStream/);
+ assert.match(app,/configureBrowserAudioSession\(\{navigatorObject:navigator,recording:localVoiceCapture\}\)/);
  assert.match(app,/nexttrack:\(\)=>\{void next\(\)\}/);
  assert.match(app,/previoustrack:\(\)=>\{if\(state\.current\)previous\(\)\}/);
  assert.doesNotMatch(app,/visibilitychange[^\n]*pause\(\)/);
@@ -179,7 +180,12 @@ test('selected USB/phone microphone records without asking the browser for a voi
   close(){this.state='closed';return Promise.resolve()}
  }
  const mic=new KaraokeMicrophone({navigatorObject,
-  mediaDevices:{getUserMedia:async value=>(constraints=value,stream)},
+  mediaDevices:{getUserMedia:async value=>{
+   constraints=value;
+   assert.equal(navigatorObject.audioSession.type,'play-and-record',
+    'WebKit refuses getUserMedia while AudioSession is overridden to playback');
+   return stream;
+  }},
   AudioContextClass:AudioContextFake,WorkerClass:null});
  mic.inputDeviceId='external-mic-123';
  try{
@@ -188,7 +194,41 @@ test('selected USB/phone microphone records without asking the browser for a voi
   assert.equal(constraints.audio.echoCancellation,false);
   assert.equal(constraints.audio.noiseSuppression,false);
   assert.equal(constraints.audio.autoGainControl,false);
-  assert.equal(navigatorObject.audioSession.type,'playback');
+  assert.equal(navigatorObject.audioSession.type,'play-and-record');
  }finally{mic.stop()}
  assert.equal(navigatorObject.audioSession.type,'playback');
+});
+
+test('WebKit rejects playback category but karaoke capture succeeds after duplex transition',async()=>{
+ const events=[],session={type:'playback'};
+ const navigatorObject={audioSession:session};
+ class FakeCtx{
+  state='running';sampleRate=44100;destination={};
+  constructor(){events.push(['context-created',session.type])}
+  resume(){events.push(['resume',session.type]);return Promise.resolve()}
+  createMediaStreamSource(){return {connect(){},disconnect(){}}}
+  createAnalyser(){return {fftSize:4096,connect(){},disconnect(){},getFloatTimeDomainData(){}}}
+  createGain(){return {gain:{value:0},connect(){},disconnect(){}}}
+  close(){this.state='closed';return Promise.resolve()}
+ }
+ const track={stop(){},addEventListener(){}};
+ const mic=new KaraokeMicrophone({navigatorObject,AudioContextClass:FakeCtx,WorkerClass:null,
+  mediaDevices:{async getUserMedia(){
+   events.push(['getUserMedia',session.type]);
+   if(!['play-and-record','auto'].includes(session.type)){
+    const err=new Error('AudioSession category is not compatible with audio capture.');
+    err.name='InvalidStateError';throw err;
+   }
+   return {active:true,getTracks:()=>[track]};
+  }}});
+ try{
+  assert.equal(await mic.start(),true);
+  assert.deepEqual(events.slice(0,3),[
+   ['context-created','play-and-record'],
+   ['resume','play-and-record'],
+   ['getUserMedia','play-and-record']
+  ]);
+  assert.equal(session.type,'play-and-record');
+ }finally{mic.stop()}
+ assert.equal(session.type,'playback','the music category is restored after stop');
 });
