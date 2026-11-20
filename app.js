@@ -55,7 +55,7 @@ import {deviceLayout,themeAccent,attachEyeGestures,OFFICIAL_SUPPORT_URL} from '.
 import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel} from './ui/player-surface.js';
 import {createIPodSkinStore,ipodSourceLabel} from './ui/ipod-mode.js';
 import {artworkBudget,artworkCandidates,resolveArtworkAsset} from './lib/artwork-quality.js';
-import {resolveHDAlbumBackground,preferHDArtwork} from './lib/hd-album-background.js';
+import {resolveHDAlbumBackground,preferHDArtwork,coverDisplayMode,effectiveArtworkDensity} from './lib/hd-album-background.js';
 import {requestVerifiedAlbumArtwork} from './lib/album-artwork-client.js';
 import {createFullscreenController} from './lib/fullscreen-controller.js';
 import {karaokeStageMarkup,KaraokeStage} from './ui/karaoke-stage.js';
@@ -867,6 +867,9 @@ function applyBackground(){
   lastBackgroundArt='';++backgroundArtVersion;
   background.classList.remove('cover-art-ready');
   delete photo.dataset.artQuality;
+  delete photo.dataset.artLayout;
+  delete photo.dataset.artProvider;
+  delete photo.dataset.artDensity;
   const layer='url('+JSON.stringify(state.backgroundURL)+')';
   if(photo.style.backgroundImage!==layer)photo.style.backgroundImage=layer;
   photo.style.transform=`translate3d(${state.photoX}%,${state.photoY}%,0) scale(${state.photoZoom})`;
@@ -895,7 +898,16 @@ function applyBackground(){
     if(displayedAsset&&!preferHDArtwork(asset,displayedAsset,viewport))return;
     displayedAsset=asset;
     photo.style.backgroundImage='url('+JSON.stringify(asset.url)+')';
-    applyArtworkQuality(photo,asset,'background');
+    const layout=coverDisplayMode(asset,viewport);
+    const density=effectiveArtworkDensity(asset,viewport);
+    photo.dataset.artLayout=layout;
+    photo.dataset.artProvider=asset.provider||
+     (/\bytimg\.com\b/.test(asset.url)?'youtube':
+      /mzstatic\.com/.test(asset.url)?'apple':
+      /dzcdn\.net/.test(asset.url)?'deezer':
+      /coverartarchive\.org/.test(asset.url)?'musicbrainz':'original');
+    photo.dataset.artDensity=Number.isFinite(density)?density.toFixed(2):'';
+    applyArtworkQuality(photo,{...asset,quality:layout==='contain'?'low':asset.quality},'background');
     background.classList.add('cover-art-ready');
     visual.setPaused(true);
     // Only persist genuine HD images, never a resized video placeholder.
@@ -926,6 +938,9 @@ function applyBackground(){
   background.classList.remove('cover-art-ready');
   if(photo.style.backgroundImage)photo.style.backgroundImage='';
   delete photo.dataset.artQuality;
+  delete photo.dataset.artLayout;
+  delete photo.dataset.artProvider;
+  delete photo.dataset.artDensity;
   photo.style.removeProperty('--gnarly-art-safe-width');
   photo.style.transform='';
  }
@@ -2702,7 +2717,7 @@ function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet)
  case 'reaction':content.innerHTML=renderVisualLayer(state.sheet);break;
  case 'lyric-style':content.innerHTML=renderLyricStylePanel(state.lyricStyle,{scope:lyricScope,track:state.current,resolution:lyricFonts.selected(state.current),recents:lyricFonts.recents,group:lyricGroup,previewText:state.lyrics[lyricIndex(state.lyrics,audio.currentTime||0)]?.text||'TUA VOZ ME LEVA'});break;
   case 'karaoke':content.innerHTML=`${karaokeInputMarkup()}<div class="card-help">O GNARLY procura letras primeiro no LRCLIB, com conferência de artista, título e duração. Quando só existe letra simples, ela aparece sem tempos inventados. A transcrição por IA usa apenas áudio que você escolher enviar.</div><p class="status-text" id="lyrics-status">${safe(state.lyricsStatus)}</p>${btn('Importar letra .lrc','load-lrc')}<div class="lyrics-actions">${btn('Aa · Estilo da legenda','go-lyric-style','alt')}${state.current&&!state.lyricsLoading&&!state.lyricsAIWorking?btn('Buscar letras novamente','retry-lyrics','alt'):''}${state.current&&!state.lyrics.length?btn(state.lyricsAIWorking?'Transcrevendo…':state.plainLyrics.length?'Transcrever com IA para obter tempos':'Transcrever meu áudio com IA','lyrics-ai','alt'):''}</div>${lyricSyncControls()}<label class="section-note lyrics-ai-consent"><input id="lyrics-ai-autofallback" type="checkbox" ${lyricsAIAutoSession?'checked':''} /> Tentar sincronizar meus arquivos locais com IA nesta sessão quando faltar LRC (envia o áudio com consentimento).</label><p class="section-note">Transcrição por IA é experimental. Para músicas de catálogo, selecione manualmente um áudio da mesma gravação que você tenha autorização para processar.</p><div class="section-head">${state.lyricsSynced?'Letra sincronizada':state.plainLyrics.length?'Letra sem sincronização':'Letra'}</div>${state.lyrics.length?`<div class="lyrics-box">${state.lyrics.map((line,i)=>{const active=i===lyricIndex(state.lyrics,audio.currentTime);return `<div class="lyric-line ${active?'active':''}" data-lyric-index="${i}" data-lyric-time="${line.time}">${active?renderLyricArtwork(line.text,state.lyricStyle,{lineId:i,active:true}):safe(line.text)}</div>`}).join('')}</div>`:state.plainLyrics.length?`<div class="lyrics-box lyrics-unsynced">${state.plainLyrics.map(line=>`<div class="lyric-line">${safe(line)}</div>`).join('')}</div>`:'<p class="section-note">Nenhuma letra confirmada. Você pode importar .lrc ou transcrever seu arquivo de áudio autorizado.</p>'}`;break;
- case 'background':content.innerHTML=`<div class="background-menu"><button class="background-menu-row" data-command="show-visual">✦ <span>Tema visual</span><b>${state.backgroundMode==='visual'?'✓':''}</b></button><button class="background-menu-row" data-command="show-cover">▧ <span>Capa do álbum</span><b>${state.backgroundMode==='cover'?'✓':''}</b></button><button class="background-menu-row" data-command="load-background">▣ <span>Minha foto · escolher / trocar</span></button><button class="background-menu-row" data-command="use-photo" ${state.backgroundURL?'':'disabled'}>✓ <span>Usar minha foto</span><b>${state.backgroundMode==='custom'?'✓':''}</b></button><button class="background-menu-row" data-command="adjust-photo" ${state.backgroundURL?'':'disabled'}>☷ <span>Ajustar foto</span></button><button class="background-menu-row danger" data-command="remove-background">× <span>Remover foto</span></button></div>${state.backgroundMode==='cover'&&state.current?.artwork?`<p class="section-note" id="artwork-quality-info">Resolução real da capa: ${safe($('#photo-background').dataset.artPixels||'verificando…')}. ${$('#photo-background').dataset.artQuality==='low'?'A imagem atual tem poucos pixels para tela cheia. O GNARLY tenta encontrar uma capa oficial HD.':'A melhor versão disponível será aplicada sem interromper a música.'}</p>`:''}${state.photoAdjust&&state.backgroundURL?`<div class="photo-editor"><p class="section-note">Ajustes locais · a imagem não é enviada ao servidor</p><label for="photo-zoom">Zoom <output id="photo-zoom-value">${Math.round(state.photoZoom*100)}%</output></label><input type="range" id="photo-zoom" data-photo-parameter="photoZoom" min="1" max="2.5" step=".025" value="${state.photoZoom}" /><label for="photo-x">Posição horizontal</label><input type="range" id="photo-x" data-photo-parameter="photoX" min="-40" max="40" step="1" value="${state.photoX}"/><label for="photo-y">Posição vertical</label><input type="range" id="photo-y" data-photo-parameter="photoY" min="-40" max="40" step="1" value="${state.photoY}"/><button class="action-button" data-command="done-photo">Concluído</button></div>`:''}`;break;
+ case 'background':content.innerHTML=`<div class="background-menu"><button class="background-menu-row" data-command="show-visual">✦ <span>Tema visual</span><b>${state.backgroundMode==='visual'?'✓':''}</b></button><button class="background-menu-row" data-command="show-cover">▧ <span>Capa do álbum</span><b>${state.backgroundMode==='cover'?'✓':''}</b></button><button class="background-menu-row" data-command="load-background">▣ <span>Minha foto · escolher / trocar</span></button><button class="background-menu-row" data-command="use-photo" ${state.backgroundURL?'':'disabled'}>✓ <span>Usar minha foto</span><b>${state.backgroundMode==='custom'?'✓':''}</b></button><button class="background-menu-row" data-command="adjust-photo" ${state.backgroundURL?'':'disabled'}>☷ <span>Ajustar foto</span></button><button class="background-menu-row danger" data-command="remove-background">× <span>Remover foto</span></button></div>${state.backgroundMode==='cover'&&state.current?.artwork?`<p class="section-note" id="artwork-quality-info">Resolução carregada: ${safe($('#photo-background').dataset.artPixels||'verificando…')}. Fonte: ${safe(({apple:'Apple Music',deezer:'Deezer',musicbrainz:'Cover Art Archive',youtube:'YouTube',original:'Imagem da faixa'})[$('#photo-background').dataset.artProvider]||'verificando…')}. ${$('#photo-background').dataset.artLayout==='contain'?'Imagem preservada sem ampliar porque a fonte não possui pixels suficientes para preencher a tela com nitidez.':$('#photo-background').dataset.artQuality==='low'?'Tentando recuperar uma capa oficial HD.':'Fundo preenchido com a melhor versão verificada disponível.'}</p>`:''}${state.photoAdjust&&state.backgroundURL?`<div class="photo-editor"><p class="section-note">Ajustes locais · a imagem não é enviada ao servidor</p><label for="photo-zoom">Zoom <output id="photo-zoom-value">${Math.round(state.photoZoom*100)}%</output></label><input type="range" id="photo-zoom" data-photo-parameter="photoZoom" min="1" max="2.5" step=".025" value="${state.photoZoom}" /><label for="photo-x">Posição horizontal</label><input type="range" id="photo-x" data-photo-parameter="photoX" min="-40" max="40" step="1" value="${state.photoX}"/><label for="photo-y">Posição vertical</label><input type="range" id="photo-y" data-photo-parameter="photoY" min="-40" max="40" step="1" value="${state.photoY}"/><button class="action-button" data-command="done-photo">Concluído</button></div>`:''}`;break;
  default:content.textContent='';
  }}
 /** Keep the existing menu DOM and scroll position on a simple theme/experience

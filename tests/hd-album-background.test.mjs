@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
  HD_ARTWORK_CACHE_KEY,artworkMemoryKey,rememberHDArtwork,storedHDArtwork,
- effectiveArtworkDensity,preferHDArtwork,requestedWallpaperPixels,
+ effectiveArtworkDensity,preferHDArtwork,coverDisplayMode,requestedWallpaperPixels,
  resolveHDAlbumBackground
 } from '../lib/hd-album-background.js';
 import {artworkCandidates,resolveArtworkAsset,clearArtworkQualityCache} from '../lib/artwork-quality.js';
@@ -136,4 +136,38 @@ test('GNARLY background wires HD resolver while leaving original-color CSS and p
  assert.match(app,/preferHDArtwork\(asset,displayedAsset,viewport\)/);
  assert.match(css,/#gnarly-background\.cover-bg \.photo-background \{[\s\S]*?filter:none;/);
  assert.doesNotMatch(app,/track\.url\s*=\s*asset\.url/);
+});
+
+test('portrait Retina never enlarges a 720p video still to fill the entire screen',()=>{
+ const weak={url:original.artwork,width:1280,height:720,provider:'youtube'};
+ const square={url:'https://is1-ssl.mzstatic.com/image/thumb/a/2400x2400bb.jpg',
+  width:2400,height:2400,provider:'apple'};
+ assert.equal(coverDisplayMode(weak,viewport),'contain');
+ assert.equal(coverDisplayMode(square,viewport),'cover');
+ assert.equal(coverDisplayMode(null,viewport),'contain');
+ const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
+ assert.match(css,/#gnarly-background\.cover-bg \.photo-background\[data-art-layout="contain"\]\{[\s\S]*?background-size:contain!important;/);
+ assert.match(css,/#gnarly-background\.cover-bg \.photo-background \{[\s\S]*?filter:none;/);
+});
+test('HD search compares Apple and Deezer masters rather than trusting the first catalog',async()=>{
+ const storage=store();
+ const apple='https://is1-ssl.mzstatic.com/image/thumb/demo/100x100bb.jpg';
+ const deezer='https://cdn-images.dzcdn.net/images/cover/demo/1200x1200-000000-80-0-0.jpg';
+ const result=await resolveHDAlbumBackground(original,{
+  storage,viewport,
+  resolve:async url=>url===apple?{url,width:1000,height:1000}:
+   url===deezer?{url,width:2500,height:2500}:
+   {url,width:1280,height:720},
+  lookup:async()=>({url:apple,provider:'apple',alternatives:[
+   {url:apple,provider:'apple'},{url:deezer,provider:'deezer'}]})
+ });
+ assert.equal(result.url,deezer);
+ assert.equal(storedHDArtwork(original,storage)?.url,deezer);
+});
+test('the background UI explains decoded resolution, selected source and contain fallback',()=>{
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ assert.match(app,/photo\.dataset\.artLayout=layout/);
+ assert.match(app,/photo\.dataset\.artProvider=asset\.provider/);
+ assert.match(app,/Resolução carregada:/);
+ assert.match(app,/Imagem preservada sem ampliar/);
 });
