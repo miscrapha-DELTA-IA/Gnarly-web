@@ -743,6 +743,23 @@ function ensureIPodHardware(){
   .catch(error=>{ipodHardwarePromise=null;throw error});
  return ipodHardwarePromise;
 }
+// Prefer a verified HD cover already found for this exact recording.
+// A cached master is available synchronously and must not wait for native audio.
+// For known catalog URLs, request the appropriate cover resolution directly.
+function preferredVisibleCover(track,raw,{upgrade=true}={}){
+ if(!track||!navigator.onLine)return raw||icon;
+ const stored=storedHDArtwork(track,localStorage);
+ const officialProvider=value=>['apple','deezer','musicbrainz'].includes(value);
+ const preferred=stored&&officialProvider(stored.provider)?stored.url:
+  officialProvider(track.artworkProvider)&&track.backgroundArtwork?
+   track.backgroundArtwork:raw;
+ const original=preferred||raw||icon;
+ if(!upgrade)return original;
+ if(/(?:^|\\.)(?:mzstatic\\.com|dzcdn\\.net)$/.test((()=>{
+  try{return new URL(original,location.href).hostname}catch{return ''}
+ })()))return artworkCandidates(original,{pixels:Math.max(1200,artPixels('cover'))})[0]||original;
+ return original;
+}
 // The album art fills the physical display. Quality is supplied by
 // resolveArtworkAsset below, not by shrinking the image based on device DPR.
 let ipodArtVersion=0;
@@ -784,19 +801,31 @@ function updatePlayer(){
  const track=state.current;
  $('#track-title').textContent=track?.title||'Sua música. Seu universo.';
  $('#track-artist').textContent=track?displayArtist(track):'Selecione uma música para começar';
- const cover=displayedArtwork(track),coverKey=cover+'|'+artPixels('cover');
+ const cover=displayedArtwork(track);
+ const chosen=preferredVisibleCover(track,cover);
+ const coverKey=cover+'|'+chosen+'|'+artPixels('cover');
  if(lastCoverArt!==coverKey){
   lastCoverArt=coverKey;const version=++coverArtVersion;
-  const image=$('#cover-image');image.decoding='async';image.src=cover;
-  image.onerror=()=>{if(version!==coverArtVersion)return;image.onerror=null;image.src=icon};
-  if(cover!==icon&&navigator.onLine)scheduleVisualArtwork(track,()=>void resolveArtworkAsset(cover,{
+  const image=$('#cover-image');image.decoding='async';
+  image.fetchPriority='low';
+  image.onerror=()=>{
+   if(version!==coverArtVersion)return;
+   const fallback=new URL(cover,location.href).href;
+   if(image.src!==fallback){image.src=cover;return}
+   image.onerror=null;image.src=icon;
+  };
+  // A known verified high-resolution source is shown from the outset.
+  // This small visible player image may upgrade non-blockingly while the
+  // audio starts; the heavier 3K background/ambience remain deferred.
+  image.src=chosen;
+  if(cover!==icon&&navigator.onLine)void resolveArtworkAsset(chosen,{
    ...artworkViewport('cover'),minDimension:260
   }).then(asset=>{
    if(version===coverArtVersion&&lastCoverArt===coverKey){
     applyArtworkQuality(image,asset,'cover');
-    if(asset.url!==cover&&asset.url)image.src=asset.url
+    if(asset.url&&asset.url!==image.src)image.src=asset.url;
    }
-  }));
+  }).catch(()=>{/* Preserve visible cover and native player. */});
  }
  updatePlayerSurfaceArtwork();
  updateIPodScreen();
