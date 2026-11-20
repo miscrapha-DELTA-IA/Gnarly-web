@@ -948,14 +948,18 @@ function applyBackground(){
    };
    const viewport=artworkViewport('background');
    if(navigator.onLine){
-    void resolveHDAlbumBackground(track,{
+    // Show the selected cover immediately; HD probes wait for native audio.
+    // This is a single existing image URL, not an extra speculative download.
+    if(source&&photo.style.backgroundImage!=='url('+JSON.stringify(source)+')')
+     photo.style.backgroundImage='url('+JSON.stringify(source)+')';
+    scheduleVisualArtwork(track,()=>void resolveHDAlbumBackground(track,{
      resolve:resolveArtworkAsset,lookup:requestVerifiedAlbumArtwork,
      viewport,storage:localStorage,saveData:!!navigator.connection?.saveData,
      deviceMemory:Number(navigator.deviceMemory)||8,
      onCandidate:showCandidate
     }).then(asset=>{
      if(!asset)void showCandidate({url:source,width:0,height:0,quality:'unknown'});
-    }).catch(()=>{/* Preserve a previously decoded image. */});
+    }).catch(()=>{/* Preserve a previously decoded image. */}));
    }else{
     // Offline is read-only: previously cached artwork may still decode
     // through the service worker, with the canonical thumbnail as fallback.
@@ -1251,7 +1255,9 @@ async function enrichSelectedTrack(track,knownDuration=0){
   for(const favorite of state.favorites)if(favorite.id===track.id){
    for(const key of ['title','artist','album','artwork'])favorite[key]=track[key];
   }
-  updatePlayer();void loadArtworkHue(track);void enrichOfficialAlbumArt(track);
+  updatePlayer();scheduleVisualArtwork(track,()=>{
+   void loadArtworkHue(track);void enrichOfficialAlbumArt(track)
+  });
   // Re-attempt automatic Mix after an initially generic catalog artist is
   // resolved; the same media source, queue and playback clock are preserved.
   if(state.playing&&state.queue.length<2&&!isGenericArtist(track.artist))
@@ -1359,7 +1365,9 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false,tdrH
  // artwork, lyric, metadata and surface work blocks the transition.
  engine.restoreSpeed();reportAudioStatus('');state.lastLyric=-2;
  if(autoplay)void play();
- updatePlayer();void loadArtworkHue(track);void enrichOfficialAlbumArt(track);void loadAutoLyrics(track);prefetchNextLyrics();
+ updatePlayer();
+ scheduleVisualArtwork(track,()=>{void loadArtworkHue(track);void enrichOfficialAlbumArt(track)});
+ void loadAutoLyrics(track);prefetchNextLyrics();
  karaokeStage.refresh(true);
  if(track.source==='youtube')void enrichSelectedTrack(track);omnibox.record(track);state.history=omnibox.history;
  if(isModuleOpen('performance'))void pads.prepareSong(track);
@@ -3816,7 +3824,7 @@ audio.addEventListener('stalled',()=>{
  tdr.mark(playbackSelection,'stalled');
  playbackContinuity.transportEvent('stalled');visual.prioritizeAudio('stalled');
  updateBufferingCue();
-});audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;tdr.playing(playbackSelection,{position:audio.currentTime||0,route:audioSourceCategory(audio.currentSrc||audio.src)});refreshTdrPanel();hideOptionalOfficialSource();coverCharge.hide();rebufferWatch=null;engine.setTransportPaused(false);sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
+});audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;tdr.playing(playbackSelection,{position:audio.currentTime||0,route:audioSourceCategory(audio.currentSrc||audio.src)});if(pendingArtworkTasks.length)setTimeout(flushPendingArtwork,250);refreshTdrPanel();hideOptionalOfficialSource();coverCharge.hide();rebufferWatch=null;engine.setTransportPaused(false);sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
   const ms=Math.round(performance.now()-playbackStartedAt);
   const origin=audio.currentSrc.startsWith('blob:')?'offline':audio.currentSrc.includes('/fast-audio/')?'fast-edge':audio.currentSrc.includes('/audius-audio/')?'audius':audio.currentSrc.includes('/jamendo-audio/')?'jamendo':'render';
   console.debug('GNARLY startup ms',ms,'origin',origin);
