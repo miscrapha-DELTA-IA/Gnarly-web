@@ -706,6 +706,13 @@ body{position:relative;min-height:100dvh;background:#05090a}
   filter:none;
   box-shadow:none;
 }
+/* A low-res still cannot become 4K by requesting a larger URL. Preserve
+   its native detail with a centered, uncropped presentation instead of
+   upscaling and cropping it to fill a tall Retina viewport. */
+#gnarly-background.cover-bg .photo-background[data-art-layout="contain"]{
+  background-size:contain!important;
+  background-color:#080b10;
+}
 #gnarly-background.cover-bg .visual-dim {
   background:transparent;
 }
