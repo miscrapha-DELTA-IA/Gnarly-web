@@ -389,7 +389,7 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
   }
   // The first candidate may now be PC-aware /download, not /stream.
   // Label transport according to the actual selected route for diagnostics.
-  const progressive=index===0&&!cooldown?.pcNodeOnline;
+  const progressive=index===0&&!prepared&&!cooldown?.pcNodeOnline;
   const headers=audioHeaders(confirmedProviderLimit?'cached-render-origin':
    progressive?'progressive-origin':'extraction-origin',
    {'Content-Type':upstream.headers.get('Content-Type'),'Cache-Control':'no-store','Server-Timing':
