@@ -8,7 +8,7 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "run_worker_first": [
-      "/api/*",
+      "/api/*"
       "/fast-audio/*",
       "/fast-prepare/*"
     ]
@@ -21,6 +21,7 @@
   "migrations": [
     {"tag": "karaoke-room-v1", "new_sqlite_classes": ["KaraokeRoom"]}
   ],
+  "ai": {"binding":"AI"},
   "observability": {
     "enabled": true
   },
