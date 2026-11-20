@@ -104,7 +104,7 @@ test('the three draggable header shortcuts share the eye chevron without changin
 
 test('header arrows are conspicuous, self-contained vectors and bypass stale CSS caches',()=>{
  const html=src('index.html'),css=src('styles.css'),sw=src('sw.js');
- assert.match(html,/href="\.\/styles\.css\?v=audio-first-native-pixels-20261120-v3"/);
+ assert.match(html,/href="\.\/styles\.css\?v=full-cover-hd-20261120-v4"/);
  assert.match(sw,/const SHELL='gnarly-web-shell-[^']+';/);
  assert.doesNotMatch(sw,/gnarly-web-shell-20261103-tdr-dashboard-v25/,
   'installed GNARLY clients must not retain the previous PWA shell');
