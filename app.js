@@ -118,6 +118,7 @@ let selectedWarmupProbe=null,selectedWarmupId='',selectedPreparedId='';
 function cancelSelectedWarmup(){
  selectedWarmupProbe?.abort();selectedWarmupProbe=null;
  selectedAudioWarmup.cancel();
+ selectedPreparedId='';
 }
 function primeSelectedRecording(track,selection){
  const id=youtubeID(track);
@@ -1850,7 +1851,7 @@ async function play(){
   resolvePending();
  }
 }
-function pause(){tdr.finish(playbackSelection,'user_cancel');refreshTdrPanel();coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();selectedPreparedId='';playbackStartedAt=0;cancelNextOfflinePrefetch();playbackIntentEpoch++;playStartOperation=null;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;engine.setTransportPaused(true);audio.pause();stems.pause();pads.stopLoop();closeYouTubePlayer();state.playing=false;updatePlayer()}
+function pause(){tdr.finish(playbackSelection,'user_cancel');refreshTdrPanel();coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;cancelNextOfflinePrefetch();playbackIntentEpoch++;playStartOperation=null;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;engine.setTransportPaused(true);audio.pause();stems.pause();pads.stopLoop();closeYouTubePlayer();state.playing=false;updatePlayer()}
 let nextDiscovery=null;
 function clearNextDiscoveryStatus(){if(nextDiscovery)reportAudioStatus('')}
 // Show only a tiny activity cue while Next looks for a verified recording.
