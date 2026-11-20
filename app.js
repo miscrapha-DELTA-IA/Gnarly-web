@@ -1041,9 +1041,11 @@ function applyBackground(){
    if(!photo.style.backgroundImage)background.classList.remove('cover-art-ready');
    const showCandidate=async asset=>{
     if(!asset?.url)return;
-    // A decoded player cover or a verified source from artwork-quality.js
-    // is already loaded by the browser. Do not decode the same 3K JPEG twice.
-    if(!asset.alreadyLoaded){
+    // Reuse the actual already-loaded <img> when available. Otherwise decode
+    // once, even if a previous resolver only supplied dimensions. Never treat
+    // the URL's claimed "3200" as the physical pixels drawn.
+    let decoded=asset.image?.naturalWidth>0?asset.image:null;
+    if(!decoded){
      const img=new Image();
      img.decoding='async';img.src=asset.url;
      try{
@@ -1052,17 +1054,26 @@ function applyBackground(){
        img.onload=resolve;img.onerror=reject;
        if(img.complete&&img.naturalWidth)resolve();
       });
+      decoded=img;
      }catch{return}
     }
     if(version!==backgroundArtVersion||lastBackgroundArt!==key||
      state.backgroundMode!=='cover'||state.current!==track)return;
-    if(displayedAsset&&!preferHDArtwork(asset,displayedAsset,viewport))return;
-    displayedAsset=asset;
+    const real={...asset,width:decoded.naturalWidth,height:decoded.naturalHeight};
+    if(displayedAsset&&!preferHDArtwork(real,displayedAsset,viewport))return;
+    asset=real;
+    displayedAsset=real;
     const now=performance.now();
     if(!wallpaperTiming.firstVerifiedAt)wallpaperTiming.firstVerifiedAt=now;
     wallpaperTiming.lastUpgradeAt=now;wallpaperTiming.upgrades++;
     backgroundDisplayedTrack=track;backgroundDisplayedAsset=asset;
     photo.style.backgroundImage='url('+JSON.stringify(asset.url)+')';
+    // Render once at the REAL viewport resolution, using high-quality
+    // resampling; weak sources receive vector ambience and a large focal
+    // album cover instead of a jagged full-viewport enlargement.
+    wallpaperPainter.paint(decoded,{
+     mode:state.coverPresentation,hue:state.artworkHue
+    });
     const sourceQuality=coverDisplayMode(asset,viewport);
     const density=effectiveArtworkDensity(asset,viewport);
     // Source fidelity affects which image we pick, not how large it appears.
@@ -1086,6 +1097,11 @@ function applyBackground(){
    };
    const viewport=artworkViewport('background');
    backgroundArtAccept={track,offer:showCandidate};
+   // A player cover may already be decoded when the user switches to
+   // album-background mode; share it immediately, without a second wait.
+   const playerCover=$('#cover-image');
+   if(playerCover.complete&&playerCover.naturalWidth>0)
+    offerLoadedPlayerCoverToWallpaper(track,playerCover);
    if(navigator.onLine){
     // Show the selected cover immediately; HD probes wait for native audio.
     // This is a single existing image URL, not an extra speculative download.
