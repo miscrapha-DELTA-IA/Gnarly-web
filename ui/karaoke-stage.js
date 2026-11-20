@@ -20,9 +20,9 @@ export function karaokeStageMarkup(){
    <div class="karaoke-settings-heading"><strong>Configurações</strong><span>Palco e microfone</span></div>
    <div class="karaoke-settings-kicker">CAPTAÇÃO</div>
    <div class="karaoke-settings-grid">
-   <button type="button" id="karaoke-voice-toggle" aria-pressed="false">🎤 Ligar mic</button>
-   <button type="button" id="karaoke-remote-toggle" aria-expanded="false">📱 Usar celular como microfone</button>
-   <button type="button" id="karaoke-voice-record" disabled aria-pressed="false">● Gravar voz</button>
+   <button type="button" id="karaoke-voice-toggle" aria-pressed="false">Ativar microfone</button>
+   <button type="button" id="karaoke-remote-toggle" aria-expanded="false">Conectar celular</button>
+   <button type="button" id="karaoke-voice-record" disabled aria-pressed="false">Gravar voz</button>
    </div>
    <label class="karaoke-settings-device" for="karaoke-input-device">Entrada do microfone
     <select id="karaoke-input-device"><option value="">Microfone padrão do sistema</option></select>
