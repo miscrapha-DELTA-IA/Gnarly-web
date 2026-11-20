@@ -89,8 +89,11 @@ test('Swift-style cover remains edge-to-edge even when an individual catalog has
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(css,/#gnarly-background\.cover-bg \.photo-background/);
  assert.match(css,/background-size:cover!important/);
- assert.match(css,/blur\(clamp\(4px,\.65vw,7px\)\)/);
- assert.match(css,/inset:-10px/);
+ const cover=css.match(/#gnarly-background\.cover-bg \.photo-background \{([\s\S]*?)\}/)?.[1]||'';
+ assert.match(cover,/filter:none;/);
+ assert.doesNotMatch(cover,/blur\(|saturate\(|contrast\(/);
+ assert.match(cover,/inset:0;/);
+ assert.match(css,/#gnarly-background\.cover-bg \.visual-dim \{\s*background:transparent;/);
  assert.match(app,/state\.current\?\.backgroundArtwork\|\|state\.current\?\.artwork/);
  assert.match(app,/Math\.max\(2400,artPixels\('background'\)\)/);
  assert.doesNotMatch(css,/background-size:min\(91vw/);
