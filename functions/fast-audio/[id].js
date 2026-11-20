@@ -297,7 +297,13 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
  // yt-dlp attempts. A cache hit already returned above without this probe.
  if(originTimeoutMs<=0)return reply(504,'Audio origin timed out',{
   'Retry-After':'8','X-Gnarly-Playback-Source':'origin-timeout'});
- const cooldown=originProbe?await originCooldown(fetcher,request.signal,{
+ // A previously accepted exact-ID /fast-prepare has already checked the
+ // edge cache and queued one trusted preparation. Skip a redundant origin
+ // status roundtrip and a speculative /stream extraction; /download itself
+ // checks Render R2/local/PC queue and enforces the provider cooldown.
+ // This is only a route hint; anyone may request it and it grants no access.
+ const prepared=new URL(request.url).searchParams.get('prepared')==='1';
+ const cooldown=originProbe&&!prepared?await originCooldown(fetcher,request.signal,{
   timeoutMs:Math.min(1500,originTimeoutMs),videoId:id,
   hint:fetcher===globalThis.fetch?pcOnlineHint:null}):null;
  // During an upstream cooldown, a different cache layer (Render R2 or its
@@ -312,7 +318,7 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
  // Therefore allow exactly ONE PC-aware request when the Render YouTube
  // origin is limited; never call /stream or initiate a second extraction.
  const pcOrigin=new URL('/download?delivery=browser&url='+encodeURIComponent(youtube),RENDER);
- const candidates=cooldown?.pcNodeOnline?[pcOrigin]:
+ const candidates=prepared||cooldown?.pcNodeOnline?[pcOrigin]:
   cooldown?[cachedOrigin]:[
    new URL('/stream?url='+encodeURIComponent(youtube),RENDER),pcOrigin
   ];
@@ -383,7 +389,7 @@ export async function handleFastAudio({request,env,params,waitUntil:contextWaitU
   }
   // The first candidate may now be PC-aware /download, not /stream.
   // Label transport according to the actual selected route for diagnostics.
-  const progressive=index===0&&!cooldown?.pcNodeOnline;
+  const progressive=index===0&&!prepared&&!cooldown?.pcNodeOnline;
   const headers=audioHeaders(confirmedProviderLimit?'cached-render-origin':
    progressive?'progressive-origin':'extraction-origin',
    {'Content-Type':upstream.headers.get('Content-Type'),'Cache-Control':'no-store','Server-Timing':
