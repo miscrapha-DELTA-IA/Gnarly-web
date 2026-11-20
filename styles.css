@@ -1086,3 +1086,21 @@ body{position:relative;min-height:100dvh;background:#05090a}
 .tdr-panel .button-row{display:flex;flex-wrap:wrap;gap:8px}
 .tdr-panel .button-row>button{min-height:40px}
 @media(max-width:380px){.tdr-stat{padding:12px 9px}.tdr-stat strong{font-size:1.35rem}.tdr-current,.tdr-phase,.tdr-attempt{padding:10px 9px}}
+
+/* Album-cover quality choice: active preference stays visible, compact on phones. */
+.cover-presentation-choices{
+ display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+ gap:8px;margin:10px 0 12px;
+}
+.cover-presentation-choices .action-button{
+ width:100%;min-width:0;padding:12px 7px;
+ font-size:clamp(11px,2.5vw,13px);
+ white-space:normal;
+}
+.cover-presentation-choices .action-button[aria-pressed="true"]{
+ color:#06120a;background:var(--acid);
+ border-color:var(--acid);
+}
+.cover-presentation-choices .action-button[aria-pressed="false"]{
+ border-color:rgba(255,255,255,.19);
+}
