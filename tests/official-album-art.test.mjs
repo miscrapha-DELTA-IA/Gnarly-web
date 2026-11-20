@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {upscaleAppleCover,matchAppleCover,matchDeezerCover,verifiedArchiveCoverURLs,serveAlbumArtwork} from '../lib/official-album-art.js';
+import {upscaleAppleCover,matchAppleCover,matchDeezerCover,compatibleReleaseTitle,verifiedArchiveCoverURLs,serveAlbumArtwork} from '../lib/official-album-art.js';
 import {shouldLookupAlbumArtwork,requestVerifiedAlbumArtwork} from '../lib/album-artwork-client.js';
 
 const track={title:'Get Lucky',artist:'Daft Punk',album:'Random Access Memories',duration:248,source:'youtube',artwork:'https://lh3.googleusercontent.com/sample=s120-c'};
@@ -277,5 +277,62 @@ test('browser streams the official catalog image before the archival lookup sett
   assert.equal(result.provider,'apple');
   assert.ok(result.alternatives.some(item=>item.url===original));
   assert.deepEqual(queries,['catalog','archive']);
+ }finally{globalThis.fetch=previous}
+});
+
+test('album aliases match only the verified bonus-disc title, never generic or unrelated editions',()=>{
+ assert.equal(compatibleReleaseTitle('xperiment - cartunez','cartunez'),true);
+ assert.equal(compatibleReleaseTitle('xperiment – cartunez','cartunez'),true);
+ assert.equal(compatibleReleaseTitle('xperiment - cartunez','xperiment - cartunez'),true);
+ assert.equal(compatibleReleaseTitle('xperiment - cartunez','More Chaos'),false);
+ assert.equal(compatibleReleaseTitle('xperiment - live','live'),false);
+ assert.equal(compatibleReleaseTitle('xperiment - remix','remix'),false);
+ assert.equal(compatibleReleaseTitle('Only-One-Album','Album'),false);
+ assert.equal(compatibleReleaseTitle('random - unrelated','random'),false);
+});
+test('Rare Creature deluxe track resolves official MusicBrainz cartunez original',async()=>{
+ const previous=globalThis.fetch;
+ const release='8664a084-f948-4cc1-be89-641babe2743c';
+ const calls=[];
+ globalThis.fetch=async (url,options={})=>{
+  const value=String(url);calls.push(value);
+  if(value.includes('musicbrainz.org/ws/2/recording'))
+   return Response.json({recordings:[{
+    id:'d243b614-8f21-42d9-8301-a8ba898d808e',title:'rare creature',
+    length:143000,'artist-credit':[{name:'Ken Carson'}],
+    releases:[{id:release,title:'cartunez',status:'Official'}]
+   }]});
+  if(value.includes('coverartarchive.org/release/'+release+'/front'))
+   return new Response(null,{status:200,headers:{'content-type':'image/jpeg'}});
+  throw new Error('Unexpected network fetch: '+value);
+ };
+ try{
+  const params=new URLSearchParams({title:'rare creature',artist:'Ken Carson',
+   duration:'143',album:'xperiment - cartunez',mode:'archive'});
+  const result=await serveAlbumArtwork(new Request('https://gnarly.test/api/artwork?'+params));
+  const data=await result.json();
+  assert.equal(data.provider,'musicbrainz');
+  assert.equal(data.artwork,'https://coverartarchive.org/release/'+release+'/front');
+  assert.ok(calls.some(x=>x.includes('musicbrainz.org')));
+ }finally{globalThis.fetch=previous}
+});
+test('matching the deluxe suffix still refuses a different version of Rare Creature',async()=>{
+ const previous=globalThis.fetch;
+ globalThis.fetch=async url=>{
+  if(String(url).includes('musicbrainz.org'))
+   return Response.json({recordings:[{
+    id:'d243b614-8f21-42d9-8301-a8ba898d808e',title:'rare creature',
+    length:199000,'artist-credit':[{name:'Ken Carson'}],
+    releases:[{id:'8664a084-f948-4cc1-be89-641babe2743c',
+     title:'cartunez',status:'Official'}]
+   }]});
+  throw new Error('Mismatched recording must never probe image');
+ };
+ try{
+  const params=new URLSearchParams({title:'rare creature',artist:'Ken Carson',
+   duration:'144',album:'xperiment - cartunez',mode:'archive'});
+  const result=await serveAlbumArtwork(new Request('https://gnarly.test/api/artwork?'+params));
+  const body=await result.json();
+  assert.equal(body.artwork,null);
  }finally{globalThis.fetch=previous}
 });
