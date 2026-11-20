@@ -55,7 +55,7 @@ import {deviceLayout,themeAccent,attachEyeGestures,OFFICIAL_SUPPORT_URL} from '.
 import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel} from './ui/player-surface.js';
 import {createIPodSkinStore,ipodSourceLabel} from './ui/ipod-mode.js';
 import {artworkBudget,artworkCandidates,resolveArtworkAsset} from './lib/artwork-quality.js';
-import {resolveHDAlbumBackground,preferHDArtwork,coverDisplayMode,effectiveArtworkDensity,storedHDArtwork,rememberHDArtwork,usableCoverForPortraitWallpaper} from './lib/hd-album-background.js';
+import {resolveHDAlbumBackground,preferHDArtwork,coverDisplayMode,effectiveArtworkDensity,storedHDArtwork,rememberHDArtwork,requestedWallpaperPixels,usableCoverForPortraitWallpaper} from './lib/hd-album-background.js';
 import {requestVerifiedAlbumArtwork} from './lib/album-artwork-client.js';
 import {createFullscreenController} from './lib/fullscreen-controller.js';
 import {karaokeStageMarkup,KaraokeStage} from './ui/karaoke-stage.js';
@@ -265,6 +265,32 @@ function applyArtworkQuality(element,asset,role){
 }
 let coverArtVersion=0,lastCoverArt='',surfaceArtVersion=0,lastSurfaceArt='',backgroundArtVersion=0,lastBackgroundArt='';
 let backgroundDisplayedTrack=null,backgroundDisplayedAsset=null,backgroundArtAccept=null;
+let wallpaperTiming={startedAt:0,firstVerifiedAt:0,lastUpgradeAt:0,upgrades:0};
+/** Read-only local diagnosis, no track IDs or external image URLs are exposed.
+ * Pixel density below 1 means there is no authentic source resolution
+ * sufficient for this device's physical full-bleed crop. */
+window.gnarlyArtworkDiagnostics=()=>{
+ const photo=document.querySelector('#photo-background');
+ const viewport=artworkViewport('background');
+ const asset=state.backgroundMode==='cover'?backgroundDisplayedAsset:null;
+ const density=asset?effectiveArtworkDensity(asset,viewport):0;
+ return {
+  mode:state.backgroundMode,provider:photo?.dataset.artProvider||'unverified',
+  pixels:asset?asset.width+'x'+asset.height:photo?.dataset.artPixels||'unknown',
+  quality:photo?.dataset.artQuality||'unknown',
+  displayWidth:viewport.displayWidth,displayHeight:viewport.displayHeight,
+  dpr:viewport.dpr,requestedLongEdge:requestedWallpaperPixels({
+   viewport,saveData:!!navigator.connection?.saveData,
+   deviceMemory:Number(navigator.deviceMemory)||8
+  }),
+  nativePixelCoverage:Number(density.toFixed(2)),
+  physicalUpscale:density>0?Number(Math.max(1,1/density).toFixed(2)):null,
+  firstVerifiedMs:wallpaperTiming.firstVerifiedAt?
+   Math.round(wallpaperTiming.firstVerifiedAt-wallpaperTiming.startedAt):null,
+  upgrades:wallpaperTiming.upgrades,
+  limited:density>0?density<.95:null
+ };
+};
 // The visible player cover has ALREADY been downloaded. If it's a verified
 // square image, share those decoded source pixels with the full-screen
 // background immediately instead of waiting for a separate 3K CDN probe
@@ -980,6 +1006,8 @@ function applyBackground(){
   const track=state.current,source=safeSurfaceArtwork(cover),pixels=Math.max(2400,artPixels('background'));
   if(backgroundDisplayedTrack!==track){
    backgroundDisplayedTrack=track;backgroundDisplayedAsset=null;
+   wallpaperTiming={startedAt:performance.now(),firstVerifiedAt:0,
+    lastUpgradeAt:0,upgrades:0};
   }
   const key=[track.id,track.title,track.artist,track.album,Math.round(Number(track.duration)||0),source,pixels].join('|');
   if(lastBackgroundArt!==key){
@@ -1007,6 +1035,9 @@ function applyBackground(){
      state.backgroundMode!=='cover'||state.current!==track)return;
     if(displayedAsset&&!preferHDArtwork(asset,displayedAsset,viewport))return;
     displayedAsset=asset;
+    const now=performance.now();
+    if(!wallpaperTiming.firstVerifiedAt)wallpaperTiming.firstVerifiedAt=now;
+    wallpaperTiming.lastUpgradeAt=now;wallpaperTiming.upgrades++;
     backgroundDisplayedTrack=track;backgroundDisplayedAsset=asset;
     photo.style.backgroundImage='url('+JSON.stringify(asset.url)+')';
     const sourceQuality=coverDisplayMode(asset,viewport);
@@ -1050,9 +1081,7 @@ function applyBackground(){
      viewport,storage:localStorage,saveData:!!navigator.connection?.saveData,
      deviceMemory:Number(navigator.deviceMemory)||8,
      onCandidate:showCandidate
-    }).then(asset=>{
-     if(!asset)void showCandidate({url:source,width:0,height:0,quality:'unknown'});
-    }).catch(()=>{/* Preserve a previously decoded image. */}));
+    }).catch(()=>{/* A failed HD lookup must not be presented as verified. */}));
    }else{
     // Offline is read-only: previously cached artwork may still decode
     // through the service worker, with the canonical thumbnail as fallback.
