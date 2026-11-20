@@ -26,9 +26,9 @@ test('Native creative geometry gains analytical anti-aliasing for toner and cont
  assert.match(shader,/universePrintDots/);
  assert.notEqual(shader,creativeFragment);
 });
-test('GPU remains full resolution and uses refresh-neutral paced rendering',()=>{
+test('GPU keeps full-viewport composition with refresh-neutral adaptive render pacing',()=>{
  assert.match(engine,/Math\.sqrt\(pixelBudget\/Math\.max\(1,cssWidth\*cssHeight\)\)/);
- assert.match(engine,/this\.playbackActive\|\|now<this\.visualInteractionUntil\?1000\/60:1000\/30/);
+ assert.match(engine,/visualFramePeriod\(\{/);
  assert.match(engine,/this\.nextFrameAt=Math\.max\(now-period,this\.nextFrameAt\)\+period/);
  assert.match(engine,/g\.uniform1f\(u\.time,elapsed\)/);
  assert.doesNotMatch(engine,/this\.songDuration>0\?this\.songTime:elapsed/);
