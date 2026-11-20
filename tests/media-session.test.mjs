@@ -121,15 +121,19 @@ test('WebKit playback audio category is feature-detected and duplex for mic capt
  assert.equal(navigatorObject.audioSession.type,'play-and-record');
  assert.equal(configureBrowserAudioSession({navigatorObject:{}}),false);
 });
-test('the karaoke microphone restores playback policy instead of leaving music in recording mode',()=>{
+test('karaoke captures vocals without forcing voice-call mode for music playback',()=>{
  const microphone=readFileSync(new URL('../lib/karaoke-microphone.js',import.meta.url),'utf8');
- assert.match(microphone,/recording:true/);
+ assert.doesNotMatch(microphone,/recording:true/);
+ assert.match(microphone,/configureBrowserAudioSession\(\{navigatorObject:this\.navigatorObject,recording:false\}\)/);
+ assert.match(microphone,/echoCancellation:false,noiseSuppression:false,autoGainControl:false/);
+ assert.match(microphone,/deviceId:\{exact:this\.inputDeviceId\}/);
  assert.match(microphone,/configureBrowserAudioSession\(\{navigatorObject:this\.navigatorObject\}\)/);
 });
 test('headphone transport does not change the existing native playback source when backgrounded',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(app,/configureBrowserAudioSession\(\{navigatorObject:navigator/);
- assert.match(app,/recording:!!\(karaokeStage\.mic\.active\|\|state\.micStream\)/);
+ assert.match(app,/configureBrowserAudioSession\(\{navigatorObject:navigator,recording:false\}\)/);
+ assert.doesNotMatch(app,/recording:!!\(karaokeStage\.mic\.active\|\|state\.micStream\)/);
  assert.match(app,/nexttrack:\(\)=>\{void next\(\)\}/);
  assert.match(app,/previoustrack:\(\)=>\{if\(state\.current\)previous\(\)\}/);
  assert.doesNotMatch(app,/visibilitychange[^\n]*pause\(\)/);
