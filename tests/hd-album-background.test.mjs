@@ -40,6 +40,16 @@ test('portrait DPR considers real height; official album art beats low-res video
  assert.equal(preferHDArtwork(video,official,viewport),false);
  assert.equal(preferHDArtwork({...video,width:120,height:90},video,viewport),false);
 });
+test('portrait official 1200px album cover may replace a 1080p landscape video still on desktop',()=>{
+ const desktop={displayWidth:1920,displayHeight:1080,dpr:1};
+ const video={url:original.artwork,width:1920,height:1080,provider:'youtube'};
+ const official={url:'https://is1-ssl.mzstatic.com/image/thumb/a/1200x1200bb.jpg',
+  width:1200,height:1200,provider:'apple'};
+ assert.equal(preferHDArtwork(official,video,desktop),true,
+  'verified square album artwork should beat a landscape video if the adaptive painter avoids huge enlargement');
+ assert.equal(preferHDArtwork(video,official,desktop),false,
+  'do not reinstate a video placeholder over the verified album cover');
+});
 test('pixel demand supports 3K Retina while honoring Save Data and 2GB memory devices',()=>{
  assert.ok(requestedWallpaperPixels({viewport})>=2900);
  assert.equal(requestedWallpaperPixels({viewport,saveData:true}),1400);
