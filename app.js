@@ -1259,6 +1259,8 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false,tdrH
  cancelSelectedWarmup();selectedWarmupId='';
  const preparedId=youtubeID(track);
  selectedPreparedId=queuePreparation.accepted?preparedId:'';
+ // An already accepted POST must not be repeated on the new Play gesture.
+ if(queuePreparation.accepted&&preparedId)selectedWarmupId=preparedId;
  if(queuePreparation.pending&&preparedId){
   selectedWarmupId=preparedId;
   const inheritedSelection=playbackSelection;
