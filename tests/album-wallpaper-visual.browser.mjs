@@ -12,8 +12,10 @@ try{
  await page.setContent('<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"/>'+
   '<style>html,body{margin:0;height:100%;overflow:hidden;background:#080c12}'+
   '#background{position:fixed;inset:0;width:100vw;height:100vh}'+
-  '#album-wallpaper-canvas{width:100%;height:100%;display:block}</style>'+
-  '<div id="background"><canvas id="album-wallpaper-canvas"></canvas></div>');
+  '#photo-background{position:absolute;inset:0;background-size:cover;background-position:center}'+
+  '#album-wallpaper-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}'+
+  '#album-wallpaper-canvas[hidden]{display:none!important}</style>'+
+  '<div id="background"><div id="photo-background"></div><canvas id="album-wallpaper-canvas"></canvas></div>');
  await page.addScriptTag({content:source+'\nwindow.__wallpaperQA={createAlbumWallpaperPainter,albumWallpaperPlan};'});
  const measured=await page.evaluate(async()=>{
   const fixture=document.createElement('canvas');
@@ -25,6 +27,7 @@ try{
   const image=new Image();
   image.src=fixture.toDataURL('image/png');await image.decode();
   const canvas=document.querySelector('#album-wallpaper-canvas');
+  document.querySelector('#photo-background').style.backgroundImage='url('+JSON.stringify(image.src)+')';
   const painter=__wallpaperQA.createAlbumWallpaperPainter(canvas);
   const painted=painter.paint(image,{mode:'auto',dpr:3,hue:.61});
   const diag=painter.diagnostics();
@@ -48,10 +51,20 @@ try{
  await page.screenshot({path:'album-wallpaper-editorial-browser.png',fullPage:false});
  const mode=await page.evaluate(()=>{
   window.__wallpaperPainter.redraw({mode:'fill'});
-  return window.__wallpaperPainter.diagnostics();
+  return {
+   ...window.__wallpaperPainter.diagnostics(),
+   canvasHidden:document.querySelector('#album-wallpaper-canvas').hidden,
+   rawImageActive:getComputedStyle(document.querySelector('#photo-background')).backgroundImage.includes('data:image/png'),
+   backingWidth:document.querySelector('#album-wallpaper-canvas').width
+  };
  });
  assert.equal(mode.presentation,'fill');
  assert.equal(mode.focusCssPixels,null);
+ assert.equal(mode.renderPath,'native-css-image');
+ assert.equal(mode.rasterPixels,0);
+ assert.equal(mode.canvasHidden,true);
+ assert.equal(mode.rawImageActive,true,'browser CSS must display the actual decoded source');
+ assert.equal(mode.backingWidth,1,'intermediate canvas must not consume GPU pixels');
  await page.screenshot({path:'album-wallpaper-fullbleed-browser.png',fullPage:false});
  console.log('ALBUM WALLPAPER RETINA',JSON.stringify({measured,mode}));
 }finally{await browser.close()}
