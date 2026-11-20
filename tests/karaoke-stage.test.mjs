@@ -99,3 +99,14 @@ test('expanded-stage scroll and controls are owned by karaoke, not the page or q
  assert.match(app,/onPlayPause:\(\)=>\{if\(!audio\.paused/);
  assert.match(app,/ListeningMemory|listeningMemory/,'smart queue/music memory must remain integrated');
 });
+
+test('full-screen karaoke uses verified album-art masters without the final 12px canvas-style blur',()=>{
+ const stage=readFileSync(new URL('../ui/karaoke-stage.js',import.meta.url),'utf8');
+ const css=readFileSync(new URL('../karaoke-stage.css',import.meta.url),'utf8');
+ assert.match(stage,/resolveHDAlbumBackground\(track,/);
+ assert.match(stage,/lookup:requestVerifiedAlbumArtwork/);
+ assert.match(stage,/preferHDArtwork\(real,displayed,viewport\)/);
+ assert.match(stage,/const artworkKey=String\(track\?\.id\|\|'none'\)/);
+ assert.match(css,/\.karaoke-stage\[data-backdrop="cover"\]:not\(\[hidden\]\)>\.karaoke-stage-wallpaper img:not\(\[data-art-quality="low"\]\):not\(\[data-art-quality="unknown"\]\)\{/);
+ assert.match(css,/filter:none;-webkit-filter:none;transform:none;opacity/);
+});

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
  HD_ARTWORK_CACHE_KEY,artworkMemoryKey,rememberHDArtwork,storedHDArtwork,
- effectiveArtworkDensity,preferHDArtwork,coverDisplayMode,usableCoverForPortraitWallpaper,requestedWallpaperPixels,
+ effectiveArtworkDensity,preferHDArtwork,isVerifiedArchivalOriginal,coverDisplayMode,usableCoverForPortraitWallpaper,requestedWallpaperPixels,
  resolveHDAlbumBackground
 } from '../lib/hd-album-background.js';
 import {artworkCandidates,resolveArtworkAsset,clearArtworkQualityCache} from '../lib/artwork-quality.js';
@@ -352,4 +352,48 @@ test('local artwork diagnostics disclose actual physical upscale, not fictitious
  assert.match(app,/firstVerifiedMs:wallpaperTiming\.firstVerifiedAt/);
  assert.match(app,/requestedLongEdge:requestedWallpaperPixels/);
  assert.doesNotMatch(app,/window\.gnarlyArtworkDiagnostics=.*sourceURL/);
+});
+
+test('verified recording release original wins over an inflated catalog 3000px master when sufficiently large',()=>{
+ const viewport={displayWidth:1440,displayHeight:900,dpr:1};
+ const apple={url:'https://is1-ssl.mzstatic.com/image/thumb/demo/3200x3200bb.jpg',
+  width:3200,height:3200,provider:'apple'};
+ const archive={url:'https://coverartarchive.org/release/99ab0b8f-3467-42bc-87d5-276e7b5b0d0b/front',
+  width:2200,height:2200,provider:'musicbrainz'};
+ assert.equal(isVerifiedArchivalOriginal(archive),true);
+ assert.equal(preferHDArtwork(archive,apple,viewport),true,
+  'verified original is sharper than advertised dimensions of a re-encoded catalog image');
+ assert.equal(preferHDArtwork(apple,archive,viewport),false,
+  'a 3200px CDN resize must not undo the original without a material pixel advantage');
+ const thumbnail={...archive,url:archive.url+'-1200',width:1200,height:1200};
+ assert.equal(isVerifiedArchivalOriginal(thumbnail),false);
+ assert.equal(preferHDArtwork(thumbnail,apple,viewport),false);
+ const tiny={...archive,width:700,height:700};
+ assert.equal(preferHDArtwork(tiny,apple,viewport),false);
+});
+test('background lookup checks verified archival cover even when two storefronts supplied large artworks',async()=>{
+ const {requestVerifiedAlbumArtwork}=await import('../lib/album-artwork-client.js');
+ const old=globalThis.fetch;
+ const seen=[];
+ const input={source:'youtube',id:'youtube:raretest1234',
+  title:'Fidelity Test Unique 2026',artist:'Original Demo Artist 2026',album:'Fidelity Test Album 2026',duration:208,
+  artwork:'https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg'};
+ const catalog=[
+  {artwork:'https://is1-ssl.mzstatic.com/image/thumb/demo/3200x3200bb.jpg',provider:'apple'},
+  {artwork:'https://cdn-images.dzcdn.net/images/cover/demo/1200x1200-000000-80-0-0.jpg',provider:'deezer'}
+ ];
+ const archive='https://coverartarchive.org/release/99ab0b8f-3467-42bc-87d5-276e7b5b0d0b/front';
+ globalThis.fetch=async url=>{
+  const mode=new URL(String(url),'https://gnarly.test').searchParams.get('mode');
+  seen.push(mode);
+  if(mode==='archive')return Response.json({artwork:archive,provider:'musicbrainz',candidates:[{artwork:archive,provider:'musicbrainz'}]});
+  return Response.json({artwork:catalog[0].artwork,provider:'apple',candidates:catalog});
+ };
+ try{
+  const emitted=[];
+  const result=await requestVerifiedAlbumArtwork(input,{forBackground:true,onCandidate:entry=>emitted.push(entry)});
+  assert.deepEqual(seen.sort(),['archive','catalog']);
+  assert.equal(result.alternatives.some(item=>item.url===archive),true);
+  assert.equal(emitted.some(item=>item?.provider==='musicbrainz'),true);
+ }finally{globalThis.fetch=old}
 });

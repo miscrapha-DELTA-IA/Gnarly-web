@@ -1,4 +1,4 @@
-import {KaraokeMicrophone} from './lib/karaoke-microphone.js';
+import {KaraokeMicrophone,microphoneError} from './lib/karaoke-microphone.js';
 import {ROOM_PATTERN,SECRET_PATTERN,safeRTCSignal} from './lib/karaoke-relay-protocol.js';
 const status=document.querySelector('#status'),song=document.querySelector('#song');
 const button=document.querySelector('#mic-toggle'),orb=document.querySelector('#orb');
@@ -104,8 +104,7 @@ button.addEventListener('click',async()=>{
   label('Microfone ativo · cante olhando para o desktop');
   try{wakeLock=await navigator.wakeLock?.request('screen')}catch{}
  }catch(error){
-  label(error?.name==='NotAllowedError'?'Autorize o microfone nas configurações do navegador.':
-   'Não foi possível iniciar o microfone. Verifique HTTPS e permissões.');
+  label(microphoneError(error));
  }finally{refresh()}
 });
 if(!valid)label('Link inválido. Abra o link enviado pelo GNARLY no desktop.');
