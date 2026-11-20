@@ -954,8 +954,16 @@ function applyBackground(){
    if(navigator.onLine){
     // Show the selected cover immediately; HD probes wait for native audio.
     // This is a single existing image URL, not an extra speculative download.
-    if(source&&photo.style.backgroundImage!=='url('+JSON.stringify(source)+')')
+    if(source&&photo.style.backgroundImage!=='url('+JSON.stringify(source)+')'){
+     // Until genuine dimensions are decoded, never stretch an unknown still
+     // edge-to-edge or inherit the previous song's resolution classification.
+     photo.dataset.artLayout='contain';
+     photo.dataset.artQuality='unknown';
+     photo.dataset.artProvider='';
+     photo.dataset.artPixels='';
+     photo.style.removeProperty('--gnarly-native-art-width');
      photo.style.backgroundImage='url('+JSON.stringify(source)+')';
+    }
     scheduleVisualArtwork(track,()=>void resolveHDAlbumBackground(track,{
      resolve:resolveArtworkAsset,lookup:requestVerifiedAlbumArtwork,
      viewport,storage:localStorage,saveData:!!navigator.connection?.saveData,
