@@ -55,7 +55,7 @@ import {deviceLayout,themeAccent,attachEyeGestures,OFFICIAL_SUPPORT_URL} from '.
 import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel} from './ui/player-surface.js';
 import {createIPodSkinStore,ipodSourceLabel} from './ui/ipod-mode.js';
 import {artworkBudget,artworkCandidates,resolveArtworkAsset} from './lib/artwork-quality.js';
-import {resolveHDAlbumBackground,preferHDArtwork,coverDisplayMode,effectiveArtworkDensity,storedHDArtwork,usableCoverForPortraitWallpaper} from './lib/hd-album-background.js';
+import {resolveHDAlbumBackground,preferHDArtwork,coverDisplayMode,effectiveArtworkDensity,storedHDArtwork,rememberHDArtwork,usableCoverForPortraitWallpaper} from './lib/hd-album-background.js';
 import {requestVerifiedAlbumArtwork} from './lib/album-artwork-client.js';
 import {createFullscreenController} from './lib/fullscreen-controller.js';
 import {karaokeStageMarkup,KaraokeStage} from './ui/karaoke-stage.js';
@@ -1009,9 +1009,12 @@ function applyBackground(){
     applyArtworkQuality(photo,{...asset,quality:sourceQuality==='contain'?'low':asset.quality},'background');
     background.classList.add('cover-art-ready');
     visual.setPaused(true);
-    // Only persist genuine HD images, never a resized video placeholder.
-    if(asset.width>=1200&&asset.height>=1200&&track.backgroundArtwork!==asset.url)
-     track.backgroundArtwork=asset.url;
+    // Preserve the strongest decoded image across source changes and
+    // later metadata enrichments; weaker concurrent work cannot overwrite it.
+    if(asset.width>=1200&&asset.height>=1200){
+     rememberHDArtwork(track,asset,localStorage);
+     if(track.backgroundArtwork!==asset.url)track.backgroundArtwork=asset.url;
+    }
    };
    const viewport=artworkViewport('background');
    backgroundArtAccept={track,offer:showCandidate};
