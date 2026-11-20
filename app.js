@@ -506,7 +506,7 @@ function karaokeInputMarkup(extraTools=''){return `<section class="karaoke-input
  <div class="karaoke-sheet-quickbar">
   <button type="button" class="action-button karaoke-sheet-expand" data-command="karaoke-expand">Abrir palco</button>
   <details class="karaoke-sheet-settings">
-   <summary aria-label="Ajustes do karaokê"><span aria-hidden="true">⚙</span> Ajustes</summary>
+   <summary aria-label="Ajustes do karaokê"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M10 2h4l.6 2.1 1.5.6 2-.8 2.8 2.8-.8 2 .6 1.5L22 10v4l-2.1.6-.6 1.5.8 2-2.8 2.8-2-.8-1.5.6L14 22h-4l-.6-2.1-1.5-.6-2 .8-2.8-2.8.8-2-.6-1.5L2 14v-4l2.1-.6.6-1.5-.8-2 2.8-2.8 2 .8 1.5-.6Z"/></svg> Ajustes</summary>
    <div class="karaoke-sheet-settings-body">
     <button class="action-button" data-command="karaoke-mic" aria-pressed="${karaokeStage.mic.active}"><span data-karaoke-mic-label>Ativar microfone</span></button>
     <button class="action-button alt" data-command="karaoke-record">Gravar voz</button>
