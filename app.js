@@ -823,7 +823,10 @@ function updatePlayer(){
  if(lastCoverArt!==coverKey){
   lastCoverArt=coverKey;const version=++coverArtVersion;
   const image=$('#cover-image');image.decoding='async';
-  image.fetchPriority='low';
+  // The cover is visible immediately and can supply the same pixels to
+  // the background; use normal browser priority, not a deliberately delayed
+  // low-priority request. Full-resolution catalog probes remain audio-first.
+  image.fetchPriority='auto';
   image.onload=()=>{
    if(version===coverArtVersion&&state.current===track)
     offerLoadedPlayerCoverToWallpaper(track,image);
