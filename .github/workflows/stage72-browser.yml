@@ -40,6 +40,8 @@ jobs:
           node tests/dsp-combinations.browser.mjs
       - name: Test desktop visual startup and GPU budget
         run: node tests/desktop-visual-runtime.browser.mjs
+      - name: Test static album wallpaper art direction on Retina viewport
+        run: node tests/album-wallpaper-visual.browser.mjs
       - name: Test real PWA airplane mode
         run: node tests/offline-pwa.browser.mjs
       - uses: actions/upload-artifact@v4
