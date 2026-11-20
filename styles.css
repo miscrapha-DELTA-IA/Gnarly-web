@@ -702,6 +702,13 @@ body{position:relative;min-height:100dvh;background:#05090a}
   height:100%;
   background-size:cover!important;
   background-position:center center!important;
+  /* A permanent will-change:transform composited layer can retain a
+     low-resolution raster even after a larger cover has decoded. Static
+     album art does not animate or zoom, so let the browser repaint it at
+     native device resolution. Custom-photo transforms remain untouched. */
+  will-change:auto;
+  transform:none!important;
+  image-rendering:auto;
   -webkit-filter:none;
   filter:none;
   box-shadow:none;
