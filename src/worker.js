@@ -13,6 +13,7 @@ import {onRequestGet as r2Available} from '../functions/api/r2-available.js';
 import {handleAudiusAudio} from '../functions/audius-audio/[id].js';
 import {handleJamendoAudio} from '../functions/jamendo-audio/[id].js';
 import {onRequestPost as stemsTicket} from '../functions/api/stems-ticket.js';
+import {onRequestPost as lyricsAI} from '../functions/api/lyrics-ai.js';
 import {onRequestGet as metadata} from '../functions/api/metadata.js';
 import {onRequestGet as artwork} from '../functions/api/artwork.js';
 import {handleFastAudio} from '../functions/fast-audio/[id].js';
@@ -27,7 +28,8 @@ const ALLOW=Object.freeze({
   '/api/suggest': {method:'GET', handler:suggest},
   '/api/metadata': {method:'GET', handler:metadata},
   '/api/artwork': {method:'GET', handler:artwork},
-  '/api/stems-ticket': {method:'POST', handler:stemsTicket}
+  '/api/stems-ticket': {method:'POST', handler:stemsTicket},
+  '/api/lyrics-ai': {method:'POST', handler:lyricsAI}
 });
 function methodNotAllowed(method) {
   return new Response(JSON.stringify({error:'Método não permitido'}),{

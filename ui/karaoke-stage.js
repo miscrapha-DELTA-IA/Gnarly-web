@@ -1,6 +1,7 @@
 import {microphoneError,KaraokeMicrophone} from '../lib/karaoke-microphone.js';
 import {KaraokeRemoteHost} from '../lib/karaoke-remote.js';
 import {KaraokeLiveScore} from '../lib/karaoke-live-score.js';
+import {compareSungWords,transcribeSinging} from '../lib/karaoke-whisper.js';
 import {applyLyricStyle,allLyricStyles} from '../lib/lyric-style.js';
 import {renderLyricArtwork} from '../lib/karaoke-art-direction.js';
 import {artworkBudget,resolveArtworkAsset} from '../lib/artwork-quality.js';
@@ -20,6 +21,7 @@ export function karaokeStageMarkup(){
    <button type="button" id="karaoke-voice-toggle" aria-pressed="false">🎤 Ligar mic</button>
    <button type="button" id="karaoke-remote-toggle" aria-expanded="false">📱 Usar celular como microfone</button>
    <button type="button" id="karaoke-voice-record" disabled aria-pressed="false">● Gravar voz</button>
+   <button type="button" id="karaoke-whisper-record" disabled aria-pressed="false" title="Grave até 45 segundos da sua voz; enviar ao Whisper é opcional">Avaliar canto · Whisper</button>
    <button type="button" id="karaoke-caption-settings">Aa · Legenda</button><button type="button" id="karaoke-share-score">Compartilhar resultado</button>
   </nav>
   <div class="karaoke-remote-panel" id="karaoke-remote-panel" hidden>
@@ -36,6 +38,8 @@ export function karaokeStageMarkup(){
    <div class="karaoke-score-right"><strong id="karaoke-score-combo">1× · 0 combo</strong><small id="karaoke-score-mode">Ritmo e presença · tom indisponível</small></div>
    <div class="karaoke-score-meter" aria-label="Presença de voz"><span id="karaoke-voice-meter"></span></div>
    <p id="karaoke-score-rating" class="karaoke-score-rating">Ative o microfone para pontuar sua voz.</p>
+   <p id="karaoke-whisper-result" class="karaoke-score-rating" role="status" aria-live="polite" hidden></p>
+   <small id="karaoke-whisper-consent">Whisper é opcional: ao solicitar a avaliação, apenas o trecho gravado da sua voz é enviado à IA. O placar ao vivo funciona localmente.</small>
   </section>
   <div class="karaoke-stage-status" id="karaoke-stage-status" role="status">Aguardando letra...</div>
   <section class="karaoke-reader" id="karaoke-reader" aria-label="Letras da música">
@@ -66,6 +70,8 @@ export class KaraokeStage {
   };
   this.onMicConflict=onMicConflict||(()=>false);this.onPlayPause=onPlayPause||(()=>{});
   this.mic=new KaraokeMicrophone();this.scorer=new KaraokeLiveScore();
+  this.whisperCapture=null;this.whisperController=null;this.whisperBusy=false;
+  this.whisperResult=null;this.whisperSession=0;this.ignoreNextRecording=false;
   this.lastRemoteSync=0;
   this.remoteHost=new KaraokeRemoteHost({
    onFrame:frame=>this.receiveRemoteVoice(frame),
@@ -92,12 +98,26 @@ export class KaraokeStage {
      this.mic.frameNow());
    this.updateScore();
   };
-  this.mic.onRecording=blob=>{if(blob.size){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;
-   a.download='gnarly-karaoke-voz-'+new Date().toISOString().slice(0,19).replaceAll(':','-')+(blob.type.includes('mp4')?'.m4a':'.webm');
-   document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
-   this.onNotify('Gravação da voz pronta para baixar (sem áudio musical).')
-  }else this.onNotify('Nenhuma voz foi gravada.');};
+  this.mic.onRecording=blob=>{
+   if(this.ignoreNextRecording){this.ignoreNextRecording=false;return}
+   const capture=this.whisperCapture;
+   if(capture){
+    this.whisperCapture=null;clearTimeout(capture.timer);
+    capture.to=Number(this.audio.currentTime)||0;
+    if(blob.size)void this.reviewWhisper(blob,capture);
+    else this.onNotify('Nenhuma voz foi gravada para avaliação.');
+    this.updateScore();return;
+   }
+   if(blob.size){
+    const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;
+    a.download='gnarly-karaoke-voz-'+new Date().toISOString().slice(0,19).replaceAll(':','-')+(blob.type.includes('mp4')?'.m4a':'.webm');
+    document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+    this.onNotify('Gravação da voz pronta para baixar (sem áudio musical).');
+   }else this.onNotify('Nenhuma voz foi gravada.');
+  };
+  this.audio.addEventListener('pause',()=>{if(this.whisperCapture)this.whisperCapture.interrupted=true});
   this.audio.addEventListener('seeking',()=>{
+   if(this.whisperCapture)this.whisperCapture.interrupted=true;
    if(!this.scorer.active)return;
    const d=this.getState(),at=this.audio.currentTime||0;
    if(d.synced)this.scorer.start(d.lines,at,this.audio.duration||0);
@@ -122,7 +142,7 @@ export class KaraokeStage {
   this.updateScore();
  }
  remoteStatus(status){
-  if(status==='listening'){this.mic.stop();this.scorer.stop()}
+  if(status==='listening'){this.cancelWhisper();this.mic.stop();this.scorer.stop()}
   else if(['off','disconnected','error','ready','paired'].includes(status)&&
    this.scorer.active&&!this.mic.active)this.scorer.stop();
   const messages={
@@ -142,7 +162,7 @@ export class KaraokeStage {
   if(this.remoteHost.socket){
    this.remoteHost.stop();this.query('karaoke-remote-panel').hidden=true;this.updateScore();return;
   }
-  this.mic.stop();this.scorer.stop();
+  this.cancelWhisper();this.mic.stop();this.scorer.stop();
   this.query('karaoke-remote-panel').hidden=false;
   try{this.query('karaoke-remote-link').value=this.remoteHost.start()}
   catch(error){this.query('karaoke-remote-status').textContent=error?.message||'Pareamento indisponível'}
@@ -169,22 +189,22 @@ export class KaraokeStage {
   this.opened=false;this.root.hidden=true;this.query('karaoke-stage-font-menu').hidden=true;document.documentElement.classList.remove('karaoke-stage-open');
   clearTimeout(this.feedbackTimer);this.query('karaoke-stage-feedback').hidden=true;
   this.remoteHost.stop();this.query('karaoke-remote-panel').hidden=true;
-  this.mic.stop();this.scorer.stop();this.updateScore();
+  this.cancelWhisper();this.mic.stop();this.scorer.stop();this.updateScore();
   // A pending image upgrade must be retried on reopen, not leave the stage
   // with a permanently stale wallpaper when it completed while hidden.
   ++this.artworkRequest;this.artworkSource='';
   this.trigger?.focus?.({preventScroll:true});this.trigger=null;
  }
- destroy(){this.close();clearTimeout(this.feedbackTimer);this.mic.stop()}
+ destroy(){this.close();clearTimeout(this.feedbackTimer);this.cancelWhisper();this.mic.stop()}
  resetForTrack(){
-  this.mic.stop();this.scorer.stop();this.trackId=null;this.lineRef=null;this.currentIndex=-999;
+  this.cancelWhisper();this.mic.stop();this.scorer.stop();this.trackId=null;this.lineRef=null;this.currentIndex=-999;
   if(this.opened)this.refresh(true);
  }
  setFollowing(enabled){this.follow=enabled;const btn=this.query('karaoke-follow-live');btn.classList.toggle('is-following',enabled);btn.setAttribute('aria-pressed',String(enabled))}
  refresh(force=false){
   if(!this.opened)return;
   const data=this.getState(),track=data.track,lines=Array.isArray(data.lines)?data.lines:[],plain=Array.isArray(data.plain)?data.plain:[];
-  if((track?.id??null)!==this.trackId){this.mic.stop();this.scorer.stop();this.trackId=track?.id??null;force=true}
+  if((track?.id??null)!==this.trackId){this.cancelWhisper();this.mic.stop();this.scorer.stop();this.trackId=track?.id??null;force=true}
   if(data.style&&this.root.dataset.lyricStyle!==data.style)applyLyricStyle(this.root,data.style);
   this.query('karaoke-stage-heading').textContent=track?.title||'GNARLY · Karaokê';
   this.query('karaoke-stage-artist').textContent=track?.artist||'Selecione uma música';
@@ -313,6 +333,16 @@ export class KaraokeStage {
   this.query('karaoke-voice-toggle').setAttribute('aria-pressed',String(active));
   const record=this.query('karaoke-voice-record');record.disabled=!this.mic.active;record.textContent=this.mic.recording?'■ Parar gravação':'● Gravar voz';
   record.setAttribute('aria-pressed',String(this.mic.recording));
+  const aiButton=this.query('karaoke-whisper-record');
+  aiButton.disabled=!this.mic.active||this.whisperBusy||(this.mic.recording&&!this.whisperCapture);
+  aiButton.setAttribute('aria-pressed',String(!!this.whisperCapture));
+  aiButton.textContent=this.whisperCapture?'■ Avaliar trecho gravado':
+   this.whisperBusy?'Whisper analisando…':'Avaliar canto · Whisper';
+  const aiResult=this.query('karaoke-whisper-result');
+  aiResult.hidden=!(this.whisperCapture||this.whisperBusy||this.whisperResult);
+  aiResult.textContent=this.whisperCapture?'Gravando sua voz · até 45 s; toque para enviar à IA.':
+   this.whisperBusy?'Whisper reconhecendo palavras · o player continua independente.':
+   this.whisperResult?.text||'';
   const remoteButton=this.query('karaoke-remote-toggle');
   remoteButton.textContent=this.remoteHost.socket?'📱 Desconectar celular':'📱 Usar celular como microfone';
   remoteButton.setAttribute('aria-expanded',String(!!this.remoteHost.socket));
@@ -332,7 +362,7 @@ export class KaraokeStage {
    :'Tom indisponível · referência melódica não verificada';
  }
  async toggleMic(){
-  if(this.mic.active){this.mic.stop();this.scorer.finish();this.updateScore();return}
+  if(this.mic.active){this.cancelWhisper();this.mic.stop();this.scorer.finish();this.updateScore();return}
   if(this.remoteHost.socket)this.remoteHost.stop();
   this.query('karaoke-remote-panel').hidden=true;
   if(this.onMicConflict()){this.onNotify('Pare outra gravação de voz antes de ativar o karaokê.');return}
@@ -353,6 +383,66 @@ export class KaraokeStage {
    this.onNotify(microphoneError(e));
   }finally{this.query('karaoke-voice-toggle').disabled=false;this.updateScore()}
  }
+
+ cancelWhisper(){
+  ++this.whisperSession;
+  this.whisperController?.abort();this.whisperController=null;
+  this.whisperBusy=false;this.whisperResult=null;
+  if(this.whisperCapture){
+   clearTimeout(this.whisperCapture.timer);this.whisperCapture=null;
+   if(this.mic.recorder){this.ignoreNextRecording=true;this.mic.stopRecording()}
+  }
+ }
+ toggleWhisper(){
+  if(this.whisperCapture){this.mic.stopRecording();this.updateScore();return}
+  if(!this.mic.active){this.onNotify('Ative primeiro o microfone para pontuar seu canto.');return}
+  if(this.whisperBusy||this.mic.recording)return;
+  if(this.audio.paused||this.audio.ended||this.audio.seeking||!this.getState().track){
+   this.onNotify('Inicie a música antes de gravar o trecho para o Whisper.');return;
+  }
+  const capture={trackId:this.getState().track.id,from:Number(this.audio.currentTime)||0,
+   rate:Number(this.audio.playbackRate)||1,interrupted:false,to:0,timer:null};
+  if(!this.mic.beginRecording()){
+   this.onNotify('Este navegador não conseguiu gravar a voz.');return;
+  }
+  this.ignoreNextRecording=false;this.whisperResult=null;this.whisperCapture=capture;
+  capture.timer=setTimeout(()=>{if(this.whisperCapture===capture)this.mic.stopRecording()},45000);
+  this.onNotify('Gravando apenas sua voz. Ao parar, o trecho será enviado ao Whisper para análise.');
+  this.updateScore();
+ }
+ async reviewWhisper(blob,capture){
+  if(!this.opened||capture.trackId!==this.getState().track?.id)return;
+  if(capture.interrupted||Math.abs((Number(this.audio.playbackRate)||1)-capture.rate)>.02||
+     capture.to<=capture.from+.5){
+   this.onNotify('Trecho com pausa, salto ou mudança de velocidade. Grave novamente sem alterar a reprodução.');
+   return;
+  }
+  const revision=++this.whisperSession,controller=new AbortController();
+  this.whisperController=controller;this.whisperBusy=true;this.whisperResult=null;
+  this.updateScore();
+  try{
+   const output=await transcribeSinging(blob,{signal:controller.signal});
+   if(revision!==this.whisperSession||!this.opened||capture.trackId!==this.getState().track?.id)return;
+   if(!output.transcript){
+    this.whisperResult={text:'Whisper não reconheceu palavras neste trecho. Sua pontuação local foi preservada.'};
+   }else{
+    const data=this.getState(),comparison=data.synced?
+     compareSungWords({lines:data.lines,from:capture.from,to:capture.to,transcript:output.transcript}):null;
+    const preview=output.transcript.slice(0,150);
+    this.whisperResult={comparison,text:comparison?
+     'Whisper · similaridade textual: '+comparison.similarity+'% ('+comparison.matched+' de '+
+      comparison.expectedWords+' palavras de referência). Não mede afinação. Ouvido: “'+preview+'”':
+     'Whisper reconheceu: “'+preview+'”. Sem letra sincronizada confiável para comparar palavras; nota vocal ao vivo preservada.'};
+   }
+  }catch(error){
+   if(!controller.signal.aborted&&revision===this.whisperSession)
+    this.whisperResult={text:'Whisper indisponível: '+(error?.message||'falha de transcrição')+'. Pontuação ao vivo preservada.'};
+  }finally{
+   if(revision===this.whisperSession){
+    this.whisperBusy=false;this.whisperController=null;this.updateScore();
+   }
+  }
+ }
  click(e){
   const target=e.target.closest('button');if(!target)return;
   switch(target.id){
@@ -365,7 +455,9 @@ export class KaraokeStage {
    case 'karaoke-remote-toggle':void this.toggleRemote();break;
    case 'karaoke-remote-copy':void this.copyRemoteLink();break;
    case 'karaoke-share-score':this.onShareScore(this.scorer.snapshot());break;
+   case 'karaoke-whisper-record':this.toggleWhisper();break;
    case 'karaoke-voice-record':
+    if(this.whisperCapture||this.whisperBusy)return;
     if(this.mic.recording)this.mic.stopRecording();
     else if(!this.mic.beginRecording())this.onNotify('Gravação não suportada pelo navegador.');
     this.updateScore();break;
