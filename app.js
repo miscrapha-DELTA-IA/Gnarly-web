@@ -987,8 +987,8 @@ function applyBackground(){
     // Show the selected cover immediately; HD probes wait for native audio.
     // This is a single existing image URL, not an extra speculative download.
     if(source&&photo.style.backgroundImage!=='url('+JSON.stringify(source)+')'){
-     // Until genuine dimensions are decoded, never stretch an unknown still
-     // edge-to-edge or inherit the previous song's resolution classification.
+     // Restore full-bleed framing immediately and clear stale metadata
+     // from the previous song; real HD alternatives load after audio starts.
      photo.dataset.artLayout='cover';
      photo.dataset.artSourceLimited='unknown';
      photo.dataset.artQuality='unknown';
