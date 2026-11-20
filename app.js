@@ -68,7 +68,7 @@ import {SilentTailMonitor} from './lib/silent-tail-monitor.js';
 import {settleAudioStart} from './lib/audio-start-deadline.js';
 
 const $=(selector)=>document.querySelector(selector);
-const app=$('#app-shell'), background=$('#gnarly-background'), audio=$('#player-audio'), visual=new FluidVisual($('#fluid-canvas'));
+const app=$('#app-shell'), background=$('#gnarly-background'), audio=$('#player-audio'), visual=new FluidVisual($('#fluid-canvas'),{deferInit:true});
 const engine=new WebAudioEngine(audio);
 const silentTailMonitor=new SilentTailMonitor();
 // Purely visual loading cue, deferred so instant cache hits never flash.
@@ -576,7 +576,15 @@ visual.setGnarlyAccentEnabled(state.gnarlyAccentEnabled);
 visual.setMaterialLayer(state.materialLayer);
 visual.setGnarly2Locks({colors:state.gnarly2LockColors,experience:state.gnarly2LockExperience,
  material:state.gnarly2LockMaterial,materialTheme:state.gnarly2Material});
-visual.startLoop();
+// The UI becomes interactive before WebGL allocates large canvas buffers or
+// compiles its first fragment program. Photos and album-cover backgrounds
+// do not initialize GPU at all until the procedural surface is needed.
+const beginVisual=()=>{
+ if(!document.hidden&&!visual.paused)visual.startLoop();
+};
+if(typeof requestIdleCallback==='function')
+ requestIdleCallback(beginVisual,{timeout:1500});
+else setTimeout(beginVisual,130);
 applyLyricStyle(app,state.lyricStyle);
 void loadLyricTypeface(designFont(state.lyricStyle));
 engine.setSpeed(state.speed,state.pitch);engine.setReverb(state.reverb);engine.setBass(state.bass);
@@ -1065,7 +1073,9 @@ function applyBackground(){
   photo.style.transform='';
  }
  app.style.backgroundImage='';
- visual.setPaused(ownPhoto||(coverPhoto&&background.classList.contains('cover-art-ready')));
+ // Full-resolution static covers need ZERO continuous shader work, including
+ // while an official HD replacement is being decoded in the background.
+ visual.setPaused(ownPhoto||coverPhoto);
 }
 async function loadArtworkHue(track){if(!track?.artwork||track.artwork===icon){state.artworkHue=.58;return}try{const img=new Image();img.crossOrigin='anonymous';img.src=displayedArtwork(track);await img.decode();if(state.current!==track)return;const cv=document.createElement('canvas');cv.width=cv.height=20;const ctx=cv.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,20,20);const data=ctx.getImageData(0,0,20,20).data;let x=0,y=0;for(let i=0;i<data.length;i+=4){const r=data[i]/255,g=data[i+1]/255,b=data[i+2]/255,max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;let h=0;if(d>.08){if(max===r)h=((g-b)/d+6)%6/6;else if(max===g)h=((b-r)/d+2)/6;else h=((r-g)/d+4)/6}x+=Math.cos(h*2*Math.PI)*d;y+=Math.sin(h*2*Math.PI)*d}if(x||y)state.artworkHue=(Math.atan2(y,x)/(Math.PI*2)+1)%1;
  const tint=Math.round(state.artworkHue*360)+'deg';
@@ -3027,7 +3037,23 @@ function handleCommand(command){switch(command){
    ()=>toast('Não foi possível copiar. Verifique a permissão do navegador.'));
   break;
  }case 'toggle-fullscreen':closeSheet();void fullscreen.toggle();break;case 'go-install':openSheet('install');break;case 'close-display':closeSheet();break;case 'hide-display-panels':displayStore.setGroup(['search','presets','controls','header','player','lyrics','export','performance'],false);applyPanelVisibility();renderActiveSurfaces();break;case 'apply-theme':closeSheet();break}}
-function syncVisual(){
+let lastVisualSyncAt=0;
+function syncVisual(now=performance.now()){
+ // A hidden tab or an opaque photo must not keep analyzing audio / sampling
+ // spectrum at the monitor's 60–144Hz refresh rate. The audio player and
+ // karaoke clocks remain independent of this decorative visual loop.
+ if(document.hidden||visual.paused){
+  visual.setPlaybackActive(false);
+  setTimeout(()=>syncVisual(performance.now()),document.hidden?1000:400);
+  return;
+ }
+ const cadence=state.playing&&visual.workload()==='classic'?1000/60:
+  state.playing?1000/30:1000/20;
+ if(lastVisualSyncAt&&now-lastVisualSyncAt<cadence){
+  requestAnimationFrame(syncVisual);
+  return;
+ }
+ lastVisualSyncAt=now;
  const official=state.audioState==='official'&&officialTrackId===state.current?.id;
  visual.setSong(audio.currentTime||0,state.current?.source!=='preview'?activeTimeline().duration:state.current?.duration||0,state.artworkHue);
  const pulse=pads.getPulse(),active=!document.hidden&&(
