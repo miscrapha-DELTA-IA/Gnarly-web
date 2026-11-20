@@ -124,7 +124,8 @@ test('artwork quality metadata never reduces the approved full-screen cover fram
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
  const stage=readFileSync(new URL('../ui/karaoke-stage.js',import.meta.url),'utf8');
- assert.match(app,/resolveArtworkAsset\(source/);
+ assert.match(app,/resolveHDAlbumBackground\(track,/);
+ assert.match(app,/resolve:resolveArtworkAsset,lookup:requestVerifiedAlbumArtwork/);
  assert.match(app,/resolveArtworkAsset\(raw/);
  assert.match(app,/dataset\.artQuality/);
  assert.match(css,/data-art-quality="low"/);
