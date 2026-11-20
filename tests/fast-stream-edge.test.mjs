@@ -406,3 +406,42 @@ test('PC online + local R2 hit returns native audio without youtube player looku
  assert.equal(response.headers.get('x-gnarly-playback-source'),'extraction-origin');
  assert.deepEqual(calls,['/playback-status','/download']);
 });
+
+test('accepted exact-ID prewarm bypasses one origin status RTT and the redundant stream attempt',async()=>{
+ const paths=[];
+ const result=await rawFastAudio({
+  request:request('/fast-audio/ABCDEFGHIJK?prepared=1'),
+  params:{id:'ABCDEFGHIJK'},env:{},
+  originProbe:true
+ },async url=>{
+  paths.push(new URL(url).pathname);
+  if(new URL(url).pathname==='/download')
+   return new Response(audio,{status:200,headers:{'Content-Type':'audio/mp4','Content-Length':String(audio.length)}});
+  throw Error('unnecessary network request: '+url);
+ });
+ assert.equal(result.status,200);
+ assert.deepEqual(paths,['/download'],'the prepared route should bypass 1.5s preflight and /stream');
+ assert.equal(result.headers.get('x-gnarly-playback-source'),'extraction-origin');
+});
+test('prepared hint cannot bypass backend cooldown or trigger duplicate extraction',async()=>{
+ const calls=[];
+ const result=await rawFastAudio({
+  request:request('/fast-audio/ABCDEFGHIJK?prepared=1'),
+  params:{id:'ABCDEFGHIJK'},env:{},originProbe:true
+ },async url=>{
+  calls.push(new URL(url).pathname);
+  return new Response('rate limited',{status:429,headers:{
+   'X-Download-Error':'upstream_rate_limited','Retry-After':'150'}});
+ });
+ assert.equal(result.status,429);
+ assert.deepEqual(calls,['/download']);
+});
+test('R2 hit wins even when prepared hint is present',async()=>{
+ const {bucket}=mockBucket();
+ const response=await rawFastAudio({
+  request:request('/fast-audio/ABCDEFGHIJK?prepared=1'),
+  params:{id:'ABCDEFGHIJK'},env:{GNARLY_AUDIO_R2:bucket},originProbe:true
+ },()=>{throw Error('unexpected origin call')});
+ assert.equal(response.status,200);
+ assert.equal(response.headers.get('x-gnarly-playback-source'),'r2-edge');
+});
