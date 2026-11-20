@@ -36,3 +36,17 @@ test('bounded retry forces a fresh browser request without changing canonical so
  assert.equal(new URL(trackAudioURL(youtube,{attempt:9})).searchParams.has('retry'),false);
  assert.equal(trackAudioURL({...youtube,source:'preview'},{attempt:1}),null);
 });
+
+test('prepared route hint is scoped to GNARLY Pages and never changes the canonical recording',()=>{
+ const previous=globalThis.location;
+ globalThis.location={hostname:'gnarly-web-pages.pages.dev'};
+ try{
+  assert.equal(trackAudioURL(youtube,{prepared:true}),'/fast-audio/dQw4w9WgXcQ?prepared=1');
+  assert.equal(trackAudioURL(youtube,{prepared:false}),'/fast-audio/dQw4w9WgXcQ');
+  assert.equal(trackAudioURL(youtube,{prepared:true,cacheOnly:true}),'/fast-audio/dQw4w9WgXcQ?cached-only=1');
+  const retry=new URL(trackAudioURL(youtube,{attempt:1,prepared:true}));
+  assert.equal(retry.pathname,'/download');
+  assert.equal(retry.searchParams.has('prepared'),false);
+  assert.equal(retry.searchParams.get('url'),'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+ }finally{if(previous===undefined)delete globalThis.location;else globalThis.location=previous}
+});
