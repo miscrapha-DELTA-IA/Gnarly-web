@@ -445,3 +445,32 @@ test('R2 hit wins even when prepared hint is present',async()=>{
  assert.equal(response.status,200);
  assert.equal(response.headers.get('x-gnarly-playback-source'),'r2-edge');
 });
+
+test('known browser cooldown skips redundant origin preflight but still enforces backend rate limits',async()=>{
+ const calls=[];
+ const limited=await rawFastAudio({
+  request:request('/fast-audio/ABCDEFGHIJK?pc-first=1'),
+  params:{id:'ABCDEFGHIJK'},env:{},originProbe:true
+ },async url=>{
+  calls.push(new URL(url).pathname);
+  return new Response('blocked',{status:429,headers:{
+   'X-Download-Error':'upstream_rate_limited','Retry-After':'90'}});
+ });
+ assert.equal(limited.status,429);
+ assert.equal(limited.headers.get('retry-after'),'90');
+ assert.deepEqual(calls,['/download']);
+});
+test('PC-first cache delivery streams exact stored media without unnecessary status requests',async()=>{
+ const calls=[];
+ const ready=await rawFastAudio({
+  request:request('/fast-audio/ABCDEFGHIJK?pc-first=1'),
+  params:{id:'ABCDEFGHIJK'},env:{},originProbe:true
+ },async url=>{
+  calls.push(new URL(url).pathname);
+  return new Response(audio,{status:200,headers:{
+   'Content-Type':'audio/mp4','Content-Length':String(audio.length)}});
+ });
+ assert.equal(ready.status,200);
+ assert.equal(ready.headers.get('x-gnarly-playback-source'),'extraction-origin');
+ assert.deepEqual(calls,['/download']);
+});
