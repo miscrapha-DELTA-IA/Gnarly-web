@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
  HD_ARTWORK_CACHE_KEY,artworkMemoryKey,rememberHDArtwork,storedHDArtwork,
- effectiveArtworkDensity,preferHDArtwork,coverDisplayMode,nativeArtworkWidth,requestedWallpaperPixels,
+ effectiveArtworkDensity,preferHDArtwork,coverDisplayMode,requestedWallpaperPixels,
  resolveHDAlbumBackground
 } from '../lib/hd-album-background.js';
 import {artworkCandidates,resolveArtworkAsset,clearArtworkQualityCache} from '../lib/artwork-quality.js';
@@ -138,16 +138,17 @@ test('GNARLY background wires HD resolver while leaving original-color CSS and p
  assert.doesNotMatch(app,/track\.url\s*=\s*asset\.url/);
 });
 
-test('portrait Retina never enlarges a 720p video still to fill the entire screen',()=>{
+test('Retina quality labels do not miniaturize the full-bleed wallpaper',()=>{
  const weak={url:original.artwork,width:1280,height:720,provider:'youtube'};
  const square={url:'https://is1-ssl.mzstatic.com/image/thumb/a/2400x2400bb.jpg',
   width:2400,height:2400,provider:'apple'};
- assert.equal(coverDisplayMode(weak,viewport),'contain');
+ assert.equal(coverDisplayMode(weak,viewport),'contain','a weak source is still identified as pixel-limited');
  assert.equal(coverDisplayMode(square,viewport),'cover');
  assert.equal(coverDisplayMode(null,viewport),'contain');
  const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
- assert.match(css,/#gnarly-background\.cover-bg \.photo-background\[data-art-layout="contain"\]\{[\s\S]*?background-size:min\(100%,var\(--gnarly-native-art-width,100%\)\) auto!important;/);
+ assert.match(css,/#gnarly-background\.cover-bg \.photo-background\[data-art-layout="cover"\]\{[\s\S]*?background-size:cover!important;/);
  assert.match(css,/#gnarly-background\.cover-bg \.photo-background \{[\s\S]*?filter:none;/);
+ assert.doesNotMatch(css,/--gnarly-native-art-width/);
 });
 test('HD search compares Apple and Deezer masters rather than trusting the first catalog',async()=>{
  const storage=store();
@@ -164,25 +165,20 @@ test('HD search compares Apple and Deezer masters rather than trusting the first
  assert.equal(result.url,deezer);
  assert.equal(storedHDArtwork(original,storage)?.url,deezer);
 });
-test('the background UI explains decoded resolution, selected source and contain fallback',()=>{
+test('the background UI keeps full-bleed framing even for a pixel-limited original',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
- assert.match(app,/photo\.dataset\.artLayout=layout/);
- assert.match(app,/photo\.dataset\.artProvider=asset\.provider/);
- assert.match(app,/Resolução carregada:/);
- assert.match(app,/Imagem preservada sem ampliar/);
-});
-
-test('an original low-resolution fallback never expands past its native Retina pixels',()=>{
+ const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
  const small={url:original.artwork,width:640,height:360};
  assert.equal(coverDisplayMode(small,viewport),'contain');
- assert.equal(nativeArtworkWidth(small,viewport),213);
- const bigger={url:'https://is1-ssl.mzstatic.com/image/thumb/a/2400x2400bb.jpg',
-  width:2400,height:2400};
- assert.equal(nativeArtworkWidth(bigger,viewport),800);
- const tall={url:'https://is1-ssl.mzstatic.com/image/thumb/a/3200x3200bb.jpg',
-  width:3200,height:3200};
- assert.equal(nativeArtworkWidth(tall,viewport),844);
+ assert.match(app,/photo\.dataset\.artLayout='cover'/);
+ assert.match(app,/photo\.dataset\.artSourceLimited=String\(sourceQuality==='contain'\)/);
+ assert.match(app,/Resolução carregada:/);
+ assert.match(app,/A capa está em tela cheia, mas o arquivo disponível tem resolução insuficiente/);
+ assert.match(css,/#gnarly-background\.cover-bg \.photo-background \{[\s\S]*?background-size:cover!important;/);
+ assert.doesNotMatch(css,/--gnarly-native-art-width|background-size:min\(100%,var\(/);
+ assert.doesNotMatch(app,/nativeArtworkWidth|--gnarly-native-art-width/);
 });
+
 test('a large URL is not treated as proof that all official sources were compared',async()=>{
  const storage=store(),calls=[];
  const track={...original,artwork:'https://is1-ssl.mzstatic.com/image/thumb/demo/3000x3000bb.jpg',
@@ -205,4 +201,16 @@ test('nonessential image fetches do not compete with native first playing on sel
  assert.match(app,/scheduleVisualArtwork\(track,\(\)=>void resolveHDAlbumBackground\(track,/);
  assert.match(app,/scheduleVisualArtwork\(track,\(\)=>\{void loadArtworkHue\(track\);void enrichOfficialAlbumArt\(track\)\}/);
  assert.match(app,/storedHDArtwork\(item,localStorage\)/);
+});
+
+test('main thumbnail uses verified album master immediately and still probes for higher image quality',()=>{
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ assert.match(app,/function preferredVisibleCover\(track,raw,\{upgrade=true\}=\{\}\)/);
+ assert.match(app,/const stored=storedHDArtwork\(track,localStorage\)/);
+ assert.match(app,/const chosen=preferredVisibleCover\(track,cover\)/);
+ assert.match(app,/image\.src=chosen/);
+ assert.match(app,/if\(cover!==icon&&navigator\.onLine\)void resolveArtworkAsset\(chosen,/);
+ assert.doesNotMatch(app,/if\(cover!==icon&&navigator\.onLine\)scheduleVisualArtwork\(track,\(\)=>void resolveArtworkAsset\(cover,/);
+ assert.match(app,/scheduleVisualArtwork\(track,\(\)=>void resolveHDAlbumBackground\(track,/,
+  'defer only heavy wallpaper work to preserve TDR');
 });
