@@ -13,7 +13,7 @@ export function karaokeStageMarkup(){
    <img id="karaoke-stage-art" src="./assets/gnarly-icon.png" alt="" class="karaoke-stage-art">
    <div class="karaoke-stage-song"><h2 id="karaoke-stage-heading">GNARLY · Karaokê</h2><p id="karaoke-stage-artist">Selecione uma música</p></div>
    <button type="button" class="karaoke-stage-transport" id="karaoke-stage-play" aria-label="Reproduzir música">▶</button>
-   <button type="button" class="karaoke-stage-gear" id="karaoke-stage-settings-toggle" aria-label="Configurações do karaokê" aria-controls="karaoke-stage-settings-menu" aria-expanded="false" title="Configurações">⚙</button>
+   <button type="button" class="karaoke-stage-gear" id="karaoke-stage-settings-toggle" aria-label="Configurações do karaokê" aria-controls="karaoke-stage-settings-menu" aria-expanded="false" title="Configurações"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M10 2h4l.6 2.1c.4.1.8.3 1.2.5l2-.8 2.8 2.8-.8 2c.2.4.4.8.5 1.2L22 10v4l-2.1.6c-.1.4-.3.8-.5 1.2l.8 2-2.8 2.8-2-.8c-.4.2-.8.4-1.2.5L14 22h-4l-.6-2.1c-.4-.1-.8-.3-1.2-.5l-2 .8-2.8-2.8.8-2c-.2-.4-.4-.8-.5-1.2L2 14v-4l2.1-.6c.1-.4.3-.8.5-1.2l-.8-2 2.8-2.8 2 .8c.4-.2.8-.4 1.2-.5Z"/><circle cx="12" cy="12" r="3"/></svg></button>
    <button type="button" class="karaoke-stage-close" id="karaoke-stage-close" aria-label="Recolher karaokê">✕</button>
   </header>
   <nav class="karaoke-stage-actions karaoke-settings-menu" id="karaoke-stage-settings-menu" aria-label="Configurações do karaokê" hidden>
@@ -287,7 +287,7 @@ export class KaraokeStage {
   this.mic.stop();this.scorer.stop();this.trackId=null;this.lineRef=null;this.currentIndex=-999;
   if(this.opened)this.refresh(true);
  }
- setFollowing(enabled){this.follow=enabled;const btn=this.query('karaoke-follow-live');btn.classList.toggle('is-following',enabled);btn.setAttribute('aria-pressed',String(enabled))}
+ setFollowing(enabled){this.follow=enabled;const btn=this.query('karaoke-follow-live');btn.hidden=enabled;btn.classList.toggle('is-following',enabled);btn.setAttribute('aria-pressed',String(enabled))}
  refresh(force=false){
   if(!this.opened)return;
   const data=this.getState(),track=data.track,lines=Array.isArray(data.lines)?data.lines:[],plain=Array.isArray(data.plain)?data.plain:[];
