@@ -2007,10 +2007,9 @@ async function play(){
  if(audio.paused||audio.readyState<3){coverCharge.show('loading');watchPlayback(track,selection);}
  else{coverCharge.hide();playbackStallGuard.clear();}
  try{
-  // Safari/WebKit: request the native playback category *before* building
-  // the Web Audio graph. Keep duplex while an explicitly authorized mic runs.
-  configureBrowserAudioSession({navigatorObject:navigator,
-   recording:!!(karaokeStage.mic.active||state.micStream)});
+  // Prefer the stereo music route even if a separate vocal microphone is active.
+  // A Bluetooth headset microphone may still force HFP at the OS level.
+  configureBrowserAudioSession({navigatorObject:navigator,recording:false});
   // Attach saved studio effects before the first play gesture can begin
   // decoding; do not reroute audio after it becomes audible.
   if(engine.nativeTransport&&audioEffectsRequested())void autoEnableStudioEffects();
