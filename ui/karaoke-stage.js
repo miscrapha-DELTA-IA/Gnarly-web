@@ -4,6 +4,8 @@ import {KaraokeLiveScore} from '../lib/karaoke-live-score.js';
 import {applyLyricStyle,allLyricStyles} from '../lib/lyric-style.js';
 import {renderLyricArtwork} from '../lib/karaoke-art-direction.js';
 import {artworkBudget,resolveArtworkAsset} from '../lib/artwork-quality.js';
+import {resolveHDAlbumBackground,preferHDArtwork,storedHDArtwork} from '../lib/hd-album-background.js';
+import {requestVerifiedAlbumArtwork} from '../lib/album-artwork-client.js';
 const esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 export function karaokeStageMarkup(){
  return `<section class="karaoke-stage" id="karaoke-stage" role="dialog" aria-modal="true" aria-labelledby="karaoke-stage-heading" hidden>
@@ -295,34 +297,49 @@ export class KaraokeStage {
   if(data.style&&this.root.dataset.lyricStyle!==data.style)applyLyricStyle(this.root,data.style);
   this.query('karaoke-stage-heading').textContent=track?.title||'GNARLY · Karaokê';
   this.query('karaoke-stage-artist').textContent=track?.artist||'Selecione uma música';
-  const art=track?.artwork||'./assets/gnarly-icon.png';
-  if(this.artworkSource!==art){
-   this.artworkSource=art;const revision=++this.artworkRequest;
-   // Keep the already decoded wallpaper/cover on screen during the next fetch.
-   // Mutating img.src to an uncached remote thumbnail first caused a dark/black
-   // frame on iOS Safari before the higher quality candidate decoded.
+  const cachedArt=track?storedHDArtwork(track)?.url:'';
+  const art=track?.backgroundArtwork||cachedArt||track?.artwork||'./assets/gnarly-icon.png';
+  // A shared placeholder URL must not hide a track change.
+  const artworkKey=String(track?.id||'none')+'|'+art;
+  if(this.artworkSource!==artworkKey){
+   this.artworkSource=artworkKey;const revision=++this.artworkRequest;
+   // Keep the old artwork until a fully decoded replacement is available.
    const coverElement=this.query('karaoke-stage-art');
    const wallpaperElement=this.query('karaoke-stage-wallpaper');
    const opts={viewportWidth:window.innerWidth,viewportHeight:window.innerHeight,dpr:window.devicePixelRatio||1,
     saveData:!!navigator.connection?.saveData,deviceMemory:Number(navigator.deviceMemory)||8};
-   void resolveArtworkAsset(art,{
-    pixels:artworkBudget({role:'stage',...opts}),minDimension:340,
-    displayWidth:opts.viewportWidth,displayHeight:opts.viewportHeight,dpr:opts.dpr
-   }).then(async asset=>{
-    if(this.artworkRequest!==revision||this.artworkSource!==art||!this.opened)return;
-    const nextUrl=asset.url||art;
-    // resolveArtworkAsset already decodes candidates for dimensions; finish
-    // the image decode before swapping either visible stage image.
-    const prepared=new Image();prepared.src=nextUrl;
+   const viewport={displayWidth:opts.viewportWidth,displayHeight:opts.viewportHeight,dpr:opts.dpr};
+   let displayed=null;
+   const offer=async asset=>{
+    if(!asset?.url||this.artworkRequest!==revision||
+     this.artworkSource!==artworkKey||!this.opened)return;
+    const prepared=new Image();prepared.decoding='async';prepared.src=asset.url;
     try{if(prepared.decode)await prepared.decode();else await new Promise((resolve,reject)=>{
      prepared.onload=resolve;prepared.onerror=reject;
      if(prepared.complete&&prepared.naturalWidth)resolve();
     })}catch{return}
-    if(this.artworkRequest!==revision||this.artworkSource!==art||!this.opened)return;
+    if(this.artworkRequest!==revision||this.artworkSource!==artworkKey||!this.opened)return;
+    const real={...asset,url:prepared.src,width:prepared.naturalWidth,height:prepared.naturalHeight};
+    if(displayed&&!preferHDArtwork(real,displayed,viewport))return;
+    displayed=real;
     if(coverElement.src!==prepared.src)coverElement.src=prepared.src;
     if(wallpaperElement.src!==prepared.src)wallpaperElement.src=prepared.src;
-    wallpaperElement.dataset.artQuality=asset.quality;
-   }).catch(()=>{/* keep previous decoded artwork instead of a black frame */});
+    wallpaperElement.dataset.artQuality=asset.quality||'unknown';
+   };
+   const pixels=Math.max(2400,artworkBudget({role:'background',...opts}));
+   void resolveArtworkAsset(art,{
+    pixels,minDimension:340,
+    displayWidth:viewport.displayWidth,displayHeight:viewport.displayHeight,dpr:viewport.dpr
+   }).then(offer).catch(()=>{});
+   // Album release verification is optional and cannot block lyric or audio
+   // updates. Use the same candidate pipeline as the main background.
+   if(track&&navigator.onLine&&/^https:\/\//i.test(track.artwork||'')){
+    void resolveHDAlbumBackground(track,{
+     resolve:resolveArtworkAsset,lookup:requestVerifiedAlbumArtwork,
+     onCandidate:offer,viewport,storage:globalThis.localStorage,
+     saveData:opts.saveData,deviceMemory:opts.deviceMemory
+    }).catch(()=>{/* keep already decoded artwork */});
+   }
   }
   if(force||this.lineRef!==lines){
    this.lineRef=lines;this.currentIndex=-999;
