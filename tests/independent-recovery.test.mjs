@@ -44,7 +44,7 @@ test('Play resets terminal MediaError for same URL without replaying a failed ev
  assert.match(source,/if\(resetMedia\)\{[\s\S]*?else\{audio\.load\(\);\}/);
  assert.match(source,/async function recoverIndependentAudio[\s\S]*?sourceRouter\.resolve\(track/);
  assert.match(source,/if\(await recoverIndependentAudio\(track,current\)\)return true/);
- assert.match(source,/const source=offlineAudio\(track\.id\)\|\|trackAudioURL\(track,\{\s*attempt\s*\}\)/);
+ assert.match(source,/const source=offlineAudio\(track\.id\)\|\|trackAudioURL\(track,\{\s*attempt,prepared:attempt===0&&selectedPreparedId===youtubeID\(track\)\s*\}\)/);
  assert.doesNotMatch(source,/attempt,cacheOnly:attempt===0&&playbackCooldown\.active\(\)/,
   'stale browser cooldown must not force cache-only mode on a genuine Play');
 });
