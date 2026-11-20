@@ -264,6 +264,33 @@ function applyArtworkQuality(element,asset,role){
  if(role==='background')background.dataset.coverQuality=asset.quality||'unknown';
 }
 let coverArtVersion=0,lastCoverArt='',surfaceArtVersion=0,lastSurfaceArt='',backgroundArtVersion=0,lastBackgroundArt='';
+/** Keep visual CDN upgrades off the critical path to native first playback.
+ * Minimal current artwork is shown synchronously; additional image probes are
+ * coalesced until native playing or a bounded 6.5-second fallback.
+ */
+let pendingArtworkTasks=[],pendingArtworkTimer=null;
+function flushPendingArtwork(){
+ if(pendingArtworkTimer!==null)clearTimeout(pendingArtworkTimer);
+ pendingArtworkTimer=null;
+ const tasks=pendingArtworkTasks;pendingArtworkTasks=[];
+ for(const task of tasks){
+  if(task.selection!==playbackSelection||state.current!==task.track)continue;
+  try{task.run()}catch{/* optional visual lookup */}
+ }
+}
+function discardPendingArtwork(){
+ if(pendingArtworkTimer!==null)clearTimeout(pendingArtworkTimer);
+ pendingArtworkTimer=null;pendingArtworkTasks=[];
+}
+function scheduleVisualArtwork(track,run){
+ if(!track||typeof run!=='function'||state.current!==track)return;
+ if(state.playing||state.userPaused||!['loading','recovering'].includes(state.audioState)){
+  run();return;
+ }
+ pendingArtworkTasks.push({track,selection:playbackSelection,run});
+ if(pendingArtworkTimer===null)pendingArtworkTimer=setTimeout(flushPendingArtwork,6500);
+}
+
 const fullscreen=createFullscreenController(document,{
  onChange:active=>{
   for(const button of ['fullscreen-button','karaoke-stage-fullscreen']){
@@ -759,12 +786,14 @@ function updatePlayer(){
   lastCoverArt=coverKey;const version=++coverArtVersion;
   const image=$('#cover-image');image.decoding='async';image.src=cover;
   image.onerror=()=>{if(version!==coverArtVersion)return;image.onerror=null;image.src=icon};
-  if(cover!==icon&&navigator.onLine)void resolveArtworkAsset(cover,{...artworkViewport('cover'),minDimension:260}).then(asset=>{
+  if(cover!==icon&&navigator.onLine)scheduleVisualArtwork(track,()=>void resolveArtworkAsset(cover,{
+   ...artworkViewport('cover'),minDimension:260
+  }).then(asset=>{
    if(version===coverArtVersion&&lastCoverArt===coverKey){
     applyArtworkQuality(image,asset,'cover');
     if(asset.url!==cover&&asset.url)image.src=asset.url
    }
-  });
+  }));
  }
  updatePlayerSurfaceArtwork();
  updateIPodScreen();
@@ -820,12 +849,14 @@ function updatePlayerSurfaceArtwork(){
   $('#player-surface-artwork-repeat').style.backgroundImage=layers;
  };
  apply(raw); // Never flash a missing 4K file over a usable thumbnail.
- if(raw!==fallback)void resolveArtworkAsset(raw,{...artworkViewport('surface'),pixels,minDimension:300}).then(asset=>{
+ if(raw!==fallback)scheduleVisualArtwork(state.current,()=>void resolveArtworkAsset(raw,{
+  ...artworkViewport('surface'),pixels,minDimension:300
+ }).then(asset=>{
   if(version===surfaceArtVersion&&lastSurfaceArt===key&&safeSurfaceArtwork(displayedArtwork(state.current))===raw){
    for(const element of [$('#player-surface-artwork'),$('#player-surface-artwork-repeat')])applyArtworkQuality(element,asset,'surface');
    apply(asset.url||raw);
   }
- });
+ }));
 }
 function closePlayerSurfaceMenu(restoreFocus=false){
  const menu=$('#player-surface-menu');
@@ -1245,6 +1276,7 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false,tdrH
   playbackBackstack.push(state.current);
   if(playbackBackstack.length>30)playbackBackstack.shift();
  }
+ discardPendingArtwork();
  playbackSelection++;navigationRevision++;nextDiscovery=null;invalidateSmartFill();coverCharge.hide();playbackIntentEpoch++;playStartOperation=null;cancelNextOfflinePrefetch();playbackContinuity.select(playbackSelection);silentTailMonitor.reset();
  tdr.select(playbackSelection,{at:selectedAt,autoplay,
   source:tdrSourceForTrack(track,{offline:!!offlineAudio(track.id)}),
