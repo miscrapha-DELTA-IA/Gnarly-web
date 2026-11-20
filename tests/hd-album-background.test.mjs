@@ -289,3 +289,56 @@ test('browser handoff uses the already-loaded player image and preserves the bes
  const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
  assert.match(css,/#gnarly-background\.cover-bg \.photo-background \{[\s\S]*?background-size:cover!important;/);
 });
+
+test('fast verified catalog cover is displayed before MusicBrainz archival validation settles',async()=>{
+ const storage=store(),seen=[];
+ let finishArchive;
+ const archiveWait=new Promise(resolve=>finishArchive=resolve);
+ const appleURL='https://is1-ssl.mzstatic.com/image/thumb/early/2400x2400bb.jpg';
+ const caaURL='https://coverartarchive.org/release/11111111-2222-3333-4444-555555555555/front';
+ const operation=resolveHDAlbumBackground(original,{
+  storage,viewport,
+  resolve:async(url,options)=>{
+   const asset=url.includes('mzstatic')?{url,width:2400,height:2400}:
+    url.includes('coverartarchive')?{url,width:3200,height:3200}:
+    {url,width:1280,height:720};
+   options.onCandidate?.(asset);
+   return asset;
+  },
+  lookup:async(_track,options)=>{
+   options.onCandidate?.({url:appleURL,provider:'apple'});
+   await archiveWait;
+   return {url:caaURL,provider:'musicbrainz'};
+  },
+  onCandidate:asset=>seen.push(asset.url)
+ });
+ await new Promise(resolve=>setTimeout(resolve,0));
+ assert.ok(seen.includes(appleURL),
+  'Apple 2400px cover must be promoted while MusicBrainz still works');
+ assert.ok(!seen.includes(caaURL));
+ finishArchive();
+ assert.equal((await operation).url,caaURL);
+ assert.ok(seen.includes(caaURL));
+});
+test('a transient failed catalog lookup can be retried rather than cached as a successful comparison',async()=>{
+ const storage=store();let calls=0;
+ const opts={
+  storage,viewport,
+  resolve:async url=>({url,width:1280,height:720}),
+  lookup:async()=>{calls++;return null}
+ };
+ await resolveHDAlbumBackground(original,opts);
+ await resolveHDAlbumBackground(original,opts);
+ assert.equal(calls,2,
+  'no valid HD source means the expensive 20h comparison-success TTL is not written');
+ assert.equal(Object.keys(storage.data).length,0);
+});
+test('local artwork diagnostics disclose actual physical upscale, not fictitious resolution',()=>{
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ assert.match(app,/window\.gnarlyArtworkDiagnostics=\(\)=>\{/);
+ assert.match(app,/nativePixelCoverage:Number\(density\.toFixed\(2\)\)/);
+ assert.match(app,/physicalUpscale:density>0/);
+ assert.match(app,/firstVerifiedMs:wallpaperTiming\.firstVerifiedAt/);
+ assert.match(app,/requestedLongEdge:requestedWallpaperPixels/);
+ assert.doesNotMatch(app,/window\.gnarlyArtworkDiagnostics=.*sourceURL/);
+});
