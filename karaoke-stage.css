@@ -428,3 +428,34 @@ html.karaoke-stage-open,html.karaoke-stage-open body{overflow:hidden;overscroll-
  .karaoke-stage[data-backdrop="ambient"] .karaoke-stage-wallpaper::after{animation:none}
  .karaoke-stage .karaoke-settings-menu button{transition:none}
 }
+
+
+/* Compact Karaoke tab: one primary entry; secondary controls remain in a
+ * semantic disclosure without a row of decorative pill buttons. */
+.karaoke-sheet-quickbar{display:flex;align-items:flex-start;gap:9px;flex-wrap:wrap;margin-bottom:12px}
+.karaoke-input-panel .karaoke-sheet-expand{
+ border-radius:12px;min-height:43px;padding:10px 18px;
+ background:var(--acid,#46ff12);border:1px solid transparent;
+ color:#0d160d;font-size:13px;font-weight:720;letter-spacing:-.01em
+}
+.karaoke-sheet-settings{position:relative;flex:1 1 155px;max-width:100%;min-width:140px}
+.karaoke-sheet-settings summary{
+ list-style:none;display:flex;align-items:center;justify-content:center;gap:7px;
+ min-height:43px;padding:10px 15px;border-radius:12px;cursor:pointer;
+ color:#e9f2f1;border:1px solid rgba(255,255,255,.19);background:rgba(255,255,255,.055);
+ font-size:13px;font-weight:650
+}
+.karaoke-sheet-settings summary::-webkit-details-marker{display:none}
+.karaoke-sheet-settings summary span{font-size:17px;line-height:1}
+.karaoke-sheet-settings[open] summary{border-color:var(--acid,#46ff12);background:rgba(255,255,255,.10)}
+.karaoke-sheet-settings-body{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;
+ margin-top:8px;padding:10px;border:1px solid rgba(255,255,255,.14);
+ border-radius:13px;background:rgba(9,16,20,.70)}
+.karaoke-sheet-settings-body button{border-radius:9px;min-width:0;min-height:39px;
+ font-size:12px;padding:9px;text-align:left;overflow-wrap:anywhere}
+.karaoke-sheet-settings-body button:last-child{grid-column:1/-1}
+.karaoke-stage .karaoke-stage-transport{box-shadow:none;border:1px solid rgba(255,255,255,.22)}
+.karaoke-stage .karaoke-stage-close{border-radius:13px;background:rgba(255,255,255,.07)}
+.karaoke-stage .karaoke-stage-gear:focus-visible,
+.karaoke-sheet-settings summary:focus-visible,
+.karaoke-settings-menu select:focus-visible{outline:2px solid var(--acid,#46ff12);outline-offset:2px}
