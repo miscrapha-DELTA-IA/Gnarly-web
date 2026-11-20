@@ -1049,63 +1049,50 @@ function applyBackground(){
    // The currently decoded image remains in place while verified HD sources
    // load. A slow previous candidate must never overwrite a sharper result.
    if(!photo.style.backgroundImage)background.classList.remove('cover-art-ready');
-   const showCandidate=async asset=>{
-    if(!asset?.url)return;
-    // Reuse the actual already-loaded <img> when available. Otherwise decode
-    // once, even if a previous resolver only supplied dimensions. Never treat
-    // the URL's claimed "3200" as the physical pixels drawn.
-    let decoded=asset.image?.naturalWidth>0?asset.image:null;
-    if(!decoded){
-     const img=new Image();
-     img.decoding='async';img.src=asset.url;
-     try{
-      if(img.decode)await img.decode();
-      else await new Promise((resolve,reject)=>{
-       img.onload=resolve;img.onerror=reject;
-       if(img.complete&&img.naturalWidth)resolve();
-      });
-      decoded=img;
-     }catch{return}
-    }
-    if(version!==backgroundArtVersion||lastBackgroundArt!==key||
-     state.backgroundMode!=='cover'||state.current!==track)return;
-    const real={...asset,width:decoded.naturalWidth,height:decoded.naturalHeight};
-    if(displayedAsset&&!preferHDArtwork(real,displayedAsset,viewport))return;
-    asset=real;
-    displayedAsset=real;
-    const now=performance.now();
-    if(!wallpaperTiming.firstVerifiedAt)wallpaperTiming.firstVerifiedAt=now;
-    wallpaperTiming.lastUpgradeAt=now;wallpaperTiming.upgrades++;
-    backgroundDisplayedTrack=track;backgroundDisplayedAsset=asset;
-    photo.style.backgroundImage='url('+JSON.stringify(asset.url)+')';
-    // Render once at the REAL viewport resolution, using high-quality
-    // resampling; weak sources receive vector ambience and a large focal
-    // album cover instead of a jagged full-viewport enlargement.
+   const showCandidate=asset=>{
+    if(!asset?.url)return Promise.resolve(false);
     const assetProvider=asset.provider||
-     (/\bytimg\.com\b/.test(asset.url)?'youtube':
-      /mzstatic\.com/.test(asset.url)?'apple':
-      /dzcdn\.net/.test(asset.url)?'deezer':
-      /coverartarchive\.org/.test(asset.url)?'musicbrainz':'original');
-    wallpaperPainter.paint(decoded,{
-     mode:state.coverPresentation,hue:state.artworkHue,
-     provider:assetProvider
+     (/\\bytimg\\.com\\b/.test(asset.url)?'youtube':
+      /mzstatic\\.com/.test(asset.url)?'apple':
+      /dzcdn\\.net/.test(asset.url)?'deezer':
+      /coverartarchive\\.org/.test(asset.url)?'musicbrainz':'original');
+    // The real source is displayed by a native <img>; the previous layer
+    // remains visible until the new image has loaded. No duplicated
+    // decode(), no canvas raster, no visible HD verification gate.
+    return nativeCoverWallpaper.show(asset.url,{
+     priority:displayedAsset?'low':'high',
+     shouldCommit:decoded=>{
+      if(version!==backgroundArtVersion||lastBackgroundArt!==key||
+       state.backgroundMode!=='cover'||state.current!==track)return false;
+      const real={...asset,width:decoded.naturalWidth,height:decoded.naturalHeight,provider:assetProvider};
+      return !displayedAsset||displayedAsset.url===real.url||
+       preferHDArtwork(real,displayedAsset,viewport);
+     },
+     onCommit:decoded=>{
+      const real={...asset,width:decoded.naturalWidth,height:decoded.naturalHeight,provider:assetProvider};
+      const repeated=displayedAsset?.url===real.url;
+      displayedAsset=real;backgroundDisplayedTrack=track;backgroundDisplayedAsset=real;
+      const now=performance.now();
+      if(!wallpaperTiming.firstVerifiedAt)wallpaperTiming.firstVerifiedAt=now;
+      if(!repeated){wallpaperTiming.lastUpgradeAt=now;wallpaperTiming.upgrades++}
+      // Once the native image is ready, clear the temporary CSS fallback.
+      // Prevents a prior low-resolution background bitmap from lingering.
+      photo.style.backgroundImage='';
+      const sourceQuality=coverDisplayMode(real,viewport);
+      const density=effectiveArtworkDensity(real,viewport);
+      photo.dataset.artLayout='cover';
+      photo.dataset.artSourceLimited=String(sourceQuality==='contain');
+      photo.dataset.artProvider=assetProvider;
+      photo.dataset.artDensity=Number.isFinite(density)?density.toFixed(2):'';
+      applyArtworkQuality(photo,{...real,quality:sourceQuality==='contain'?'low':asset.quality},'background');
+      background.classList.add('cover-art-ready');
+      visual.setPaused(true);
+      if(real.width>=1200&&real.height>=1200){
+       rememberHDArtwork(track,real,localStorage);
+       if(track.backgroundArtwork!==real.url)track.backgroundArtwork=real.url;
+      }
+     }
     });
-    const sourceQuality=coverDisplayMode(asset,viewport);
-    const density=effectiveArtworkDensity(asset,viewport);
-    // Source fidelity affects which image we pick, not how large it appears.
-    photo.dataset.artLayout='cover';
-    photo.dataset.artSourceLimited=String(sourceQuality==='contain');
-    photo.dataset.artProvider=assetProvider;
-    photo.dataset.artDensity=Number.isFinite(density)?density.toFixed(2):'';
-    applyArtworkQuality(photo,{...asset,quality:sourceQuality==='contain'?'low':asset.quality},'background');
-    background.classList.add('cover-art-ready');
-    visual.setPaused(true);
-    // Preserve the strongest decoded image across source changes and
-    // later metadata enrichments; weaker concurrent work cannot overwrite it.
-    if(asset.width>=1200&&asset.height>=1200){
-     rememberHDArtwork(track,asset,localStorage);
-     if(track.backgroundArtwork!==asset.url)track.backgroundArtwork=asset.url;
-    }
    };
    const viewport=artworkViewport('background');
    backgroundArtAccept={track,offer:showCandidate};
