@@ -55,7 +55,7 @@ import {deviceLayout,themeAccent,attachEyeGestures,OFFICIAL_SUPPORT_URL} from '.
 import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel} from './ui/player-surface.js';
 import {createIPodSkinStore,ipodSourceLabel} from './ui/ipod-mode.js';
 import {artworkBudget,artworkCandidates,resolveArtworkAsset} from './lib/artwork-quality.js';
-import {resolveHDAlbumBackground,preferHDArtwork,coverDisplayMode,effectiveArtworkDensity,nativeArtworkWidth} from './lib/hd-album-background.js';
+import {resolveHDAlbumBackground,preferHDArtwork,coverDisplayMode,effectiveArtworkDensity,nativeArtworkWidth,storedHDArtwork} from './lib/hd-album-background.js';
 import {requestVerifiedAlbumArtwork} from './lib/album-artwork-client.js';
 import {createFullscreenController} from './lib/fullscreen-controller.js';
 import {karaokeStageMarkup,KaraokeStage} from './ui/karaoke-stage.js';
@@ -1225,16 +1225,20 @@ async function verifiedAlbumAsset(track,role='background'){
 function applyOfficialArtwork(track,official){
  if(!track||!official?.asset)return;
  const selected=state.current?.id===track.id?state.current:null;
- for(const item of [track,selected])if(item){
+ const applyTo=item=>{
   item.artwork=official.asset.url;item.artworkProvider=official.provider;
-  if(official.asset.width>=900&&official.asset.height>=900)item.backgroundArtwork=official.asset.url;
- }
+  if(official.asset.width<900||official.asset.height<900)return;
+  // Ordinary catalog enrichment must NEVER downgrade a sharper wallpaper
+  // already selected by the multi-provider HD resolver.
+  const remembered=storedHDArtwork(item,localStorage);
+  const proposed={...official.asset,provider:official.provider};
+  if(remembered?preferHDArtwork(proposed,remembered,artworkViewport('background')):
+    !item.backgroundArtwork)item.backgroundArtwork=official.asset.url;
+ };
+ for(const item of [track,selected])if(item)applyTo(item);
  for(const collection of [state.history,state.favorites,state.queue,state.searchResults]){
   if(!Array.isArray(collection))continue;
-  for(const item of collection)if(item?.id===track.id){
-   item.artwork=official.asset.url;item.artworkProvider=official.provider;
-  if(official.asset.width>=900&&official.asset.height>=900)item.backgroundArtwork=official.asset.url;
-  }
+  for(const item of collection)if(item?.id===track.id)applyTo(item);
  }
  omnibox.updateMetadata(track);
  if(selected){updatePlayer();void loadArtworkHue(selected);karaokeStage.refresh();}
