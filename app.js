@@ -55,7 +55,7 @@ import {deviceLayout,themeAccent,attachEyeGestures,OFFICIAL_SUPPORT_URL} from '.
 import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel} from './ui/player-surface.js';
 import {createIPodSkinStore,ipodSourceLabel} from './ui/ipod-mode.js';
 import {artworkBudget,artworkCandidates,resolveArtworkAsset} from './lib/artwork-quality.js';
-import {resolveHDAlbumBackground} from './lib/hd-album-background.js';
+import {resolveHDAlbumBackground,preferHDArtwork} from './lib/hd-album-background.js';
 import {requestVerifiedAlbumArtwork} from './lib/album-artwork-client.js';
 import {createFullscreenController} from './lib/fullscreen-controller.js';
 import {karaokeStageMarkup,KaraokeStage} from './ui/karaoke-stage.js';
@@ -875,13 +875,13 @@ function applyBackground(){
   const key=[track.id,track.title,track.artist,track.album,Math.round(Number(track.duration)||0),source,pixels].join('|');
   if(lastBackgroundArt!==key){
    lastBackgroundArt=key;const version=++backgroundArtVersion;
-   let candidateVersion=0;
+   let displayedAsset=null;
    // The currently decoded image remains in place while verified HD sources
    // load. A slow previous candidate must never overwrite a sharper result.
    if(!photo.style.backgroundImage)background.classList.remove('cover-art-ready');
    const showCandidate=async asset=>{
     if(!asset?.url)return;
-    const sequence=++candidateVersion,img=new Image();
+    const img=new Image();
     img.decoding='async';img.src=asset.url;
     try{
      if(img.decode)await img.decode();
@@ -890,8 +890,10 @@ function applyBackground(){
       if(img.complete&&img.naturalWidth)resolve();
      });
     }catch{return}
-    if(version!==backgroundArtVersion||lastBackgroundArt!==key||sequence!==candidateVersion||
+    if(version!==backgroundArtVersion||lastBackgroundArt!==key||
      state.backgroundMode!=='cover'||state.current!==track)return;
+    if(displayedAsset&&!preferHDArtwork(asset,displayedAsset,viewport))return;
+    displayedAsset=asset;
     photo.style.backgroundImage='url('+JSON.stringify(asset.url)+')';
     applyArtworkQuality(photo,asset,'background');
     background.classList.add('cover-art-ready');
