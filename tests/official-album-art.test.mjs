@@ -151,7 +151,7 @@ test('generic artist can be recovered only when artist/title credits are explici
  const previous=globalThis.fetch;
  let query;
  globalThis.fetch=async url=>{
-  query=new URL(String(url));
+  query=new URL(String(url),'https://gnarly.example');
   return Response.json({artwork:'https://is1-ssl.mzstatic.com/image/thumb/demo/2400x2400bb.jpg',
    provider:'apple',candidates:[{artwork:'https://is1-ssl.mzstatic.com/image/thumb/demo/2400x2400bb.jpg',provider:'apple'}]});
  };
