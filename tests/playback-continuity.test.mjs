@@ -86,7 +86,7 @@ test('GPU prioritization temporarily halves shader work without changing resolut
  assert.ok(Math.abs(v.targetFramePeriod(16100)-1000/24)<.01);
  assert.ok(Math.abs(v.targetFramePeriod(42000)-1000/60)<.01);
  v.playbackActive=false;
- assert.ok(Math.abs(v.targetFramePeriod(42100)-1000/30)<.01);
+ assert.ok(Math.abs(v.targetFramePeriod(42100)-1000/24)<.01,'stopped music uses low-power idle shader cadence');
 });
 
 test('app tracks native clock without writing currentTime during normal playing',()=>{
