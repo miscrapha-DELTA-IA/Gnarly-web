@@ -57,3 +57,47 @@ test('a timed-out prepare is eligible for one bounded retry',async()=>{
  now=30000;assert.equal(await warmup.start(song),false);assert.equal(warmup.failure.attempts,2);
  now=60000;assert.equal(await warmup.start(song),false);assert.equal(calls,2);
 });
+
+test('handoff of a pending next-song prepare does not abort a valid exact-ID job',async()=>{
+ let complete,aborts=0,calls=0;
+ const warmup=new QueueAudioWarmup({fetcher:(_url,{signal})=>{
+  calls++;signal.addEventListener('abort',()=>aborts++);
+  return new Promise(resolve=>complete=resolve);
+ }});
+ const started=warmup.start(song);
+ const inherited=warmup.handoff(song);
+ assert.equal(inherited.accepted,false);
+ assert.ok(inherited.pending);
+ assert.equal(aborts,0,'selected track must not cancel its own pending preparation');
+ complete(new Response('{"status":"preparing"}',{status:202}));
+ assert.equal(await inherited.pending,true);
+ assert.equal(await started,true);
+ assert.equal(calls,1,'handoff must not re-send the same prepare request');
+ assert.equal(aborts,0);
+});
+test('accepted queue prepare is reusable, whereas unrelated preparation is cancelled',async()=>{
+ let aborts=0;
+ const warmup=new QueueAudioWarmup({fetcher:async()=>new Response('{"status":"cached"}',{status:200})});
+ assert.equal(await warmup.start(song),true);
+ const accepted=warmup.handoff(song);
+ assert.equal(accepted.accepted,true);
+ assert.equal(accepted.pending,null);
+ assert.equal(warmup.last,'','new queue items must not be blocked by old accepted ID');
+ const other={...song,videoId:'ZYXWV987654',id:'youtube:ZYXWV987654'};
+ const blocked=new QueueAudioWarmup({fetcher:(_url,{signal})=>{
+  signal.addEventListener('abort',()=>aborts++);
+  return new Promise(()=>{});
+ }});
+ void blocked.start(song);
+ const different=blocked.handoff(other);
+ assert.equal(different.pending,null);
+ assert.equal(different.accepted,false);
+ assert.equal(aborts,1,'unrelated prep is still cancelled');
+});
+test('failed inherited preparation remains retryable through the selected-track budget',async()=>{
+ const warmup=new QueueAudioWarmup({fetcher:async()=>new Response('',{status:503})});
+ const first=warmup.start(song),handoff=warmup.handoff(song);
+ assert.equal(await first,false);
+ assert.equal(await handoff.pending,false);
+ assert.equal(handoff.accepted,false);
+});
