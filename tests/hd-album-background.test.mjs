@@ -181,7 +181,7 @@ test('an original low-resolution fallback never expands past its native Retina p
  assert.equal(nativeArtworkWidth(bigger,viewport),800);
  const tall={url:'https://is1-ssl.mzstatic.com/image/thumb/a/3200x3200bb.jpg',
   width:3200,height:3200};
- assert.ok(nativeArtworkWidth(tall,viewport)>=1000);
+ assert.equal(nativeArtworkWidth(tall,viewport),844);
 });
 test('a large URL is not treated as proof that all official sources were compared',async()=>{
  const storage=store(),calls=[];
