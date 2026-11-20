@@ -36,7 +36,7 @@ test('Voice export is a 16kHz mono PCM WAV, independent of backing-track audio',
  assert.equal(String.fromCharCode(...new Uint8Array(buf,0,4)),'RIFF');
  assert.equal(view.getUint32(24,true),16000);
  assert.equal(view.getUint16(22,true),1);
- assert.notEqual(view.getInt16(44,true),0);
+ assert.notEqual(view.getInt16(46,true),0);
 });
 test('Voice transcript requires opt-in header and supports request cancellation',async()=>{
  let called=0;
