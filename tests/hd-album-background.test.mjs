@@ -133,7 +133,7 @@ test('GNARLY background wires HD resolver while leaving original-color CSS and p
  assert.match(app,/resolveHDAlbumBackground\(track,/);
  assert.match(app,/lookup:requestVerifiedAlbumArtwork/);
  assert.match(app,/backgroundArtVersion/);
- assert.match(app,/preferHDArtwork\(asset,displayedAsset,viewport\)/);
+ assert.match(app,/preferHDArtwork\(real,displayedAsset,viewport\)/);
  assert.match(css,/#gnarly-background\.cover-bg \.photo-background \{[\s\S]*?filter:none;/);
  assert.doesNotMatch(app,/track\.url\s*=\s*asset\.url/);
 });
@@ -173,7 +173,7 @@ test('the background UI keeps full-bleed framing even for a pixel-limited origin
  assert.match(app,/photo\.dataset\.artLayout='cover'/);
  assert.match(app,/photo\.dataset\.artSourceLimited=String\(sourceQuality==='contain'\)/);
  assert.match(app,/Resolução carregada:/);
- assert.match(app,/A capa está em tela cheia, mas o arquivo disponível tem resolução insuficiente/);
+ assert.match(app,/A fonte disponível tem pixels insuficientes para a tela/);
  assert.match(css,/#gnarly-background\.cover-bg \.photo-background \{[\s\S]*?background-size:cover!important;/);
  assert.doesNotMatch(css,/--gnarly-native-art-width|background-size:min\(100%,var\(/);
  assert.doesNotMatch(app,/nativeArtworkWidth|--gnarly-native-art-width/);
@@ -276,12 +276,13 @@ test('verified high-resolution cache is offered before new slow network image pr
 test('browser handoff uses the already-loaded player image and preserves the best art across metadata updates',()=>{
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(app,/function offerLoadedPlayerCoverToWallpaper\(track,image\)/);
- assert.match(app,/if\(!usableCoverForPortraitWallpaper\(asset\)\)return/);
- assert.match(app,/void accept\.offer\(\{\.\.\.asset,provider,alreadyLoaded:true\}\)/);
+ assert.match(app,/if\(!usableCoverForPortraitWallpaper\(asset\)\)\{/);
+ assert.match(app,/void accept\.offer\(\{\.\.\.asset,provider,alreadyLoaded:true,image\}\)/);
+ assert.match(app,/void accept\.offer\(\{\.\.\.asset,provider,alreadyLoaded:true,image,provisional:true\}\)/);
  assert.match(app,/image\.onload=\(\)=>\{/);
  assert.match(app,/let displayedAsset=backgroundDisplayedAsset/);
  assert.match(app,/if\(!displayedAsset&&source&&photo\.style\.backgroundImage/);
- assert.match(app,/if\(!asset\.alreadyLoaded\)\{/);
+ assert.match(app,/let decoded=asset\.image\?\.naturalWidth>0\?asset\.image:null/);
  assert.match(app,/rememberHDArtwork\(track,asset,localStorage\)/);
  assert.match(app,/backgroundArtAccept=\{track,offer:showCandidate\}/);
  assert.match(app,/scheduleVisualArtwork\(track,\(\)=>void resolveHDAlbumBackground\(track,/,
