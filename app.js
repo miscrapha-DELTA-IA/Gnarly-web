@@ -1071,20 +1071,21 @@ function applyBackground(){
     // Render once at the REAL viewport resolution, using high-quality
     // resampling; weak sources receive vector ambience and a large focal
     // album cover instead of a jagged full-viewport enlargement.
+    const assetProvider=asset.provider||
+     (/\bytimg\.com\b/.test(asset.url)?'youtube':
+      /mzstatic\.com/.test(asset.url)?'apple':
+      /dzcdn\.net/.test(asset.url)?'deezer':
+      /coverartarchive\.org/.test(asset.url)?'musicbrainz':'original');
     wallpaperPainter.paint(decoded,{
      mode:state.coverPresentation,hue:state.artworkHue,
-     provider:asset.provider||''
+     provider:assetProvider
     });
     const sourceQuality=coverDisplayMode(asset,viewport);
     const density=effectiveArtworkDensity(asset,viewport);
     // Source fidelity affects which image we pick, not how large it appears.
     photo.dataset.artLayout='cover';
     photo.dataset.artSourceLimited=String(sourceQuality==='contain');
-    photo.dataset.artProvider=asset.provider||
-     (/\bytimg\.com\b/.test(asset.url)?'youtube':
-      /mzstatic\.com/.test(asset.url)?'apple':
-      /dzcdn\.net/.test(asset.url)?'deezer':
-      /coverartarchive\.org/.test(asset.url)?'musicbrainz':'original');
+    photo.dataset.artProvider=assetProvider;
     photo.dataset.artDensity=Number.isFinite(density)?density.toFixed(2):'';
     applyArtworkQuality(photo,{...asset,quality:sourceQuality==='contain'?'low':asset.quality},'background');
     background.classList.add('cover-art-ready');
