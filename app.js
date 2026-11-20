@@ -114,7 +114,7 @@ const playbackCooldown=new PlaybackCooldown({storage:localStorage});
 const selectedAudioWarmup=new QueueAudioWarmup({
  timeout:6500,minIntervalMs:0,canPrepare:()=>true
 });
-let selectedWarmupProbe=null,selectedWarmupId='';
+let selectedWarmupProbe=null,selectedWarmupId='',selectedPreparedId='';
 function cancelSelectedWarmup(){
  selectedWarmupProbe?.abort();selectedWarmupProbe=null;
  selectedAudioWarmup.cancel();
@@ -627,7 +627,7 @@ function updateBadges(){
 // Do not start an external player or load a file picker as an implicit fallback.
 function prepareNativeAudio(track,attempt=0){
  const source=offlineAudio(track.id)||trackAudioURL(track,{
-  attempt
+  attempt,prepared:attempt===0&&selectedPreparedId===youtubeID(track)
  });
  if(!source)return false;
  // HTMLMediaElement.src is absolute, including when assigned /fast-audio/… .
@@ -1253,7 +1253,29 @@ function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false,tdrH
  independentRecoveryController?.abort();independentRecoveryController=null;
  sourceRouter.cancel();
  hideOptionalOfficialSource();
- queueAudioWarmup.reset();cancelSelectedWarmup();selectedWarmupId='';closeQuickPlaylist();
+ // Carry over an accepted or in-flight preparation for this exact next song.
+ // Never cancel its POST at the moment a listener selects the recording.
+ const queuePreparation=queueAudioWarmup.handoff(track);
+ cancelSelectedWarmup();selectedWarmupId='';
+ const preparedId=youtubeID(track);
+ selectedPreparedId=queuePreparation.accepted?preparedId:'';
+ if(queuePreparation.pending&&preparedId){
+  selectedWarmupId=preparedId;
+  const inheritedSelection=playbackSelection;
+  void queuePreparation.pending.then(accepted=>{
+   if(state.current!==track||playbackSelection!==inheritedSelection||state.userPaused)return;
+   if(accepted){
+    selectedPreparedId=preparedId;
+    tdr.mark(inheritedSelection,'prewarm_accepted');
+   }else{
+    selectedWarmupId='';
+    // A rejected speculative POST may retry once through the existing
+    // first-play preparation budget, without delaying native playback.
+    primeSelectedRecording(track,inheritedSelection);
+   }
+  }).catch(()=>{});
+ }
+ closeQuickPlaylist();
  // Commit queue navigation at selection time. The old 'playing' callback
  // left the next item at queue[0] while buffering, so rapid Next taps
  // selected the same object and aborted its first play() promise.
@@ -1826,7 +1848,7 @@ async function play(){
   resolvePending();
  }
 }
-function pause(){tdr.finish(playbackSelection,'user_cancel');refreshTdrPanel();coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();playbackStartedAt=0;cancelNextOfflinePrefetch();playbackIntentEpoch++;playStartOperation=null;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;engine.setTransportPaused(true);audio.pause();stems.pause();pads.stopLoop();closeYouTubePlayer();state.playing=false;updatePlayer()}
+function pause(){tdr.finish(playbackSelection,'user_cancel');refreshTdrPanel();coverCharge.hide();clearNextDiscoveryStatus();navigationRevision++;nextDiscovery=null;invalidateSmartFill();cancelSelectedWarmup();selectedPreparedId='';playbackStartedAt=0;cancelNextOfflinePrefetch();playbackIntentEpoch++;playStartOperation=null;sourceRouter.cancel();playbackStallGuard.clear();lyricTransportSync.stop();state.userPaused=true;queueAudioWarmup.cancel();audioDelivery.cancel();recoveryOperation=null;engine.setTransportPaused(true);audio.pause();stems.pause();pads.stopLoop();closeYouTubePlayer();state.playing=false;updatePlayer()}
 let nextDiscovery=null;
 function clearNextDiscoveryStatus(){if(nextDiscovery)reportAudioStatus('')}
 // Show only a tiny activity cue while Next looks for a verified recording.
