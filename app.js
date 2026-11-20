@@ -1052,10 +1052,10 @@ function applyBackground(){
    const showCandidate=asset=>{
     if(!asset?.url)return Promise.resolve(false);
     const assetProvider=asset.provider||
-     (/\\bytimg\\.com\\b/.test(asset.url)?'youtube':
-      /mzstatic\\.com/.test(asset.url)?'apple':
-      /dzcdn\\.net/.test(asset.url)?'deezer':
-      /coverartarchive\\.org/.test(asset.url)?'musicbrainz':'original');
+     (/\bytimg\.com\b/.test(asset.url)?'youtube':
+      /mzstatic\.com/.test(asset.url)?'apple':
+      /dzcdn\.net/.test(asset.url)?'deezer':
+      /coverartarchive\.org/.test(asset.url)?'musicbrainz':'original');
     // The real source is displayed by a native <img>; the previous layer
     // remains visible until the new image has loaded. No duplicated
     // decode(), no canvas raster, no visible HD verification gate.
@@ -1101,6 +1101,16 @@ function applyBackground(){
    const playerCover=$('#cover-image');
    if(playerCover.complete&&playerCover.naturalWidth>0)
     offerLoadedPlayerCoverToWallpaper(track,playerCover);
+   // Fast path: the thumbnail for this track was normally fetched for search
+   // or the player already. Offer it without waiting for HD catalogue work.
+   // A verified master already on disk may upgrade it independently; stale
+   // and lower-density images are rejected after the actual load event.
+   const fastSource=safeSurfaceArtwork(track.artwork||source);
+   if(!(playerCover.complete&&playerCover.naturalWidth>0))
+    void showCandidate({url:fastSource,provider:track.artworkProvider||'',provisional:true});
+   if(source!==fastSource)void showCandidate({
+    url:source,provider:storedHDArtwork(track,localStorage)?.provider||track.artworkProvider||''
+   });
    if(navigator.onLine){
     // Show the selected cover immediately; HD probes wait for native audio.
     // This is a single existing image URL, not an extra speculative download.
