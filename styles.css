@@ -536,6 +536,16 @@ body{position:relative;min-height:100dvh;background:#05090a}
  pointer-events:none;transform-origin:center;
 }
 #gnarly-background .photo-background[hidden]{display:none!important}
+/* The one-shot 2D raster is never part of the procedural WebGL loop.
+   Covers every screen pixel even when the source is too small to upscale. */
+#gnarly-background #album-wallpaper-canvas{
+ position:absolute;inset:0;width:100%;height:100%;z-index:2;
+ display:block;pointer-events:none;image-rendering:auto;
+ will-change:auto;transform:none;filter:none;
+}
+#gnarly-background #album-wallpaper-canvas[hidden]{display:none!important}
+#gnarly-background .visual-dim{z-index:3}
+
 #gnarly-background .visual-dim{
  position:absolute;inset:0;width:100%;height:100%;z-index:2;
  background:linear-gradient(180deg,#00000017 0%,transparent 28%,#00000023 100%);
