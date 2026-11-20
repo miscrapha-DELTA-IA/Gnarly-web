@@ -71,7 +71,13 @@ async function prefetchCovers(urls,{saved=true}={}){
     const pinned=await caches.open(SAVED_ARTWORK_CACHE);
     if(await pinned.match(request))continue;
     const normal=await caches.open(ARTWORK_CACHE);
-    if(await normal.match(request))continue;
+    const cached=await normal.match(request);
+    // Explicitly saved offline tracks must be promoted from transient
+    // cache into the pinned cache; speculative queue artwork stays transient.
+    if(cached){
+     if(saved)await storeArtwork(request,cached,{saved:true});
+     continue;
+    }
     const response=await fetch(request);
     await storeArtwork(request,response,{saved});
    }catch{/* Album CDNs may be unavailable or local storage exhausted. */}
