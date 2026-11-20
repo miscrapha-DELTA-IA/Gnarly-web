@@ -476,6 +476,7 @@ async function inspectDesktop(expectedWidth,expectedHeight){
   return {root:{x:root.x,width:root.width,height:root.height},canvas:{x:box.x,width:box.width,height:box.height,backingWidth:canvas.width,backingHeight:canvas.height},
    player:{x:panel.x,width:panel.width,right:panel.right},gpu:!!gl,maxTexture,
    desktop:matchMedia('(min-width:900px) and (pointer:fine)').matches,
+   health:window.gnarlyVisualDiagnostics?.()||null,
    viewport:{width,height},scrollWidth:document.documentElement.scrollWidth};
  },[expectedWidth,expectedHeight]);
 }
@@ -484,7 +485,11 @@ assert.ok(desk1.desktop,'Desktop media query should detect a full-size browser w
 assert.ok(Math.abs(desk1.root.width-1440)<2&&desk1.root.height>=900,'PC shell must span full width AND accommodate content past the viewport: '+JSON.stringify(desk1));
 assert.ok(Math.abs(desk1.canvas.width-1440)<2&&Math.abs(desk1.canvas.height-900)<2,'PC GPU canvas should cover viewport');
 assert.ok(desk1.gpu,'Desktop background must retain WebGL2');
-assert.ok(desk1.canvas.backingWidth>=2700&&desk1.canvas.backingHeight>=1600,'Retina 1440px desktop must not render a blurry 2.1MP texture: '+JSON.stringify(desk1));
+assert.ok(desk1.canvas.backingWidth>=1440&&desk1.canvas.backingHeight>=900,
+ 'Full-width background should retain at least viewport-sized GPU detail on a classic scene: '+JSON.stringify(desk1));
+assert.ok(desk1.health?.pixelBudget<=2600000&&
+ desk1.canvas.backingWidth*desk1.canvas.backingHeight<=desk1.health.pixelBudget*1.03,
+ 'Desktop procedural GPU must not allocate 8.3MP at idle: '+JSON.stringify(desk1));
 assert.ok(desk1.player.x>=0&&desk1.player.right<=1440,'Desktop player should fit inside viewport');
 assert.ok(desk1.scrollWidth<=1441,'PC layout should not cause horizontal page scrolling');
 await desktop.setViewportSize({width:1920,height:1080});
@@ -497,7 +502,10 @@ await desktop.waitForFunction(()=>{
 },null,{timeout:15000});
 const desk2=await inspectDesktop(1920,1080);
 assert.ok(Math.abs(desk2.root.width-1920)<2&&desk2.root.height>=1080&&Math.abs(desk2.canvas.width-1920)<2&&Math.abs(desk2.canvas.height-1080)<2,'Viewport canvas must fill 1920 × 1080 while scrollable shell may extend beyond viewport: '+JSON.stringify(desk2));
-assert.ok(desk2.canvas.backingWidth>=1800&&desk2.canvas.backingHeight>=1000,'Full HD frame must retain crisp backing');
+assert.ok(desk2.canvas.backingWidth>=1800&&desk2.canvas.backingHeight>=1000,
+ 'Full HD frame must retain a useful viewport-scale backing buffer');
+assert.ok(desk2.canvas.backingWidth*desk2.canvas.backingHeight<=desk2.health.pixelBudget*1.03,
+ 'Resize must keep the GPU allocation within the desktop scene budget');
 assert.ok(desk2.player.x>=0&&desk2.player.right<=1920,'Desktop content should fit screen');
 await desktop.screenshot({path:'stage78-ui-desktop.png',fullPage:false});
 
