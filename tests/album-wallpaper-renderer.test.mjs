@@ -41,9 +41,10 @@ test('sufficient genuine pixels keep the original full-screen album artwork',()=
   sourceWidth:3200,sourceHeight:3200,width:390,height:844,
   dpr:3,mode:'auto',provider:'apple'
  });
- assert.equal(catalog.mode,'editorial',
-  'a catalog 3200px URL may have been resampled from a low-detail master');
- assert.equal(catalog.catalogResampleRisk,true);
+ assert.equal(catalog.mode,'fill',
+  'decoded 3200px can cover this Retina viewport; provider name alone must not downsample it');
+ assert.equal(catalog.catalogResampleRisk,true,
+  'source can still be a 3000px resample of low-quality upstream artwork');
  const archive=albumWallpaperPlan({
   sourceWidth:3200,sourceHeight:3200,width:390,height:844,
   dpr:3,mode:'auto',provider:'musicbrainz'
@@ -88,6 +89,13 @@ test('single-shot artwork compositor uses high-quality interpolation and bounded
  assert.equal(painter.redraw({mode:'fill'}),true);
  assert.equal(painter.diagnostics().presentation,'fill');
  assert.equal(painter.diagnostics().focusCssPixels,null);
+ assert.equal(canvas.hidden,true,'native CSS wallpaper must not be hidden behind a resampled canvas');
+ assert.equal(canvas.width,1);assert.equal(canvas.height,1);
+ assert.equal(painter.diagnostics().rasterPixels,0);
+ assert.equal(painter.diagnostics().renderPath,'native-css-image');
+ assert.equal(painter.diagnostics().effectiveRasterDpr,null);
+ assert.equal(painter.redraw({mode:'editorial'}),true,'editorial can be reactivated without reloading image');
+ assert.equal(canvas.hidden,false);
  painter.clear();
  assert.equal(canvas.hidden,true);
  assert.equal(canvas.width,1);assert.equal(canvas.height,1);
@@ -109,4 +117,29 @@ test('one-shot wallpaper layer is independent from playback and WebGL and fills 
  assert.match(app,/setSetting\('coverPresentation',chosen\)/);
  assert.match(css,/#gnarly-background.cover-bg .photo-background \{[\s\S]*?background-size:cover!important;/);
  assert.doesNotMatch(app,/track\.url\s*=\s*asset\.url/);
+});
+
+test('genuine 3000px album art is displayed natively, never rasterized to a 5.8MP intermediate',()=>{
+ const {canvas,calls}=createFakeCanvas(2560,1440);
+ const image={naturalWidth:3000,naturalHeight:3000};
+ const painter=createAlbumWallpaperPainter(canvas);
+ assert.equal(painter.paint(image,{mode:'auto',provider:'apple',dpr:1}),true);
+ assert.equal(canvas.hidden,true);
+ assert.deepEqual(calls,[],'browser must handle native CSS background; do not invoke canvas at all');
+ assert.equal(painter.diagnostics().renderPath,'native-css-image');
+ assert.equal(painter.diagnostics().rasterPixels,0);
+ assert.equal(painter.diagnostics().sourceWidth,undefined);
+ assert.equal(painter.redraw({mode:'fill',dpr:2}),true);
+ assert.equal(canvas.hidden,true,'explicit fill preference stays native on HiDPI');
+ assert.deepEqual(calls,[]);
+ assert.equal(painter.redraw({mode:'editorial'}),true);
+ assert.equal(canvas.hidden,false,'editorial mode may still composite its own painted backdrop');
+});
+test('auto presentation switches back to native when decoded source pixels cover physical display',()=>{
+ const enough=albumWallpaperPlan({sourceWidth:3000,sourceHeight:3000,
+  width:1440,height:900,dpr:2,provider:'apple',mode:'auto'});
+ assert.equal(enough.mode,'fill');
+ const inadequate=albumWallpaperPlan({sourceWidth:3000,sourceHeight:3000,
+  width:3840,height:2160,dpr:2,provider:'apple',mode:'auto'});
+ assert.equal(inadequate.mode,'editorial');
 });
