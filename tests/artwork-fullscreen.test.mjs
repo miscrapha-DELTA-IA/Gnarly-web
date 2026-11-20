@@ -197,6 +197,8 @@ test('album-cover backdrop displays source pixels without image filters or scrim
  const custom=css.match(/\.photo-background\{([^}]*)\}/)?.[1]||'';
  assert.doesNotMatch(custom,/filter:/,'custom photos remain unchanged');
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
- assert.match(app,/resolveArtworkAsset\(source,\{\.\.\.artworkViewport\('background'\),pixels,minDimension:900\}\)/,
-  'the viewport still requests a verified high-resolution source');
+ assert.match(app,/resolveHDAlbumBackground\(track,/,
+  'the viewport uses progressive HD artwork resolution');
+ assert.match(app,/resolve:resolveArtworkAsset,lookup:requestVerifiedAlbumArtwork/,
+  'the browser verifies real pixels and asks for a matched album master');
 });
