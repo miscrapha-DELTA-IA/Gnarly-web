@@ -13,15 +13,32 @@ export function karaokeStageMarkup(){
    <img id="karaoke-stage-art" src="./assets/gnarly-icon.png" alt="" class="karaoke-stage-art">
    <div class="karaoke-stage-song"><h2 id="karaoke-stage-heading">GNARLY · Karaokê</h2><p id="karaoke-stage-artist">Selecione uma música</p></div>
    <button type="button" class="karaoke-stage-transport" id="karaoke-stage-play" aria-label="Reproduzir música">▶</button>
-   <button type="button" class="karaoke-stage-fullscreen" id="karaoke-stage-fullscreen" aria-label="Ativar tela cheia" aria-pressed="false" title="Tela cheia"><span data-fullscreen-glyph aria-hidden="true">⛶</span></button>
+   <button type="button" class="karaoke-stage-gear" id="karaoke-stage-settings-toggle" aria-label="Configurações do karaokê" aria-controls="karaoke-stage-settings-menu" aria-expanded="false" title="Configurações">⚙</button>
    <button type="button" class="karaoke-stage-close" id="karaoke-stage-close" aria-label="Recolher karaokê">✕</button>
   </header>
-  <nav class="karaoke-stage-actions" aria-label="Controles de karaokê">
+  <nav class="karaoke-stage-actions karaoke-settings-menu" id="karaoke-stage-settings-menu" aria-label="Configurações do karaokê" hidden>
+   <div class="karaoke-settings-heading"><strong>Configurações</strong><span>Palco e microfone</span></div>
+   <div class="karaoke-settings-kicker">CAPTAÇÃO</div>
+   <div class="karaoke-settings-grid">
    <button type="button" id="karaoke-voice-toggle" aria-pressed="false">🎤 Ligar mic</button>
    <button type="button" id="karaoke-remote-toggle" aria-expanded="false">📱 Usar celular como microfone</button>
    <button type="button" id="karaoke-voice-record" disabled aria-pressed="false">● Gravar voz</button>
-   <button type="button" id="karaoke-caption-settings">Aa · Legenda</button><button type="button" id="karaoke-share-score">Compartilhar resultado</button>
-  </nav>
+   </div>
+   <label class="karaoke-settings-device" for="karaoke-input-device">Entrada do microfone
+    <select id="karaoke-input-device"><option value="">Microfone padrão do sistema</option></select>
+   </label>
+   <p id="karaoke-input-advice" class="karaoke-settings-help">Nos fones Bluetooth, use outro microfone ou o celular para preservar o áudio estéreo.</p>
+   <div class="karaoke-settings-kicker">VISUAL</div>
+   <div class="karaoke-settings-segment" role="group" aria-label="Fundo do karaokê">
+    <button type="button" id="karaoke-background-cover" aria-pressed="true">Capa</button>
+    <button type="button" id="karaoke-background-ambient" aria-pressed="false">Ambiente</button>
+   </div>
+   <div class="karaoke-settings-grid">
+    <button type="button" id="karaoke-caption-settings">Estilo da letra</button>
+    <button type="button" id="karaoke-stage-fullscreen" aria-label="Ativar tela cheia" aria-pressed="false" title="Tela cheia"><span data-fullscreen-glyph aria-hidden="true">⛶</span> Tela cheia</button>
+   </div>
+   <div class="karaoke-settings-kicker">RESULTADO</div>
+   <button type="button" id="karaoke-share-score">Compartilhar resultado</button>
   <div class="karaoke-remote-panel" id="karaoke-remote-panel" hidden>
    <strong>Microfone sem fio · GNARLY</strong>
    <p id="karaoke-remote-status" role="status">Preparando conexão segura…</p>
@@ -35,8 +52,9 @@ export function karaokeStageMarkup(){
    </div>
    <small>Voz enviada por WebRTC criptografado diretamente ao PC. O servidor faz apenas o pareamento e a pontuação usa os dados de voz existentes. Use fones para evitar microfonia. Em redes diferentes a conexão direta pode falhar.</small>
   </div>
-  <p class="karaoke-stage-feedback" id="karaoke-stage-feedback" role="status" aria-live="polite" hidden></p>
   <div class="karaoke-stage-font-menu" id="karaoke-stage-font-menu" aria-label="Escolher estilo da legenda" hidden></div>
+  </nav>
+  <p class="karaoke-stage-feedback" id="karaoke-stage-feedback" role="status" aria-live="polite" hidden></p>
   <section class="karaoke-score-card" aria-label="Pontuação do canto">
    <div><span class="karaoke-score-label" id="karaoke-score-label">MICROFONE INATIVO</span><strong class="karaoke-score-number" id="karaoke-score-number">0</strong></div>
    <div class="karaoke-score-right"><strong id="karaoke-score-combo">1× · 0 combo</strong><small id="karaoke-score-mode">Ritmo e presença · tom indisponível</small></div>
