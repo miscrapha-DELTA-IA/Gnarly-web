@@ -183,3 +183,14 @@ test('offline source remains deterministic after official album artwork changes'
  assert.deepEqual(offlineArtworkPrefetchURLs(track),[canonicalOfflineArtwork(track),track.artwork]);
  assert.equal(artworkForMode({source:'local',artwork:'/assets/gnarly-icon.png'},{online:false}),'/assets/gnarly-icon.png');
 });
+
+test('future album images warm into transient cache without evicting saved offline art',async()=>{
+ const w=harness();await w.install();await w.activate();
+ await w.message({type:'GNARLY_WARM_ALBUM_COVERS',urls:[art]});
+ assert.equal(w.stores.get('gnarly-web-public-artwork-v1')?.size,1);
+ assert.equal(w.stores.get('gnarly-web-saved-artwork-v2')?.size||0,0,
+  'a speculative next-song image is not an explicit offline save');
+ await w.message({type:'GNARLY_CACHE_COVERS',urls:[art]});
+ assert.equal(w.stores.get('gnarly-web-saved-artwork-v2')?.size,1,
+  'a subsequently saved track gets pinned even if artwork was prewarmed');
+});
