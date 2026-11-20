@@ -137,7 +137,7 @@ test('MusicBrainz artwork fallback demands a verified recording and release, not
  };
  try{
   const params=new URLSearchParams({title:track.title,artist:track.artist,
-   album:track.album,duration:String(track.duration),mode:'hd'});
+   album:track.album,duration:'251',mode:'hd'});
   const result=await serveAlbumArtwork(new Request('https://gnarly.example/api/artwork?'+params));
   const data=await result.json();
   assert.equal(data.provider,'musicbrainz');
