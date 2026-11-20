@@ -35,3 +35,20 @@
 ## Privacidade
 
 A sala do Worker recebe um segredo aleatório por sessão. O link de convite contém um token no fragmento `#`, removido da barra do navegador após a entrada. O servidor recebe SDP e candidatos ICE necessários ao pareamento, mas **não o fluxo de mídia WebRTC**. A voz não é gravada nem enviada ao Whisper por esta ponte. O próprio microfone só é capturado após ação explícita no celular; a reprodução local só é liberada por ação explícita no computador.
+
+
+## Atualização do palco e da política de áudio — 20/11/2026
+
+- Referência: NightcoreLab NowPlayingScreen.swift mantém um BackgroundLayer separado da letra, com modos marble/cover. O GNARLY preserva a capa e adiciona Ambiente com gradientes leves; a camada foi movida para um z-index positivo, de modo que não suma atrás do fundo opaco.
+- Interface: uma engrenagem abre um painel de ações com microfone, celular, gravação, aparência, legenda, tela cheia e compartilhamento. A aba compacta prioriza Abrir palco, com ajustes recolhíveis. O painel tem rolagem própria em dispositivos pequenos e Escape fecha antes o menu.
+- Opção de fundo persistida com chave gnarly.karaoke.backdrop (cover/ambient); fallback de gradientes mantém o palco visível quando a imagem estiver indisponível. A imagem anterior continua até a próxima terminar de decodificar.
+- A captação solicita echoCancellation:false, noiseSuppression:false e autoGainControl:false para evitar processamento de voz cantada como chamada. Um seletor de microfone permite usar fonte separada do fone Bluetooth.
+- O GNARLY deixa de forçar navigator.audioSession.type=play-and-record para a música e prefere playback. Este é um pedido ao navegador, sem garantia de roteamento. Se o mesmo fone Bluetooth servir de microfone e saída, o sistema ainda pode trocar A2DP estéreo por HFP de chamadas; o caminho mais confiável é captar pelo celular, microfone interno ou USB.
+- Com captura sem supressão automática, recomendamos fones para evitar microfonia e contaminação do canto por alto-falantes. Em caixas, o processamento de eco pode ser necessário.
+
+### Verificação
+
+- tests/media-session.test.mjs valida a política de música e a seleção exata de fonte.
+- tests/karaoke-stage-layout.browser.mjs valida o plano de fundo e a engrenagem no desktop, celular retrato e paisagem, incluído no workflow Stage72.
+- Teste físico no iPhone Safari: certificar que áudio WebRTC e pontuação continuam com AudioSession playback; caso o navegador suspenda captura, restaurar duplex somente naquele dispositivo com aviso visível.
+- Comparar A2DP/HFP no Windows com microfone do fone versus microfone do celular. Perfil de chamada imposto pelo SO não pode ser neutralizado apenas com JavaScript.
