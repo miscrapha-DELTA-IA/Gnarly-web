@@ -167,7 +167,30 @@ function bufferedAudioAhead(element){
  }catch{}
  return 0;
 }
+// Mirror the NightcoreLab disk/memory cache behavior for the next TWO songs.
+// Only warm known public image URLs after native audio has ample buffered
+// seconds. Never use Guardian audio endpoints or block the current track.
+let artworkWarmKey='',artworkWarmAt=0;
+function warmUpcomingAlbumArtwork(){
+ if(state.backgroundMode!=='cover'||!state.current||audio.paused||state.userPaused||
+  !navigator.onLine||navigator.connection?.saveData||bufferedAudioAhead(audio)<16)return;
+ const controller=navigator.serviceWorker?.controller;
+ if(!controller)return;
+ const urls=[];
+ for(const track of (state.queue||[]).slice(0,2)){
+  const saved=storedHDArtwork(track,localStorage)?.url;
+  for(const url of [saved,track?.backgroundArtwork,track?.artwork]){
+   if(typeof url==='string'&&url.startsWith('https://')&&!urls.includes(url))
+    urls.push(url);
+  }
+ }
+ const chosen=urls.slice(0,4),key=chosen.join('|'),now=Date.now();
+ if(!key||key===artworkWarmKey&&now-artworkWarmAt<90000)return;
+ artworkWarmKey=key;artworkWarmAt=now;
+ controller.postMessage({type:'GNARLY_WARM_ALBUM_COVERS',urls:chosen});
+}
 function prepareUpcomingAudio(){
+ warmUpcomingAlbumArtwork();
  const next=state.queue[0];
  if(!next||next.source!=='youtube'||isOffline(next.id)||audio.paused||
     state.userPaused||playbackCooldown.active()||!navigator.onLine)return;
