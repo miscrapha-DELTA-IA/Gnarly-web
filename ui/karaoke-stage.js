@@ -142,7 +142,7 @@ export class KaraokeStage {
   this.updateScore();
  }
  remoteStatus(status){
-  if(status==='listening'){this.mic.stop();this.scorer.stop()}
+  if(status==='listening'){this.cancelWhisper();this.mic.stop();this.scorer.stop()}
   else if(['off','disconnected','error','ready','paired'].includes(status)&&
    this.scorer.active&&!this.mic.active)this.scorer.stop();
   const messages={
@@ -162,7 +162,7 @@ export class KaraokeStage {
   if(this.remoteHost.socket){
    this.remoteHost.stop();this.query('karaoke-remote-panel').hidden=true;this.updateScore();return;
   }
-  this.mic.stop();this.scorer.stop();
+  this.cancelWhisper();this.mic.stop();this.scorer.stop();
   this.query('karaoke-remote-panel').hidden=false;
   try{this.query('karaoke-remote-link').value=this.remoteHost.start()}
   catch(error){this.query('karaoke-remote-status').textContent=error?.message||'Pareamento indisponível'}
@@ -405,7 +405,7 @@ export class KaraokeStage {
   if(!this.mic.beginRecording()){
    this.onNotify('Este navegador não conseguiu gravar a voz.');return;
   }
-  this.whisperResult=null;this.whisperCapture=capture;
+  this.ignoreNextRecording=false;this.whisperResult=null;this.whisperCapture=capture;
   capture.timer=setTimeout(()=>{if(this.whisperCapture===capture)this.mic.stopRecording()},45000);
   this.onNotify('Gravando apenas sua voz. Ao parar, o trecho será enviado ao Whisper para análise.');
   this.updateScore();
