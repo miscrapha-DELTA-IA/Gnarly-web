@@ -55,7 +55,7 @@ import {deviceLayout,themeAccent,attachEyeGestures,OFFICIAL_SUPPORT_URL} from '.
 import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel} from './ui/player-surface.js';
 import {createIPodSkinStore,ipodSourceLabel} from './ui/ipod-mode.js';
 import {artworkBudget,artworkCandidates,resolveArtworkAsset} from './lib/artwork-quality.js';
-import {resolveHDAlbumBackground,preferHDArtwork} from './lib/hd-album-background.js';
+import {resolveHDAlbumBackground,preferHDArtwork,coverDisplayMode,effectiveArtworkDensity} from './lib/hd-album-background.js';
 import {requestVerifiedAlbumArtwork} from './lib/album-artwork-client.js';
 import {createFullscreenController} from './lib/fullscreen-controller.js';
 import {karaokeStageMarkup,KaraokeStage} from './ui/karaoke-stage.js';
@@ -867,6 +867,9 @@ function applyBackground(){
   lastBackgroundArt='';++backgroundArtVersion;
   background.classList.remove('cover-art-ready');
   delete photo.dataset.artQuality;
+  delete photo.dataset.artLayout;
+  delete photo.dataset.artProvider;
+  delete photo.dataset.artDensity;
   const layer='url('+JSON.stringify(state.backgroundURL)+')';
   if(photo.style.backgroundImage!==layer)photo.style.backgroundImage=layer;
   photo.style.transform=`translate3d(${state.photoX}%,${state.photoY}%,0) scale(${state.photoZoom})`;
@@ -895,7 +898,12 @@ function applyBackground(){
     if(displayedAsset&&!preferHDArtwork(asset,displayedAsset,viewport))return;
     displayedAsset=asset;
     photo.style.backgroundImage='url('+JSON.stringify(asset.url)+')';
-    applyArtworkQuality(photo,asset,'background');
+    const layout=coverDisplayMode(asset,viewport);
+    const density=effectiveArtworkDensity(asset,viewport);
+    photo.dataset.artLayout=layout;
+    photo.dataset.artProvider=asset.provider||'';
+    photo.dataset.artDensity=Number.isFinite(density)?density.toFixed(2):'';
+    applyArtworkQuality(photo,{...asset,quality:layout==='contain'?'low':asset.quality},'background');
     background.classList.add('cover-art-ready');
     visual.setPaused(true);
     // Only persist genuine HD images, never a resized video placeholder.
@@ -926,6 +934,9 @@ function applyBackground(){
   background.classList.remove('cover-art-ready');
   if(photo.style.backgroundImage)photo.style.backgroundImage='';
   delete photo.dataset.artQuality;
+  delete photo.dataset.artLayout;
+  delete photo.dataset.artProvider;
+  delete photo.dataset.artDensity;
   photo.style.removeProperty('--gnarly-art-safe-width');
   photo.style.transform='';
  }
