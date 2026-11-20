@@ -55,7 +55,7 @@ import {deviceLayout,themeAccent,attachEyeGestures,OFFICIAL_SUPPORT_URL} from '.
 import {normalizePlayerSurfaceMode,renderPlayerSurfaceMenu,playerSurfaceShortLabel} from './ui/player-surface.js';
 import {createIPodSkinStore,ipodSourceLabel} from './ui/ipod-mode.js';
 import {artworkBudget,artworkCandidates,resolveArtworkAsset} from './lib/artwork-quality.js';
-import {resolveHDAlbumBackground,preferHDArtwork,coverDisplayMode,effectiveArtworkDensity} from './lib/hd-album-background.js';
+import {resolveHDAlbumBackground,preferHDArtwork,coverDisplayMode,effectiveArtworkDensity,nativeArtworkWidth} from './lib/hd-album-background.js';
 import {requestVerifiedAlbumArtwork} from './lib/album-artwork-client.js';
 import {createFullscreenController} from './lib/fullscreen-controller.js';
 import {karaokeStageMarkup,KaraokeStage} from './ui/karaoke-stage.js';
@@ -902,6 +902,7 @@ function applyBackground(){
   delete photo.dataset.artLayout;
   delete photo.dataset.artProvider;
   delete photo.dataset.artDensity;
+  photo.style.removeProperty('--gnarly-native-art-width');
   const layer='url('+JSON.stringify(state.backgroundURL)+')';
   if(photo.style.backgroundImage!==layer)photo.style.backgroundImage=layer;
   photo.style.transform=`translate3d(${state.photoX}%,${state.photoY}%,0) scale(${state.photoZoom})`;
@@ -932,6 +933,9 @@ function applyBackground(){
     photo.style.backgroundImage='url('+JSON.stringify(asset.url)+')';
     const layout=coverDisplayMode(asset,viewport);
     const density=effectiveArtworkDensity(asset,viewport);
+    const nativeWidth=nativeArtworkWidth(asset,viewport);
+    if(nativeWidth>0)photo.style.setProperty('--gnarly-native-art-width',nativeWidth+'px');
+    else photo.style.removeProperty('--gnarly-native-art-width');
     photo.dataset.artLayout=layout;
     photo.dataset.artProvider=asset.provider||
      (/\bytimg\.com\b/.test(asset.url)?'youtube':
@@ -977,6 +981,7 @@ function applyBackground(){
   delete photo.dataset.artLayout;
   delete photo.dataset.artProvider;
   delete photo.dataset.artDensity;
+  photo.style.removeProperty('--gnarly-native-art-width');
   photo.style.removeProperty('--gnarly-art-safe-width');
   photo.style.transform='';
  }
