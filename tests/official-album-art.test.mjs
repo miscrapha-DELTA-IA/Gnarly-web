@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {upscaleAppleCover,matchAppleCover,matchDeezerCover,serveAlbumArtwork} from '../lib/official-album-art.js';
+import {upscaleAppleCover,matchAppleCover,matchDeezerCover,verifiedArchiveCoverURLs,serveAlbumArtwork} from '../lib/official-album-art.js';
 import {shouldLookupAlbumArtwork,requestVerifiedAlbumArtwork} from '../lib/album-artwork-client.js';
 
 const track={title:'Get Lucky',artist:'Daft Punk',album:'Random Access Memories',duration:248,source:'youtube',artwork:'https://lh3.googleusercontent.com/sample=s120-c'};
@@ -51,7 +51,7 @@ test('artwork API has independent Apple/Deezer fallback; never returns guessed c
   const data=await res.json();
   assert.equal(data.provider,'deezer');
   assert.match(data.artwork,/cdn-images\.dzcdn\.net/);
-  assert.equal(seen.length,2);
+  assert.equal(seen.length,3,'US and BR Apple storefronts are checked before Deezer');
  }finally{globalThis.fetch=previous}
 });
 test('album master flows into background, player, karaoke and visible rows without changing playback',()=>{
@@ -162,4 +162,64 @@ test('generic artist can be recovered only when artist/title credits are explici
   assert.equal(query.searchParams.get('mode'),'hd');
   assert.equal(result.alternatives.length,1);
  }finally{globalThis.fetch=previous}
+});
+
+test('Cover Art Archive returns original and CDN 1200 URL only for verified release IDs',()=>{
+ const release='1c219341-7738-4a97-a124-b3ca2704ba17';
+ assert.deepEqual(verifiedArchiveCoverURLs(release),[
+  'https://coverartarchive.org/release/'+release+'/front',
+  'https://coverartarchive.org/release/'+release+'/front-1200'
+ ]);
+ assert.deepEqual(verifiedArchiveCoverURLs('not-an-mbid'),[]);
+ assert.deepEqual(verifiedArchiveCoverURLs('https://evil.example/path'),[]);
+});
+test('CAA CDN derivative still provides an exact-release cover if archive.org original is unavailable',async()=>{
+ const old=globalThis.fetch,seen=[];
+ const release='2c219341-7738-4a97-a124-b3ca2704ba17';
+ globalThis.fetch=async (url,options)=>{
+  const str=String(url);seen.push(str);
+  if(str.includes('itunes.apple.com'))return Response.json({results:[]});
+  if(str.includes('api.deezer.com'))return Response.json({data:[]});
+  if(str.includes('musicbrainz.org/ws/2/recording'))return Response.json({recordings:[{
+   id:'e8b09b4d-2ca3-4b20-90da-71f681a01249',title:'Get Lucky',
+   length:248000,'artist-credit':[{name:'Daft Punk'}],
+   releases:[{id:release,title:'Random Access Memories',status:'Official'}]
+  }]});
+  if(str.endsWith('/front'))return new Response('unavailable',{status:503});
+  if(str.endsWith('/front-1200')){
+   assert.equal(options.method,'HEAD');
+   return new Response(null,{status:200,headers:{'content-type':'image/jpeg'}});
+  }
+  throw Error('Unexpected lookup '+str);
+ };
+ try{
+  const p=new URLSearchParams({title:track.title,artist:track.artist,
+   album:track.album,duration:'249',mode:'hd'});
+  const response=await serveAlbumArtwork(new Request('https://gnarly.example/api/artwork?'+p));
+  assert.equal(response.status,200);
+  const result=await response.json();
+  assert.equal(result.provider,'musicbrainz');
+  assert.equal(result.artwork,'https://coverartarchive.org/release/'+release+'/front-1200');
+  assert.ok(seen.some(x=>x.endsWith('/front')));
+  assert.ok(seen.some(x=>x.endsWith('/front-1200')));
+ }finally{globalThis.fetch=old}
+});
+test('Brazil storefront rescues a verified album not present in the US catalog',async()=>{
+ const old=globalThis.fetch,seen=[];
+ globalThis.fetch=async url=>{
+  const str=String(url);seen.push(str);
+  if(str.includes('itunes.apple.com'))return Response.json({
+   results:str.includes('country=BR')?apple:[]
+  });
+  if(str.includes('api.deezer.com'))return Response.json({data:[]});
+  throw Error('Unexpected source '+str);
+ };
+ try{
+  const p=new URLSearchParams({title:track.title,artist:track.artist,album:track.album,
+   duration:'250',mode:'hd'});
+  const result=await serveAlbumArtwork(new Request('https://gnarly.example/api/artwork?'+p));
+  assert.equal((await result.json()).provider,'apple');
+  assert.ok(seen.some(x=>x.includes('country=US')));
+  assert.ok(seen.some(x=>x.includes('country=BR')));
+ }finally{globalThis.fetch=old}
 });
