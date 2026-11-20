@@ -291,7 +291,9 @@ test('browser handoff uses the already-loaded player image and preserves the bes
  assert.match(app,/void accept\.offer\(\{\.\.\.asset,provider,alreadyLoaded:true,image,provisional:true\}\)/);
  assert.match(app,/image\.onload=\(\)=>\{/);
  assert.match(app,/let displayedAsset=backgroundDisplayedAsset/);
- assert.match(app,/if\(!displayedAsset&&source&&photo\.style\.backgroundImage/);
+ assert.match(app,/if\(!displayedAsset\)\{/);
+ assert.doesNotMatch(app,/photo\.style\.backgroundImage='url\('\+JSON\.stringify\(source\)/,
+  'native cover must not fetch the same image again into a CSS raster');
  assert.match(app,/nativeCoverWallpaper.show\(asset.url/);
  assert.doesNotMatch(app,/if\(img\.decode\)await img\.decode\(\)/);
  assert.match(app,/rememberHDArtwork\(track,real,localStorage\)/);
