@@ -72,7 +72,7 @@ import {settleAudioStart} from './lib/audio-start-deadline.js';
 const $=(selector)=>document.querySelector(selector);
 const app=$('#app-shell'), background=$('#gnarly-background'), audio=$('#player-audio'), visual=new FluidVisual($('#fluid-canvas'),{deferInit:true});
 const engine=new WebAudioEngine(audio);
-const silentTailMonitor=new SilentTailMonitor();
+const silentTailMonitor=new SilentTailMonitor({silenceSeconds:4,minWallMs:3500});
 // Purely visual loading cue, deferred so instant cache hits never flash.
 const coverCharge=createCoverCharge({target:$('#player-section')});
 const playbackStallGuard=new PlaybackStallGuard();
@@ -2345,8 +2345,8 @@ function scheduleSpeedMix(){
 let studioEffectsPending=null;
 function audioEffectsRequested(){return state.bass>0||state.reverb>0}
 function autoEnableStudioEffects(){
- if(!engine.nativeTransport||!audioEffectsRequested()||!state.current)return Promise.resolve(true);
  if(studioEffectsPending)return studioEffectsPending;
+ if(!engine.nativeTransport||!audioEffectsRequested()||!state.current)return Promise.resolve(true);
  const pending=engine.enableStudioEffects().then(enabled=>{
   if(!enabled)throw Error('Processamento Web Audio indisponível');
   engine.setBass(state.bass);engine.setReverb(state.reverb);
@@ -3961,9 +3961,9 @@ audio.addEventListener('play',()=>{if(state.userPaused){audio.pause();return}if(
  const canHear=possiblyInflated&&!document.hidden&&
   !!engine.mediaSource&&!engine.nativeTransport&&
   engine.ctx?.state==='running'&&engine.transportPaused===false&&
-  !audio.paused&&!audio.seeking&&!audio.muted&&audio.volume>0&&
+  !audio.paused&&!audio.seeking&&!audio.muted&&audio.volume>0&&!stems.ready&&
   audio.readyState>=2;
- const rms=canHear?silentTailMonitor.read(engine.analyser):null;
+ const rms=canHear?silentTailMonitor.read(engine.sourceAnalyser):null;
  const confirmedSilentTail=silentTailMonitor.sample({
   mediaDuration:audio.duration,catalogDuration:state.current?.duration,
   source:state.current?.source,offline:!!offlineAudio(state.current?.id),
@@ -4062,7 +4062,7 @@ audio.addEventListener('stalled',()=>{
  tdr.mark(playbackSelection,'stalled');
  playbackContinuity.transportEvent('stalled');visual.prioritizeAudio('stalled');
  updateBufferingCue();
-});audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;tdr.playing(playbackSelection,{position:audio.currentTime||0,route:audioSourceCategory(audio.currentSrc||audio.src)});refreshTdrPanel();hideOptionalOfficialSource();coverCharge.hide();if(pendingArtworkTasks.length)setTimeout(flushPendingArtwork,250);rebufferWatch=null;engine.setTransportPaused(false);sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();engine.restoreSpeed();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
+});audio.addEventListener('playing',()=>{if(!state.current||state.userPaused||audio.paused||audio.ended)return;tdr.playing(playbackSelection,{position:audio.currentTime||0,route:audioSourceCategory(audio.currentSrc||audio.src)});refreshTdrPanel();hideOptionalOfficialSource();coverCharge.hide();if(pendingArtworkTasks.length)setTimeout(flushPendingArtwork,250);rebufferWatch=null;engine.setTransportPaused(false);sourceRouter.cancel();playbackStallGuard.clear();state.playing=true;updatePlayer();if(stems.ready)void stems.play();state.audioState='playing';reportAudioStatus('');lyricTransportSync.start();if(state.current&&lastRecordedSelection!==playbackSelection){listeningMemory.record('play',state.current);lastRecordedSelection=playbackSelection;}if(playbackStartedAt){
   const ms=Math.round(performance.now()-playbackStartedAt);
   const origin=audio.currentSrc.startsWith('blob:')?'offline':audio.currentSrc.includes('/fast-audio/')?'fast-edge':audio.currentSrc.includes('/audius-audio/')?'audius':audio.currentSrc.includes('/jamendo-audio/')?'jamendo':'render';
   console.debug('GNARLY startup ms',ms,'origin',origin);
@@ -4097,12 +4097,12 @@ audio.addEventListener('stalled',()=>{
  else if(state.current.source!=='youtube')
   reportAudioError((state.current.source==='audius'||state.current.source==='jamendo')?'A fonte independente não conseguiu transmitir esta faixa. Tente outra música.':'Não foi possível carregar o áudio.');
 });
-// Source swaps can trigger an asynchronous browser reset to 1x. Repair only
-// unexpected rate changes: a user preset/slider has already changed engine.speed.
+// Resource selection, loadedmetadata and explicit Play restore the preset.
+// Do not write playbackRate in response to ratechange: a browser that clamps
+// or asynchronously reconfigures its decoder can otherwise enter a write loop.
 audio.addEventListener('ratechange',()=>{
  playbackContinuity.transportEvent('ratechange');
- if(state.current&&(!Number.isFinite(Number(audio.playbackRate))||
-    Math.abs(Number(audio.playbackRate)-engine.speed)>0.001))engine.restoreSpeed();
+ silentTailMonitor.cancelSilence();
 });
 // MediaSession handlers are registered exactly once by externalMedia.
 // The native media element owns the authoritative play/pause and clock.

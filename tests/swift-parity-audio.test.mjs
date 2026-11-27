@@ -124,8 +124,10 @@ test('only one stable DSP graph and one original media source, no rebuild during
   assert.equal(engine.limiter.ratio.value,16);
   assert.equal(engine.limiter.attack.value,.003);
   assert.equal(engine.limiter.release.value,.08);
-  assert.equal(engine.eqOutput.connected.includes(engine.hall.input),false,
-   'hall send is bypassed when reverb is off');
+  assert.equal(engine.eqOutput.connected.includes(engine.hall.input),true,
+   'hall remains wired while its send gain is zero');
+  near(engine.hall.input.gain.value,0);
+  assert.ok(engine.mediaSource.connected.includes(engine.sourceAnalyser));
   assert.equal(engine.hall.voices.length,4);
   const hall=engine.hall;
   engine.setBass(12);
@@ -145,8 +147,11 @@ test('only one stable DSP graph and one original media source, no rebuild during
   assert.equal(engine.eqOutput.connected.filter(x=>x===engine.hall.input).length,1);
   assert.equal(engine.hall,hall,'wet changes never rebuild the algorithmic hall');
   engine.setReverb(0);
-  assert.equal(engine.eqOutput.connected.includes(engine.hall.input),false);
+  assert.equal(engine.eqOutput.connected.includes(engine.hall.input),true);
+  near(engine.hall.input.gain.value,0);
   near(engine.wet.gain.value,0);
+  for(const wet of [.7,0,.3,0,.7,0])engine.setReverb(wet);
+  assert.equal(engine.eqOutput.connected.filter(x=>x===engine.hall.input).length,1);
  }finally{globalThis.window=previous}
 });
 
@@ -220,4 +225,11 @@ test('a previously saved Slowed + Reverb mix attaches Studio before first audio.
  assert.ok(preattach>=0&&start>preattach,
   'create the only Studio audio route before native playback begins');
  assert.doesNotMatch(play.slice(preattach,start),/await autoEnableStudioEffects\(/);
+});
+
+test('ratechange never writes back to the decoder during its own notification',()=>{
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ const listener=app.slice(app.indexOf("audio.addEventListener('ratechange',()=>{"),app.indexOf('// MediaSession handlers'));
+ assert.ok(listener.includes('silentTailMonitor.cancelSilence()'));
+ assert.doesNotMatch(listener,/engine\.(restoreSpeed|setSpeed)\(/);
 });

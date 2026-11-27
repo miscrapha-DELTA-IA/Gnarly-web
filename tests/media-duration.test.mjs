@@ -62,14 +62,16 @@ test('potential ghost tail never ends a healthy track unless independently confi
  assert.equal(shouldFinishGhostTail({...recorded,currentTime:t.ghostEndAt+.2,recovering:true}),false);
  assert.equal(shouldFinishGhostTail({...recorded,currentTime:391}),false);
 });
-test('never forcibly end legitimate long edits, uploads, offline audio, live tracks or previews',()=>{
+test('never forcibly end legitimate long edits, uploads, live tracks or previews without evidence',()=>{
  for(const source of ['local','audius','jamendo','preview','live','']){
   const props={...recorded,source,currentTime:260};
   assert.equal(mediaTimeline(props).inflated,false,source);
   assert.equal(shouldFinishGhostTail(props),false,source);
  }
  assert.equal(shouldFinishGhostTail({...recorded,offline:true,currentTime:260}),false);
- assert.equal(mediaTimeline({...recorded,offline:true}).duration,390);
+ assert.equal(mediaTimeline({...recorded,offline:true}).duration,192);
+ assert.equal(shouldFinishGhostTail({...recorded,offline:true,currentTime:260,confirmedSilentTail:true}),true);
+ assert.equal(mediaTimeline({...recorded,offline:true,audibleExtended:true}).duration,390);
  assert.equal(shouldFinishGhostTail({...recorded,catalogDuration:0,currentTime:260}),false);
  assert.equal(shouldFinishGhostTail({...recorded,catalogDuration:15,currentTime:260}),false);
  assert.equal(shouldFinishGhostTail({...recorded,catalogDuration:4000,currentTime:260}),false);

@@ -55,7 +55,7 @@ test('only credible inflated durations from a known remote song can be provision
  for(const source of ['local','preview','audius','jamendo']){
   assert.equal(mediaTimeline({...track,source}).duration,390,source);
  }
- assert.equal(mediaTimeline({...track,offline:true}).duration,390);
+ assert.equal(mediaTimeline({...track,offline:true}).duration,192);
  assert.equal(mediaTimeline({...track,mediaDuration:450}).duration,192);
  assert.equal(mediaTimeline({...track,catalogDuration:0}).duration,390);
  assert.equal(mediaTimeline({...track,catalogDuration:12}).duration,390);
@@ -81,8 +81,18 @@ test('app uses measured waveform only when a WebAudio graph already exists',()=>
  const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
  assert.match(app,/\!\!engine\.mediaSource\&\&\!engine\.nativeTransport/);
  assert.match(app,/const possiblyInflated=activeTimeline\(\)\.inflated/);
- assert.match(app,/silentTailMonitor\.read\(engine\.analyser\)/);
+ assert.match(app,/silentTailMonitor\.read\(engine\.sourceAnalyser\)/);
  assert.match(app,/recovering:!!recoveryOperation,confirmedSilentTail/);
  assert.match(app,/silentTailMonitor\.reset\(\)/);
  assert.match(app,/silentTailMonitor\.cancelSilence\(\)/);
+});
+
+test('cached canonical recording can complete on sustained decoded silence; invalid samples clear confirmation',()=>{
+ const guard=new SilentTailMonitor({silenceSeconds:4,minWallMs:3500});
+ sample(guard,150,.05,1000,{offline:true});
+ for(let t=205;t<209;t++)assert.equal(sample(guard,t,0,(t-203)*1000,{offline:true}),false);
+ assert.equal(sample(guard,209,0,6000,{offline:true}),true);
+ assert.equal(sample(guard,210,null,7000,{offline:true,valid:false}),false);
+ assert.equal(guard.confirmed,false);
+ assert.equal(sample(guard,211,0,8000,{offline:true}),false);
 });
