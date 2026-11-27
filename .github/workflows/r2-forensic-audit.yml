@@ -18,7 +18,7 @@ jobs:
           node-version: '22'
       - name: Set up media tools
         run: |
-          command -v ffmpeg
+          command -v ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y ffmpeg)
           command -v ffprobe
           npm install --no-save playwright@1.56.1
       - name: Inspect all existing R2 recordings without extraction
