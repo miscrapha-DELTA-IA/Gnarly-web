@@ -1,0 +1,27 @@
+name: GNARLY read-only end-to-end R2 forensic audit
+on:
+  pull_request:
+    paths:
+      - 'tests/live-r2-forensic-audit.mjs'
+      - '.github/workflows/r2-forensic-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Set up media tools
+        run: |
+          command -v ffmpeg
+          command -v ffprobe
+          npm install --no-save playwright@1.56.1
+      - name: Inspect all existing R2 recordings without extraction
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+        run: node tests/live-r2-forensic-audit.mjs
