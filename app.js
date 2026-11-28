@@ -22,6 +22,7 @@ import {officialEmbedURL,officialWatchURL,canUseOfficial,shouldUseOfficialAfterN
 import {AudioDeliveryRecovery,PlaybackCooldown,resolvePlaybackCooldown,playbackLimitMessage,publicAudioMessage} from './lib/audio-delivery.js';
 import {PLAYBACK_RETRY_TEXT,renderPlaybackFeedback} from './lib/player-feedback.js';
 import {waitForPCNodeReady,waitForPCNodeCache} from './lib/pc-node-recovery.js';
+import {conserveBackgroundTraffic} from './lib/network-budget.js';
 import {audioSourceCategory,recordStreamingMetric} from './lib/streaming-metrics.js';
 import {TdrMonitor,tdrSourceForTrack} from './lib/tdr-metrics.js';
 import {renderTdrPanel,formatTdrDuration} from './ui/tdr-panel.js';
@@ -171,7 +172,9 @@ function bufferedAudioAhead(element){
 // Only warm known public image URLs after native audio has ample buffered
 // seconds. Never use Guardian audio endpoints or block the current track.
 let artworkWarmKey='',artworkWarmAt=0;
+function lowBandwidthActive(){return conserveBackgroundTraffic(navigator.connection,getSetting('lowBandwidth','no')==='yes')}
 function warmUpcomingAlbumArtwork(){
+ if(lowBandwidthActive())return;
  if(state.backgroundMode!=='cover'||!state.current||audio.paused||state.userPaused||
   !navigator.onLine||navigator.connection?.saveData||bufferedAudioAhead(audio)<16)return;
  const controller=navigator.serviceWorker?.controller;
@@ -190,6 +193,7 @@ function warmUpcomingAlbumArtwork(){
  controller.postMessage({type:'GNARLY_WARM_ALBUM_COVERS',urls:chosen});
 }
 function prepareUpcomingAudio(){
+ if(lowBandwidthActive())return;
  warmUpcomingAlbumArtwork();
  const next=state.queue[0];
  if(!next||next.source!=='youtube'||isOffline(next.id)||audio.paused||
@@ -221,6 +225,7 @@ let midstreamRescueSelection=-1,midstreamRescuePending=null,rebufferWatch=null;
  * Prioritize current playback, meter limits, storage and cancellation.
  */
 async function cacheNextReadyOffline(track){
+ if(lowBandwidthActive())return;
  if(!track||!offlineLoaded||!navigator.onLine||document.hidden||
     state.userPaused||audio.paused||state.audioState!=='playing'||
     track.source!=='youtube'||track.playbackAvailability!=='r2'||
@@ -233,7 +238,7 @@ async function cacheNextReadyOffline(track){
    return;
  const quota=await navigator.storage?.estimate?.().catch(()=>null);
  if(quota&&quota.quota-quota.usage<32*1024*1024)return;
- if(audio.paused||state.userPaused||!navigator.onLine||
+ if(lowBandwidthActive()||audio.paused||state.userPaused||!navigator.onLine||
     bufferedAudioAhead(audio)<20||state.queue[0]?.id!==track.id||
     offlinePrefetchOperation||offlinePrefetchAttempted.has(track.id))return;
  const controller=new AbortController(),selection=playbackSelection;
@@ -2980,7 +2985,7 @@ function renderSheetCore(){const content=$('#sheet-content');switch(state.sheet)
  case 'performance':content.innerHTML=renderPerformancePanel(midiView());break;
  case 'display':content.innerHTML=renderDisplayPanel(displayStore);break;
  case 'tdr':content.innerHTML=renderTdrPanel(tdr.snapshot());break;
- case 'more':content.innerHTML=`<div class="section-head">ACESSO RÁPIDO</div><div class="button-row">${btn('🎨 Temas','go-theme','alt')}${btn('⚡ Experiências','go-experience','alt')}${btn('Aa · Legendas','go-lyric-style','alt')}${btn('Ritmo visual','go-reaction','alt')}${btn('Performance · DJ','go-performance')}${btn('Música · ajustes','go-controls')}${btn('Adicionar músicas','import','alt')}${btn('↓ Baixar música atual','download-current','alt')}${btn('Mix e biblioteca','go-library','alt')}${btn('Playlists','go-playlists','alt')}${btn('Favoritos','go-favorites','alt')}${btn('Fila','go-queue','alt')}${btn('Karaokê','go-karaoke','alt')}${btn('Exibição','go-display','alt')}${btn('⏱ Tempo de Reprodução · TDR','go-tdr','alt')}${app.dataset.deviceLayout==='phone'?'':btn('⛶ Tela cheia','toggle-fullscreen','alt')}</div><div class="section-head">APOIAR O GNARLY</div><a class="support-external-link" href="${OFFICIAL_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">♡ Apoiar no Apoia.se</a><div class="section-head">MODO APLICATIVO</div><div class="button-row">${btn('↗ Abrir sem barra do Safari','go-install','alt')}</div>`;break;
+ case 'more':content.innerHTML=`<div class="section-head">ACESSO RÁPIDO</div><div class="button-row">${btn('🎨 Temas','go-theme','alt')}${btn('⚡ Experiências','go-experience','alt')}${btn('Aa · Legendas','go-lyric-style','alt')}${btn('Ritmo visual','go-reaction','alt')}${btn('Performance · DJ','go-performance')}${btn('Música · ajustes','go-controls')}${btn('Adicionar músicas','import','alt')}${btn('↓ Baixar música atual','download-current','alt')}${btn('Mix e biblioteca','go-library','alt')}${btn('Playlists','go-playlists','alt')}${btn('Favoritos','go-favorites','alt')}${btn('Fila','go-queue','alt')}${btn('Karaokê','go-karaoke','alt')}${btn('Exibição','go-display','alt')}${btn('⏱ Tempo de Reprodução · TDR','go-tdr','alt')}${app.dataset.deviceLayout==='phone'?'':btn('⛶ Tela cheia','toggle-fullscreen','alt')}</div><div class="section-head">CONEXÃO</div><label class="section-note"><input id="low-bandwidth-mode" type="checkbox" ${getSetting('lowBandwidth','no')==='yes'?'checked':''}> Modo econômico</label><p class="section-note">Reduz transferências antecipadas da fila e capas em conexões lentas. Não altera a qualidade do áudio nem os downloads manuais. Em redes detectadas como lentas, a proteção também é automática.</p><div class="section-head">APOIAR O GNARLY</div><a class="support-external-link" href="${OFFICIAL_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">♡ Apoiar no Apoia.se</a><div class="section-head">MODO APLICATIVO</div><div class="button-row">${btn('↗ Abrir sem barra do Safari','go-install','alt')}</div>`;break;
   case 'install':content.innerHTML=renderAppInstallGuide({platform:installPlatform(navigator.userAgent,navigator.maxTouchPoints),standalone:installModeFromBrowser()});break;
  case 'export':content.innerHTML=`<p class="section-note">Crie uma imagem ou um Story de até 15 segundos com prévia, qualidade e proporção selecionáveis.</p><p role="status" data-export-feedback></p><div class="export-formats">${[['image','Imagem estática'],['video','Vídeo · Story de até 15 s'],['player-audio','Player com áudio'],['lyrics-audio','Letras com áudio'],['player-noaudio','Player sem áudio'],['lyrics-noaudio','Letras sem áudio']].map(([id,name])=>`<button data-export-format="${id}" class="export-option">${name}<small>${id==='image'?'PNG · visual atual':'Story · até 15 s'}</small></button>`).join('')}</div><div class="section-head">ESTILO</div><div class="chip-row">${['Clássica','Neon','Mono','Cinema','Máquina'].map(x=>`<button class="chip ${state.exportStyle===x?'selected':''}" data-export-style="${x}">${x}</button>`).join('')}</div>`;break;
  case 'theme':
@@ -3516,7 +3521,7 @@ function handlePanelClick(e){const target=e.target.closest('button,[data-lyric-t
  }
 }
 
-function handlePanelInput(e){const el=e.target;if(el.id==='lyric-font-search'){updateLyricFontFilter();return}if(el.id==='lyrics-ai-autofallback'){lyricsAIAutoSession=el.checked;if(el.checked&&state.current?.source==='local'&&state.current.file&&!state.lyricsSynced&&!state.lyricsAIWorking&&!lyricsAIOnce.has(state.current.id)){lyricsAIOnce.add(state.current.id);void transcribeOwnLyrics(state.current.file)}return}if(el.hasAttribute('data-dj-bpm')){pads.setBpm(el.value);return}if(el.dataset.photoParameter){const key=el.dataset.photoParameter;const v=Number(el.value);if(['photoZoom','photoX','photoY'].includes(key)&&Number.isFinite(v)){state[key]=v;setSetting(key,v);applyBackground();if(key==='photoZoom')$('#photo-zoom-value').textContent=Math.round(v*100)+'%'}return}if(el.dataset.panelToggle){displayStore.set(el.dataset.panelToggle,el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.hasAttribute('data-zen-toggle')){displayStore.setZen(el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.id==='search-term'){void runSearch(el.value,{live:true});return}if(el.dataset.stemLevel){const kind=el.dataset.stemLevel;stems.setLevel(kind,el.value);const label=$(`#stem-${kind}-value`);if(label)label.textContent=`${Math.round(stems.levels[kind]*100)}%`;return}if(el.dataset.slider){const id=el.dataset.slider,v=Number(el.value);if(id==='speed'){state.speed=v;scheduleSpeedMix();state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='reverb'){state.reverb=v;engine.setReverb(v);state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='bass'){state.bass=v;engine.setBass(v)}if((id==='bass'||id==='reverb')&&audioEffectsRequested())void autoEnableStudioEffects();setSetting(id,v);const out=$(`#${id}-value`);if(out)out.textContent=mixerValue(id,v)}if(el.id==='pitch-check'){state.pitch=el.checked;commitSpeedMix();setSetting('pitch',state.pitch?'yes':'no');state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}}
+function handlePanelInput(e){const el=e.target;if(el.id==='low-bandwidth-mode'){setSetting('lowBandwidth',el.checked?'yes':'no');if(lowBandwidthActive()){queueAudioWarmup.cancel();cancelNextOfflinePrefetch()}return}if(el.id==='lyric-font-search'){updateLyricFontFilter();return}if(el.id==='lyrics-ai-autofallback'){lyricsAIAutoSession=el.checked;if(el.checked&&state.current?.source==='local'&&state.current.file&&!state.lyricsSynced&&!state.lyricsAIWorking&&!lyricsAIOnce.has(state.current.id)){lyricsAIOnce.add(state.current.id);void transcribeOwnLyrics(state.current.file)}return}if(el.hasAttribute('data-dj-bpm')){pads.setBpm(el.value);return}if(el.dataset.photoParameter){const key=el.dataset.photoParameter;const v=Number(el.value);if(['photoZoom','photoX','photoY'].includes(key)&&Number.isFinite(v)){state[key]=v;setSetting(key,v);applyBackground();if(key==='photoZoom')$('#photo-zoom-value').textContent=Math.round(v*100)+'%'}return}if(el.dataset.panelToggle){displayStore.set(el.dataset.panelToggle,el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.hasAttribute('data-zen-toggle')){displayStore.setZen(el.checked);applyPanelVisibility();renderActiveSurfaces();return}if(el.id==='search-term'){void runSearch(el.value,{live:true});return}if(el.dataset.stemLevel){const kind=el.dataset.stemLevel;stems.setLevel(kind,el.value);const label=$(`#stem-${kind}-value`);if(label)label.textContent=`${Math.round(stems.levels[kind]*100)}%`;return}if(el.dataset.slider){const id=el.dataset.slider,v=Number(el.value);if(id==='speed'){state.speed=v;scheduleSpeedMix();state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='reverb'){state.reverb=v;engine.setReverb(v);state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}if(id==='bass'){state.bass=v;engine.setBass(v)}if((id==='bass'||id==='reverb')&&audioEffectsRequested())void autoEnableStudioEffects();setSetting(id,v);const out=$(`#${id}-value`);if(out)out.textContent=mixerValue(id,v)}if(el.id==='pitch-check'){state.pitch=el.checked;commitSpeedMix();setSetting('pitch',state.pitch?'yes':'no');state.preset='CUSTOM';setSetting('preset','CUSTOM');updatePresetButtons()}}
 for(const host of [$('#sheet-content'),$('#module-dock')]){host.addEventListener('click',handlePanelClick);host.addEventListener('input',handlePanelInput);
  host.addEventListener('change',e=>{if(e.target?.dataset?.slider==='speed')commitSpeedMix()})}
 $('#sheet-content').addEventListener('change',e=>{if(!e.target.hasAttribute('data-smart-playlist'))return;const name=e.target.value;if(!playlistStore.names().includes(name))return;selectedPlaylist=name;setSetting('smartPlaylist',name);if(smartMode==='playlist'){invalidateSmartFill();state.queue=retainManualQueue(state.queue);void maybeFillSmartQueue({force:true})}renderSheet()});
@@ -3993,7 +3998,7 @@ audio.addEventListener('play',()=>{if(state.userPaused){audio.pause();return}if(
  if(audio.currentTime>=8&&state.playing&&!audio.paused)prepareUpcomingAudio();
  // Warm one upcoming recording in the last 75 seconds, never full playlists.
  const nextTrack=state.queue[0];
- if(state.playing&&!audio.paused&&nextTrack?.source==='youtube'&&!isOffline(nextTrack?.id)&&canWarmNext({
+ if(!lowBandwidthActive()&&state.playing&&!audio.paused&&nextTrack?.source==='youtube'&&!isOffline(nextTrack?.id)&&canWarmNext({
   current:state.current,next:nextTrack,
   remaining:(activeTimeline().duration||Infinity)-(audio.currentTime||0),
   online:navigator.onLine,saveData:navigator.connection?.saveData,
