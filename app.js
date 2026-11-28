@@ -22,6 +22,7 @@ import {officialEmbedURL,officialWatchURL,canUseOfficial,shouldUseOfficialAfterN
 import {AudioDeliveryRecovery,PlaybackCooldown,resolvePlaybackCooldown,playbackLimitMessage,publicAudioMessage} from './lib/audio-delivery.js';
 import {PLAYBACK_RETRY_TEXT,renderPlaybackFeedback} from './lib/player-feedback.js';
 import {waitForPCNodeReady,waitForPCNodeCache} from './lib/pc-node-recovery.js';
+import {publicationCandidates,publicationQuery} from './lib/publication-candidates.js';
 import {audioSourceCategory,recordStreamingMetric} from './lib/streaming-metrics.js';
 import {TdrMonitor,tdrSourceForTrack} from './lib/tdr-metrics.js';
 import {renderTdrPanel,formatTdrDuration} from './ui/tdr-panel.js';
@@ -1481,6 +1482,7 @@ async function enrichSelectedTrack(track,knownDuration=0){
 }
 function selectTrack(track,autoplay=true,{fromQueue=false,fromHistory=false,tdrHandoff=false}={}){
  if(!track)return;
+ closePublicationDialog();
  const selectedAt=performance.now();
  if(!fromHistory&&state.current?.id&&state.current.id!==track.id){
   playbackBackstack.push(state.current);
@@ -1705,6 +1707,56 @@ async function recoverIndependentAudio(track,isCurrent,verifiedAlternative=null)
   updatePlayer();return true;
  }
 }
+// A publication failure is not a request to silently change the recording.
+let publicationDialog=null;
+function closePublicationDialog(){
+ publicationDialog?.controller.abort();
+ publicationDialog?.element.remove();
+ publicationDialog=null;
+}
+function offerPublicationCandidates(track,selection){
+ closePublicationDialog();
+ const controller=new AbortController(),dialog=document.createElement('dialog');
+ dialog.setAttribute('aria-label','Publicação indisponível');
+ dialog.style.cssText='max-width:min(90vw,480px);padding:20px;border:1px solid #777;border-radius:16px;background:Canvas;color:CanvasText';
+ const current=()=>publicationDialog?.element===dialog&&state.current===track&&playbackSelection===selection&&!controller.signal.aborted;
+ publicationDialog={controller,element:dialog};
+ const heading=document.createElement('h2');heading.textContent='Publicação indisponível';dialog.append(heading);
+ const note=document.createElement('p');note.textContent='Esta publicação não está disponível na origem consultada. Outras publicações podem ter metadados compatíveis, mas não há confirmação de áudio idêntico ou disponibilidade.';dialog.append(note);
+ const rows=document.createElement('div');dialog.append(rows);
+ const status=document.createElement('p');status.setAttribute('role','status');dialog.append(status);
+ const query=publicationQuery(track);
+ const button=(label,action)=>{const el=document.createElement('button');el.type='button';el.textContent=label;el.style.cssText='display:block;margin:8px 0;padding:10px;max-width:100%';el.addEventListener('click',action);return el};
+ const show=items=>{
+  if(!current())return;
+  rows.replaceChildren();
+  const candidates=publicationCandidates(track,items);
+  for(const candidate of candidates){
+   const label=candidate.title+' · '+candidate.artist+' · '+candidate.album+' · '+candidate.videoId;
+   const row=document.createElement('div');
+   const name=document.createElement('p');name.textContent=label;row.append(name);
+   // Explicit user action opens the candidate's official publication.
+   // Do not start the Guardian, rewrite IDs, or circumvent restrictions.
+   row.append(button('Conferir publicação no YouTube',()=>{
+    if(current())window.open('https://www.youtube.com/watch?v='+candidate.videoId,'_blank','noopener,noreferrer');
+   }));
+   rows.append(row);
+  }
+  status.textContent=candidates.length?'Confira a publicação e a disponibilidade antes de escolher.':'Nenhuma publicação com metadados suficientes encontrada.';
+ };
+ const known=[...(searchPaging?.native||[]),...state.searchResults,...state.queue,...state.history,...state.favorites];
+ const search=button('Buscar publicações compatíveis',async()=>{
+  if(!current()||!query||search.disabled)return;
+  search.disabled=true;status.textContent='Consultando catálogo…';
+  try{const items=await searchNativeBackend(query,{limit:20,signal:controller.signal});show([...known,...items]);}
+  catch{if(current())status.textContent='Catálogo indisponível. Nenhuma aquisição foi iniciada.';}
+ });
+ search.disabled=!query;dialog.append(search,button('Fechar',closePublicationDialog));
+ dialog.addEventListener('cancel',e=>{e.preventDefault();closePublicationDialog()});
+ document.body.append(dialog);show(known);
+ if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
+}
+
 async function recoverNativeAudio(track,initialError=null){
  const selection=playbackSelection,generation=audioDelivery.generation;
  if(!track||track.source!=='youtube'||state.current!==track||state.userPaused||isAudioAlreadyPlaying())return false;
@@ -1728,8 +1780,9 @@ async function recoverNativeAudio(track,initialError=null){
   // Wait only for a real, existing job; never poll indefinitely.
   if(!isOffline(track.id)){
    tdr.mark(selection,'pc_wait_started');
+   let pcFailure='';
    const pcResult=await waitForPCNodeReady(track.videoId,{
-    current,prepare:true,autoRetryTimeout:true,
+    current,prepare:true,autoRetryTimeout:true,onFailure:category=>{pcFailure=category},
     onProgress:(phase,details)=>{if(phase==='leased')tdr.mark(selection,'pc_leased');const firstRecovery=state.audioState!=='recovering';
      state.audioState='recovering';
      const ahead=Number.isInteger(details?.queueAhead)?details.queueAhead:0;
@@ -1769,6 +1822,11 @@ async function recoverNativeAudio(track,initialError=null){
     // unprepared media URL twice (both returns are HTTP 503), which was
     // surfacing falsely as browser MediaError code 4.
     if(await resumeCachedNative(track,current))return true;
+    if(!current())return false;
+    if(pcFailure==='publication_unavailable'){
+     state.playing=false;updatePlayer();reportAudioError('Publicação indisponível.');
+     offerPublicationCandidates(track,selection);return false;
+    }
     if(await recoverIndependentAudio(track,current))return true;
     if(!current())return false;
     state.playing=false;updatePlayer();
