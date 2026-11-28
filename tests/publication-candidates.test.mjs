@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {publicationCandidates,publicationQuery} from '../lib/publication-candidates.js';
@@ -21,4 +22,11 @@ test('unavailable publication never auto-retries, exposes failure category',asyn
   fetcher:async()=>{calls++;return {ok:true,json:async()=>({state:'failed',failure_category:'publication_unavailable',node_online:true,retry_after_seconds:0})}},
   onFailure:value=>{reason=value}});
  assert.equal(result,'failed');assert.equal(reason,'publication_unavailable');assert.equal(calls,2);
+});
+
+test('publication choice uses existing visible official player only on click',()=>{
+ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+ const dialog=app.slice(app.indexOf('function offerPublicationCandidates('),app.indexOf('async function recoverNativeAudio('));
+ assert.match(dialog,/button\('Conferir no player oficial GNARLY',\(\)=>\{[\s\S]*?if\(!current\(\)\)return;[\s\S]*?selectTrack\(candidate,false\);[\s\S]*?openYouTubePlayer\(candidate\)/);
+ assert.doesNotMatch(dialog,/window\.open|selectTrack\(candidate,true\)|void play\(/);
 });

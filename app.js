@@ -1735,10 +1735,13 @@ function offerPublicationCandidates(track,selection){
    const label=candidate.title+' · '+candidate.artist+' · '+candidate.album+' · '+candidate.videoId;
    const row=document.createElement('div');
    const name=document.createElement('p');name.textContent=label;row.append(name);
-   // Explicit user action opens the candidate's official publication.
-   // Do not start the Guardian, rewrite IDs, or circumvent restrictions.
-   row.append(button('Conferir publicação no YouTube',()=>{
-    if(current())window.open('https://www.youtube.com/watch?v='+candidate.videoId,'_blank','noopener,noreferrer');
+   // Explicit selection uses the existing visible official player.
+   // The official iframe has autoplay=0. Never extract the candidate here.
+   row.append(button('Conferir no player oficial GNARLY',()=>{
+    if(!current())return;
+    closePublicationDialog();
+    selectTrack(candidate,false);
+    openYouTubePlayer(candidate);
    }));
    rows.append(row);
   }
